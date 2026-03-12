@@ -22,6 +22,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.aging import router as aging_router
 from app.api.statement import router as statement_router
 from app.api.auth import router as auth_router
+from app.api.users import router as users_router
 
 app = FastAPI(
     title="Finance AP/AR Backend",
@@ -51,7 +52,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
-        "https://finance-erp.vercel.app",  # replace later with your actual Vercel URL
+        "https://finance-erp.vercel.app",
     ],
     allow_origin_regex=r"^https:\/\/.*\.vercel\.app$|^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+):(5173|5174)$",
     allow_credentials=True,
@@ -72,6 +73,7 @@ app.include_router(dashboard_router)
 app.include_router(aging_router)
 app.include_router(statement_router)
 app.include_router(auth_router)
+app.include_router(users_router)
 
 # ------------------------------------------------
 # Health Checks
