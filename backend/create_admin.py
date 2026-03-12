@@ -12,8 +12,17 @@ def main():
     db = SessionLocal()
     try:
         existing = db.get(User, USER_ID)
+
         if existing:
-            print("Admin user already exists.")
+            existing.full_name = FULL_NAME
+            existing.password_hash = hash_password(PASSWORD)
+            existing.is_active = True
+            existing.role = "ADMIN"
+            db.commit()
+
+            print("Admin user updated.")
+            print(f"User ID: {USER_ID}")
+            print(f"Password: {PASSWORD}")
             return
 
         user = User(
