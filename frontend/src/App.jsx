@@ -38,13 +38,30 @@ function linkStyle(isActive) {
     textDecoration: "none",
     fontWeight: 800,
     fontSize: 13,
-    padding: "8px 10px",
-    borderRadius: 12,
+    fontFamily: "inherit",
+    lineHeight: 1.2,
+    padding: "8px 14px",
+    borderRadius: 14,
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: "center",
     whiteSpace: "nowrap",
     border: "1px solid rgba(255,255,255,0.10)",
     background: isActive ? "rgba(11,92,255,0.22)" : "rgba(255,255,255,0.04)",
+    boxSizing: "border-box",
+    flex: "0 0 auto",
+  };
+}
+
+function navChipStyle() {
+  return {
+    ...linkStyle(false),
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    outline: "none",
+    cursor: "default",
+    background: "rgba(255,255,255,0.04)",
   };
 }
 
@@ -57,6 +74,7 @@ function groupLabelStyle() {
     letterSpacing: 0.8,
     whiteSpace: "nowrap",
     padding: "0 2px",
+    flex: "0 0 auto",
   };
 }
 
@@ -153,7 +171,7 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
     <div style={shell}>
       <nav style={navStyle}>
         <div style={navInner}>
-          <NavLink to="/dashboard" style={{ textDecoration: "none" }}>
+          <NavLink to="/dashboard" style={{ textDecoration: "none", flex: "0 0 auto" }}>
             <div style={brand}>Finance AP/AR</div>
           </NavLink>
 
@@ -250,7 +268,7 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
               Change Password
             </NavLink>
 
-            <div style={linkStyle(false)}>
+            <div style={navChipStyle()}>
               {currentUser?.full_name || currentUser?.user_id || "User"}
               {currentUser?.role ? ` • ${currentUser.role}` : ""}
             </div>
@@ -281,8 +299,12 @@ function LogoutButton({ onLogout }) {
 
   return (
     <button
+      type="button"
       onClick={handleLogout}
-      style={linkStyle(false)}
+      style={{
+        ...navChipStyle(),
+        cursor: loading ? "not-allowed" : "pointer",
+      }}
       disabled={loading}
     >
       {loading ? "Logging out..." : "Logout"}
