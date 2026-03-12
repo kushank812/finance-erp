@@ -34,6 +34,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     delete_expired_sessions(db)
 
     raw_token = request.cookies.get(SESSION_COOKIE_NAME)
+
     if not raw_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -54,6 +55,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
 
     user = db.get(User, session.user_id)
+
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -65,13 +67,19 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "ADMIN":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
     return current_user
 
 
 def require_operator_or_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role not in {"ADMIN", "OPERATOR"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operator access required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator access required",
+        )
     return current_user
 
 
@@ -80,6 +88,7 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     delete_expired_sessions(db)
 
     user = db.get(User, payload.user_id.strip().upper())
+
     invalid_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid credentials",
@@ -95,6 +104,7 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     token_hash = hash_session_token(raw_token)
 
     now = utc_now()
+
     expires_at = now + (
         timedelta(days=REMEMBER_DAYS)
         if payload.remember_session
@@ -106,15 +116,17 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
         session_token_hash=token_hash,
         expires_at=expires_at,
     )
+
     db.add(session)
     db.commit()
 
+    # IMPORTANT: production cookie settings
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=raw_token,
         httponly=True,
-        secure=False,  # set True in HTTPS production
-        samesite="lax",
+        secure=True,
+        samesite="none",
         max_age=int((expires_at - now).total_seconds()),
         expires=int((expires_at - now).total_seconds()),
         path="/",
@@ -137,11 +149,13 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
     if raw_token:
         token_hash = hash_session_token(raw_token)
+
         session = (
             db.query(UserSession)
             .filter(UserSession.session_token_hash == token_hash)
             .first()
         )
+
         if session:
             db.delete(session)
             db.commit()
@@ -179,8 +193,11 @@ def change_password(
     current_user.password_hash = hash_password(payload.new_password)
     db.commit()
 
-    # Optional hardening: log out all sessions after password change
+    # Log out all sessions after password change
     db.query(UserSession).filter(UserSession.user_id == current_user.user_id).delete()
     db.commit()
 
-    return {"ok": True, "message": "Password changed successfully. Please sign in again."}
+    return {
+        "ok": True,
+        "message": "Password changed successfully. Please sign in again.",
+    }
