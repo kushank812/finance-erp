@@ -250,7 +250,7 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
               Change Password
             </NavLink>
 
-            <div style={userPill}>
+            <div style={linkStyle(false)}>
               {currentUser?.full_name || currentUser?.user_id || "User"}
               {currentUser?.role ? ` • ${currentUser.role}` : ""}
             </div>
@@ -280,7 +280,11 @@ function LogoutButton({ onLogout }) {
   }
 
   return (
-    <button onClick={handleLogout} style={logoutBtn} disabled={loading}>
+    <button
+      onClick={handleLogout}
+      style={linkStyle(false)}
+      disabled={loading}
+    >
       {loading ? "Logging out..." : "Logout"}
     </button>
   );
@@ -575,28 +579,6 @@ const pagePad = {
   maxWidth: 1200,
   margin: "0 auto",
   padding: 18,
-};
-
-const userPill = {
-  padding: "8px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.04)",
-  color: "#dbeafe",
-  fontWeight: 800,
-  fontSize: 13,
-  whiteSpace: "nowrap",
-};
-
-const logoutBtn = {
-  padding: "8px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(255,255,255,0.06)",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 900,
-  whiteSpace: "nowrap",
 };
 
 const responsiveCss = `
