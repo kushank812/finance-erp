@@ -1,0 +1,51 @@
+/* =========================================================
+   App.css (FULL REPLACEMENT)
+   - Removes Vite demo centering
+   - Works with your dark theme in index.css
+   - Keeps layout clean for ERP-style pages
+========================================================= */
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  text-align: left; /* ✅ important: stop centering everything */
+}
+
+/* Optional: if you still use the Vite logo demo somewhere */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 2em rgba(100, 108, 255, 0.67));
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em rgba(97, 218, 251, 0.67));
+}
+
+@keyframes logo-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+/* Generic card helper (optional). Your pages mostly use inline styles already */
+.card {
+  padding: 1rem;
+}
+
+/* Small helper text */
+.read-the-docs {
+  color: #888;
+}

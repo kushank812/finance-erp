@@ -1,0 +1,245 @@
+/* =========================================================
+   FULL REPLACEMENT CSS (BULLETPROOF HEADING VISIBILITY)
+   - Dark app background
+   - Tables + inputs readable
+   - Headings auto-switch for light containers
+========================================================= */
+
+/* ---------- Reset ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+}
+
+:root {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* stop auto dark/light from template */
+  color-scheme: light;
+
+  /* Theme tokens */
+  --bg: #1f1f1f;
+  --text: #eaeaea;
+
+  --heading-on-dark: #ffffff;
+  --heading-on-light: #111111;
+
+  --muted: #b5b5b5;
+
+  --link: #7aa2ff;
+  --link-hover: #9ab7ff;
+
+  --input-bg: #ffffff;
+  --input-text: #111111;
+  --input-border: #cfcfcf;
+
+  --table-bg: #ffffff;
+  --table-text: #111111;
+  --table-header: #f2f3f5;
+  --table-hover: #f7f8fa;
+  --table-border: #e5e5e5;
+
+  background-color: var(--bg);
+  color: var(--text);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---------- Page ---------- */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+
+  /* DON'T center everything */
+  display: block;
+
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* ---------- Links ---------- */
+a {
+  font-weight: 600;
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--link-hover);
+}
+
+/* =========================================================
+   HEADINGS (FIX)
+   1) Default headings on dark background -> white
+   2) If headings are inside ANY light background container -> dark
+========================================================= */
+
+/* Default headings everywhere */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--heading-on-dark);
+  font-weight: 700;
+  margin: 0 0 10px 0;
+}
+
+/* hierarchy */
+h1 { font-size: 2rem; }
+h2 { font-size: 1.6rem; font-weight: 650; }
+h3 { font-size: 1.3rem; font-weight: 650; }
+h4 { font-size: 1.1rem; font-weight: 650; }
+h5 { font-size: 1rem; font-weight: 600; }
+h6 { font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+
+/* ✅ The important part:
+   Headings become DARK when they are inside a LIGHT container.
+   This covers unknown class names + inline styles too.
+*/
+:is(
+  /* common wrapper names */
+  .card, .panel, .box, .content, .container, .section, .wrapper,
+  /* common "white surface" utility class names people use */
+  .bg-white, .white, .light, .surface, .paper,
+  /* table wrappers */
+  .table-wrap, .table-container,
+  /* anything explicitly given a light background */
+  [style*="background:#fff"], [style*="background: #fff"],
+  [style*="background-color:#fff"], [style*="background-color: #fff"],
+  [style*="background:white"], [style*="background: white"],
+  [style*="background-color:white"], [style*="background-color: white"],
+  [style*="background:rgb(255, 255, 255)"], [style*="background-color:rgb(255, 255, 255)"]
+) h1,
+:is(.card, .panel, .box, .content, .container, .section, .wrapper, .bg-white, .white, .light, .surface, .paper,
+    .table-wrap, .table-container,
+    [style*="background:#fff"], [style*="background: #fff"],
+    [style*="background-color:#fff"], [style*="background-color: #fff"],
+    [style*="background:white"], [style*="background: white"],
+    [style*="background-color:white"], [style*="background-color: white"],
+    [style*="background:rgb(255, 255, 255)"], [style*="background-color:rgb(255, 255, 255)"]
+) h2,
+:is(.card, .panel, .box, .content, .container, .section, .wrapper, .bg-white, .white, .light, .surface, .paper,
+    .table-wrap, .table-container,
+    [style*="background:#fff"], [style*="background: #fff"],
+    [style*="background-color:#fff"], [style*="background-color: #fff"],
+    [style*="background:white"], [style*="background: white"],
+    [style*="background-color:white"], [style*="background-color: white"],
+    [style*="background:rgb(255, 255, 255)"], [style*="background-color:rgb(255, 255, 255)"]
+) h3,
+:is(.card, .panel, .box, .content, .container, .section, .wrapper, .bg-white, .white, .light, .surface, .paper,
+    .table-wrap, .table-container,
+    [style*="background:#fff"], [style*="background: #fff"],
+    [style*="background-color:#fff"], [style*="background-color: #fff"],
+    [style*="background:white"], [style*="background: white"],
+    [style*="background-color:white"], [style*="background-color: white"],
+    [style*="background:rgb(255, 255, 255)"], [style*="background-color:rgb(255, 255, 255)"]
+) h4,
+:is(.card, .panel, .box, .content, .container, .section, .wrapper, .bg-white, .white, .light, .surface, .paper,
+    .table-wrap, .table-container,
+    [style*="background:#fff"], [style*="background: #fff"],
+    [style*="background-color:#fff"], [style*="background-color: #fff"],
+    [style*="background:white"], [style*="background: white"],
+    [style*="background-color:white"], [style*="background-color: white"],
+    [style*="background:rgb(255, 255, 255)"], [style*="background-color:rgb(255, 255, 255)"]
+) h5,
+:is(.card, .panel, .box, .content, .container, .section, .wrapper, .bg-white, .white, .light, .surface, .paper,
+    .table-wrap, .table-container,
+    [style*="background:#fff"], [style*="background: #fff"],
+    [style*="background-color:#fff"], [style*="background-color: #fff"],
+    [style*="background:white"], [style*="background: white"],
+    [style*="background-color:white"], [style*="background-color: white"],
+    [style*="background:rgb(255, 255, 255)"], [style*="background-color:rgb(255, 255, 255)"]
+) h6 {
+  color: var(--heading-on-light) !important;
+}
+
+/* =========================================================
+   FORMS
+========================================================= */
+input, select, textarea {
+  font: inherit;
+  color: var(--input-text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--link);
+  box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.2);
+}
+
+/* Buttons fallback */
+button {
+  font: inherit;
+}
+
+/* =========================================================
+   TABLES
+========================================================= */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--table-bg);
+  color: var(--table-text);
+}
+
+th, td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--table-border);
+  color: var(--table-text);
+  text-align: left;
+  vertical-align: middle;
+}
+
+thead tr {
+  background: var(--table-header);
+}
+
+tbody tr:hover {
+  background: var(--table-hover);
+}
+
+/* =========================================================
+   OPTIONAL: Ensure any text inside light surfaces is readable
+========================================================= */
+:is(
+  .card, .panel, .box, .content, .container, .section, .wrapper,
+  .bg-white, .white, .light, .surface, .paper,
+  [style*="background:#fff"], [style*="background: #fff"],
+  [style*="background-color:#fff"], [style*="background-color: #fff"],
+  [style*="background:white"], [style*="background: white"],
+  [style*="background-color:white"], [style*="background-color: white"],
+  [style*="background:rgb(255, 255, 255)"], [style*="background-color:rgb(255, 255, 255)"]
+) {
+  color: #111;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+@media (max-width: 768px) {
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.3rem; }
+  h3 { font-size: 1.1rem; }
+}
