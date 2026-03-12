@@ -1,4 +1,3 @@
-// src/App.jsx
 import {
   BrowserRouter as Router,
   Routes,
@@ -287,7 +286,7 @@ function LogoutButton({ onLogout }) {
   );
 }
 
-function AppRoutes({ authReady, authenticated, currentUser, logout }) {
+function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth }) {
   return (
     <Layout
       authenticated={authenticated}
@@ -300,7 +299,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout }) {
           path="/login"
           element={
             <PublicOnlyRoute authReady={authReady} authenticated={authenticated}>
-              <Login />
+              <Login refreshAuth={refreshAuth} />
             </PublicOnlyRoute>
           }
         />
@@ -505,6 +504,7 @@ export default function App() {
         authenticated={authenticated}
         currentUser={currentUser}
         logout={logout}
+        refreshAuth={refreshAuth}
       />
     </Router>
   );

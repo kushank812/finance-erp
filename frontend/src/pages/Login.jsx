@@ -1,9 +1,8 @@
-// src/pages/Login.jsx
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiPost } from "../api/client";
 
-export default function Login() {
+export default function Login({ refreshAuth }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -35,6 +34,7 @@ export default function Login() {
         remember_session: remember,
       });
 
+      await refreshAuth();
       navigate(redirectTo, { replace: true });
     } catch (e2) {
       setErr(String(e2.message || e2));
