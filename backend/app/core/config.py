@@ -1,8 +1,10 @@
-# app/core/config.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 
 class Settings(BaseSettings):
+    DATABASE_URL: Optional[str] = None
+
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     DB_NAME: str = "finance_ap_ar"
@@ -18,6 +20,9 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+
         return (
             f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

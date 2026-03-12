@@ -12,7 +12,6 @@ import app.models.sales_invoice
 import app.models.purchase_invoice
 import app.models.user
 
-
 # Routers
 from app.api.customer import router as customer_router
 from app.api.item import router as item_router
@@ -37,13 +36,12 @@ app = FastAPI(
 def on_startup():
     """
     Ensure tables exist.
-    Safe for development.
+    Safe for development and simple deployments.
     """
     Base.metadata.create_all(bind=engine)
 
-
 # ------------------------------------------------
-# CORS (Laptop + Phone + LAN + Hotspot)
+# CORS
 # ------------------------------------------------
 
 app.add_middleware(
@@ -53,13 +51,13 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+        "https://finance-erp.vercel.app",  # replace later with your actual Vercel URL
     ],
-    allow_origin_regex=r"^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+):(5173|5174)$",
+    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$|^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+):(5173|5174)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # ------------------------------------------------
 # API Routers
