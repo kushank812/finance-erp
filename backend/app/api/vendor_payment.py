@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.vendor_payment import VendorPayment
+from app.models.purchase_invoice import VendorPayment
 
 router = APIRouter(prefix="/vendor-payments", tags=["Vendor Payments"])
 
