@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet } from "../api/client";
 
@@ -6,49 +6,51 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-export default function ReceiptView() {
-  const { invoiceNo } = useParams();
+export default function VendorPaymentView() {
+  const { paymentNo } = useParams();
   const nav = useNavigate();
 
-  const [inv, setInv] = useState(null);
+  const [doc, setDoc] = useState(null);
+  const [bill, setBill] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
       setErr("");
-      setInv(null);
+      setDoc(null);
+      setBill(null);
 
-      if (!invoiceNo) return;
+      if (!paymentNo) return;
 
       setLoading(true);
       try {
-        const data = await apiGet(`/sales-invoices/${encodeURIComponent(invoiceNo)}`);
-        setInv(data);
+        const payment = await apiGet(
+          `/vendor-payments/${encodeURIComponent(paymentNo)}`
+        );
+        setDoc(payment);
+
+        if (payment?.bill_no) {
+          const billDoc = await apiGet(
+            `/purchase-invoices/${encodeURIComponent(payment.bill_no)}`
+          );
+          setBill(billDoc);
+        }
       } catch (e) {
         setErr(String(e.message || e));
       } finally {
         setLoading(false);
       }
     })();
-  }, [invoiceNo]);
-
-  const totals = useMemo(() => {
-    if (!inv) return null;
-    return {
-      grandTotal: money(inv.grand_total),
-      received: money(inv.amount_received),
-      balance: money(inv.balance),
-    };
-  }, [inv]);
+  }, [paymentNo]);
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: 14 }}>
       <div style={toolbarBetween}>
         <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>Receipt Voucher</h2>
+          <h2 style={{ margin: 0, color: "#fff" }}>Vendor Payment Voucher</h2>
           <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            Invoice No: <b>{invoiceNo}</b>
+            Payment No: <b>{paymentNo}</b>
           </p>
         </div>
 
@@ -60,7 +62,8 @@ export default function ReceiptView() {
           <button
             onClick={() => window.print()}
             style={btnPrimary}
-            disabled={!inv || loading}
+            disabled={!doc || loading}
+            title={!doc ? "Payment not loaded" : "Print this payment"}
           >
             Print / Save PDF
           </button>
@@ -70,42 +73,41 @@ export default function ReceiptView() {
       {err && <div style={msgErr}>{err}</div>}
 
       <div id="print-area" style={paper}>
-        {!invoiceNo ? (
-          <div style={{ color: "#111" }}>Missing invoice number in URL.</div>
+        {!paymentNo ? (
+          <div style={{ color: "#111" }}>Missing payment number in URL.</div>
         ) : loading ? (
-          <div style={{ color: "#111" }}>Loading receipt…</div>
-        ) : !inv ? (
-          <div style={{ color: "#111" }}>No receipt data found.</div>
+          <div style={{ color: "#111" }}>Loading payment…</div>
+        ) : !doc ? (
+          <div style={{ color: "#111" }}>No payment found.</div>
         ) : (
           <>
             <div style={docHeader}>
               <div>
                 <div style={companyName}>Finance AP/AR System</div>
-                <div style={muted}>CUSTOMER RECEIPT</div>
+                <div style={muted}>VENDOR PAYMENT VOUCHER</div>
               </div>
 
               <div style={{ textAlign: "right" }}>
-                <div style={bigId}>{inv.invoice_no}</div>
-                <div style={muted}>Receipt Reference: {inv.invoice_no}</div>
+                <div style={bigId}>{doc.payment_no}</div>
+                <div style={muted}>Payment Date: {String(doc.payment_date || "")}</div>
               </div>
             </div>
 
             <div style={hr} />
 
             <div style={metaGrid}>
-              <Info label="Receipt Ref / Invoice No" value={inv.invoice_no} />
-              <Info label="Customer Code" value={inv.customer_code || "-"} />
-              <Info label="Invoice Date" value={String(inv.invoice_date || "")} />
-              <Info label="Remark" value={inv.remark || "-"} />
+              <Info label="Payment No" value={doc.payment_no} />
+              <Info label="Bill No" value={doc.bill_no || "-"} />
+              <Info label="Vendor Code" value={bill?.vendor_code || doc.vendor_code || "-"} />
+              <Info label="Payment Date" value={String(doc.payment_date || "")} />
+              <Info label="Amount Paid" value={money(doc.amount)} />
+              <Info label="Remark" value={doc.remark || "-"} />
             </div>
 
             <div style={{ height: 14 }} />
 
             <div style={totalsWrap}>
-              <TotalRow label="Invoice Total" value={totals.grandTotal} />
-              <TotalRow label="Amount Received" value={totals.received} strong />
-              <div style={hr} />
-              <TotalRow label="Balance" value={totals.balance} strong />
+              <TotalRow label="Paid Amount" value={money(doc.amount)} strong />
             </div>
 
             <div style={{ height: 18 }} />
@@ -113,7 +115,7 @@ export default function ReceiptView() {
             <div style={signRow}>
               <div style={signBox}>
                 <div style={signLine} />
-                <div style={signLabel}>Received By</div>
+                <div style={signLabel}>Prepared By</div>
               </div>
 
               <div style={signBox}>

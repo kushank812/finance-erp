@@ -32,7 +32,6 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 
-/* NEW */
 import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
 
@@ -424,15 +423,14 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           }
         />
 
-        {/* NEW */}
         <Route
-  path="/receipt/view/:receiptNo"
-  element={
-    <ProtectedRoute authReady={authReady} authenticated={authenticated}>
-      <ReceiptView />
-    </ProtectedRoute>
-  }
-/>
+          path="/receipt/view/:invoiceNo"
+          element={
+            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+              <ReceiptView />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/purchase/new"
@@ -461,7 +459,6 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           }
         />
 
-        {/* NEW */}
         <Route
           path="/vendor-payment/view/:paymentNo"
           element={
@@ -568,8 +565,6 @@ function NotFound() {
     </div>
   );
 }
-
-/* ---- styles ---- */
 
 const shell = {
   minHeight: "100vh",

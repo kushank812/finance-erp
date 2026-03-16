@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "../api/client";
 
 function money(n) {
@@ -11,6 +12,8 @@ function num(v) {
 }
 
 export default function VendorPaymentNew() {
+  const navigate = useNavigate();
+
   const [bills, setBills] = useState([]);
   const [vendors, setVendors] = useState([]);
 
@@ -51,7 +54,6 @@ export default function VendorPaymentNew() {
         setShowBillList(false);
       }
     }
-
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
@@ -59,9 +61,7 @@ export default function VendorPaymentNew() {
   const openBills = useMemo(() => {
     return bills
       .filter((r) => num(r.balance) > 0)
-      .sort((a, b) =>
-        String(a.bill_no || "").localeCompare(String(b.bill_no || ""))
-      );
+      .sort((a, b) => String(a.bill_no || "").localeCompare(String(b.bill_no || "")));
   }, [bills]);
 
   const vendorNameByCode = useMemo(() => {
@@ -125,15 +125,21 @@ export default function VendorPaymentNew() {
     }
 
     try {
-      await apiPost(`/purchase-invoices/${encodeURIComponent(billNo)}/pay`, {
+      const res = await apiPost(`/purchase-invoices/${encodeURIComponent(billNo)}/pay`, {
         amount: amt,
         remark: remark?.trim() || null,
       });
 
-      setOk("Payment saved successfully.");
+      if (!res?.payment_no) {
+        return setErr("Payment saved, but backend did not return payment number.");
+      }
+
+      setOk(`Payment saved successfully. Payment No: ${res.payment_no}`);
       setAmount("");
       setRemark("");
       await load();
+
+      navigate(`/vendor-payment/view/${encodeURIComponent(res.payment_no)}`);
     } catch (e) {
       setErr(String(e.message || e));
     }
@@ -180,9 +186,7 @@ export default function VendorPaymentNew() {
               onChange={(e) => {
                 setBillSearch(e.target.value);
                 setShowBillList(true);
-                if (!e.target.value.trim()) {
-                  setBillNo("");
-                }
+                if (!e.target.value.trim()) setBillNo("");
               }}
               onFocus={() => setShowBillList(true)}
               placeholder="Search bill / vendor"
@@ -300,8 +304,6 @@ function Info({ title, value }) {
     </div>
   );
 }
-
-/* ---- styles ---- */
 
 const card = {
   background: "white",
