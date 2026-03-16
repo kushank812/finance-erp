@@ -1,5 +1,4 @@
-// src/pages/ReceiptNew.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "../api/client";
 
 function money(n) {
@@ -9,10 +8,15 @@ function money(n) {
 export default function ReceiptNew() {
   const [rows, setRows] = useState([]);
   const [invoiceNo, setInvoiceNo] = useState("");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [showInvoiceList, setShowInvoiceList] = useState(false);
+
   const [amount, setAmount] = useState("");
   const [remark, setRemark] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+
+  const pickerRef = useRef(null);
 
   async function load() {
     setErr("");
@@ -29,9 +33,52 @@ export default function ReceiptNew() {
     load();
   }, []);
 
-  const selected = useMemo(() => rows.find((r) => r.invoice_no === invoiceNo), [rows, invoiceNo]);
+  useEffect(() => {
+    function handleOutsideClick(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setShowInvoiceList(false);
+      }
+    }
 
-  const selectedBalance = useMemo(() => Number(selected?.balance || 0), [selected]);
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const selected = useMemo(
+    () => rows.find((r) => r.invoice_no === invoiceNo),
+    [rows, invoiceNo]
+  );
+
+  const selectedBalance = useMemo(
+    () => Number(selected?.balance || 0),
+    [selected]
+  );
+
+  const filteredInvoices = useMemo(() => {
+    const q = invoiceSearch.trim().toUpperCase();
+    if (!q) return rows;
+
+    return rows.filter((r) => {
+      const invoice = String(r.invoice_no || "").toUpperCase();
+      const customer = String(r.customer_code || "").toUpperCase();
+      const total = String(r.grand_total || "");
+      const balance = String(r.balance || "");
+      return (
+        invoice.includes(q) ||
+        customer.includes(q) ||
+        total.includes(q) ||
+        balance.includes(q)
+      );
+    });
+  }, [rows, invoiceSearch]);
+
+  function selectInvoice(row) {
+    setInvoiceNo(row.invoice_no);
+    setInvoiceSearch(
+      `${row.invoice_no} | ${row.customer_code || "-"} | BAL ${money(row.balance)}`
+    );
+    setShowInvoiceList(false);
+  }
 
   async function save() {
     setErr("");
@@ -40,11 +87,14 @@ export default function ReceiptNew() {
     if (!invoiceNo) return setErr("Select an invoice.");
 
     const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) return setErr("Enter a valid received amount (> 0).");
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return setErr("Enter a valid received amount (> 0).");
+    }
 
-    // ✅ Step 4 validation: receipt cannot exceed invoice balance
     if (selected && amt > selectedBalance) {
-      return setErr(`Receipt amount cannot exceed invoice balance. Balance is ${money(selectedBalance)}.`);
+      return setErr(
+        `Receipt amount cannot exceed invoice balance. Balance is ${money(selectedBalance)}.`
+      );
     }
 
     try {
@@ -53,7 +103,7 @@ export default function ReceiptNew() {
         remark: remark || null,
       });
 
-      setOk("✅ Receipt saved. Ledger updated.");
+      setOk("Receipt saved successfully.");
       setAmount("");
       setRemark("");
       await load();
@@ -66,7 +116,7 @@ export default function ReceiptNew() {
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 14 }}>
       <h2 style={{ margin: 0, color: "#fff" }}>Create New Receipt</h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Record amount received against a sales invoice (updates balance + status).
+        Record amount received against a sales invoice.
       </p>
 
       {err && <div style={msgErr}>{err}</div>}
@@ -75,18 +125,60 @@ export default function ReceiptNew() {
       <div style={card}>
         <h3 style={{ marginTop: 0, color: "#111" }}>Receipt Details</h3>
 
-        {/* ✅ responsive grid */}
         <div style={grid}>
-          <div>
-            <label style={lbl}>Invoice No</label>
-            <select value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} style={inp}>
-              <option value="">-- Select Invoice --</option>
-              {rows.map((r) => (
-                <option key={r.invoice_no} value={r.invoice_no}>
-                  {r.invoice_no} (Bal: {money(r.balance)})
-                </option>
-              ))}
-            </select>
+          <div style={{ position: "relative" }} ref={pickerRef}>
+            <label style={lbl}>Invoice Search</label>
+
+            <input
+              value={invoiceSearch}
+              onChange={(e) => {
+                setInvoiceSearch(e.target.value);
+                setShowInvoiceList(true);
+                if (!e.target.value.trim()) {
+                  setInvoiceNo("");
+                }
+              }}
+              onFocus={() => setShowInvoiceList(true)}
+              placeholder="Search by invoice no / customer / amount"
+              style={inp}
+            />
+
+            {showInvoiceList && (
+              <div style={dropdown}>
+                <div style={dropdownHead}>
+                  {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? "" : "s"} found
+                </div>
+
+                <div style={dropdownList}>
+                  {filteredInvoices.length === 0 ? (
+                    <div style={emptyRow}>No matching invoices found.</div>
+                  ) : (
+                    filteredInvoices.map((r) => {
+                      const active = r.invoice_no === invoiceNo;
+                      return (
+                        <button
+                          key={r.invoice_no}
+                          type="button"
+                          onClick={() => selectInvoice(r)}
+                          style={{
+                            ...dropdownItem,
+                            ...(active ? dropdownItemActive : {}),
+                          }}
+                        >
+                          <div style={{ fontWeight: 900 }}>{r.invoice_no}</div>
+                          <div style={dropdownSub}>
+                            Customer: {r.customer_code || "-"}
+                          </div>
+                          <div style={dropdownSub}>
+                            Total: {money(r.grand_total)} | Balance: {money(r.balance)}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -118,8 +210,8 @@ export default function ReceiptNew() {
 
         <div style={{ height: 12 }} />
 
-        {/* ✅ responsive stat grid */}
         <div style={statGrid}>
+          <Info title="Selected Invoice" value={selected?.invoice_no || "-"} />
           <Info title="Customer" value={selected?.customer_code || "-"} />
           <Info title="Invoice Total" value={selected ? money(selected.grand_total) : "-"} />
           <Info title="Current Balance" value={selected ? money(selected.balance) : "-"} />
@@ -147,15 +239,18 @@ function Info({ title, value }) {
   );
 }
 
-/* ---- styles ---- */
-
-const card = { background: "white", border: "1px solid #e6e6e6", borderRadius: 16, padding: 16 };
+const card = {
+  background: "white",
+  border: "1px solid #e6e6e6",
+  borderRadius: 16,
+  padding: 16,
+};
 
 const grid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "1.4fr 1fr 1fr",
   gap: 12,
-  alignItems: "end",
+  alignItems: "start",
 };
 
 const statGrid = {
@@ -164,11 +259,28 @@ const statGrid = {
   gap: 12,
 };
 
-const toolbarWrap = { display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end", marginTop: 16 };
+const toolbarWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  alignItems: "end",
+  marginTop: 16,
+};
 
-const infoBox = { background: "#f7f8fa", border: "1px solid #eee", borderRadius: 14, padding: 12 };
+const infoBox = {
+  background: "#f7f8fa",
+  border: "1px solid #eee",
+  borderRadius: 14,
+  padding: 12,
+};
 
-const lbl = { fontSize: 13, color: "#111", display: "block", marginBottom: 6, fontWeight: 800 };
+const lbl = {
+  fontSize: 13,
+  color: "#111",
+  display: "block",
+  marginBottom: 6,
+  fontWeight: 800,
+};
 
 const inp = {
   width: "100%",
@@ -178,6 +290,61 @@ const inp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+  boxSizing: "border-box",
+};
+
+const dropdown = {
+  position: "absolute",
+  top: "100%",
+  left: 0,
+  right: 0,
+  marginTop: 6,
+  background: "#fff",
+  border: "1px solid #d9d9d9",
+  borderRadius: 12,
+  boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+  zIndex: 30,
+  overflow: "hidden",
+};
+
+const dropdownHead = {
+  padding: "10px 12px",
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#555",
+  background: "#f8f9fb",
+  borderBottom: "1px solid #ececec",
+};
+
+const dropdownList = {
+  maxHeight: 240,
+  overflowY: "auto",
+};
+
+const dropdownItem = {
+  width: "100%",
+  textAlign: "left",
+  border: "none",
+  borderBottom: "1px solid #f0f0f0",
+  background: "#fff",
+  padding: "10px 12px",
+  cursor: "pointer",
+};
+
+const dropdownItemActive = {
+  background: "#eef4ff",
+};
+
+const dropdownSub = {
+  fontSize: 12,
+  color: "#666",
+  marginTop: 2,
+};
+
+const emptyRow = {
+  padding: 12,
+  color: "#666",
+  fontSize: 13,
 };
 
 const btnPrimary = {
