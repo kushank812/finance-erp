@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet } from "../api/client";
 
@@ -14,40 +14,43 @@ export default function VendorPaymentView() {
   const [bill, setBill] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const didAutoPrint = useRef(false);
 
   useEffect(() => {
-    (async () => {
+    let active = true;
+
+    async function loadPayment() {
       setErr("");
       setDoc(null);
       setBill(null);
-      didAutoPrint.current = false;
 
       if (!paymentNo) return;
 
       setLoading(true);
       try {
         const payment = await apiGet(`/vendor-payments/${encodeURIComponent(paymentNo)}`);
+        if (!active) return;
+
         setDoc(payment);
 
         if (payment?.bill_no) {
-          const billDoc = await apiGet(`/purchase-invoices/${encodeURIComponent(payment.bill_no)}`);
-          setBill(billDoc);
+          const billDoc = await apiGet(
+            `/purchase-invoices/${encodeURIComponent(payment.bill_no)}`
+          );
+          if (active) setBill(billDoc);
         }
       } catch (e) {
-        setErr(String(e.message || e));
+        if (active) setErr(String(e.message || e));
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
-    })();
-  }, [paymentNo]);
-
-  useEffect(() => {
-    if (!loading && doc && !didAutoPrint.current) {
-      didAutoPrint.current = true;
-      setTimeout(() => window.print(), 300);
     }
-  }, [doc, loading]);
+
+    loadPayment();
+
+    return () => {
+      active = false;
+    };
+  }, [paymentNo]);
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: 14 }}>
@@ -65,6 +68,7 @@ export default function VendorPaymentView() {
           </button>
 
           <button
+            type="button"
             onClick={() => window.print()}
             style={btnPrimary}
             disabled={!doc || loading}

@@ -15,7 +15,9 @@ export default function ReceiptView() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    let active = true;
+
+    async function loadReceipt() {
       setErr("");
       setInv(null);
 
@@ -24,13 +26,19 @@ export default function ReceiptView() {
       setLoading(true);
       try {
         const data = await apiGet(`/sales-invoices/${encodeURIComponent(invoiceNo)}`);
-        setInv(data);
+        if (active) setInv(data);
       } catch (e) {
-        setErr(String(e.message || e));
+        if (active) setErr(String(e.message || e));
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
-    })();
+    }
+
+    loadReceipt();
+
+    return () => {
+      active = false;
+    };
   }, [invoiceNo]);
 
   const totals = useMemo(() => {
@@ -58,6 +66,7 @@ export default function ReceiptView() {
           </button>
 
           <button
+            type="button"
             onClick={() => window.print()}
             style={btnPrimary}
             disabled={!inv || loading}
