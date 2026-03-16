@@ -1,5 +1,4 @@
-// src/pages/VendorPaymentNew.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "../api/client";
 
 function money(n) {
@@ -16,18 +15,25 @@ export default function VendorPaymentNew() {
   const [vendors, setVendors] = useState([]);
 
   const [billNo, setBillNo] = useState("");
+  const [billSearch, setBillSearch] = useState("");
+  const [showBillList, setShowBillList] = useState(false);
+
   const [amount, setAmount] = useState("");
   const [remark, setRemark] = useState("");
 
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  const pickerRef = useRef(null);
 
   async function load() {
     setErr("");
     setOk("");
     try {
-      const [b, v] = await Promise.all([apiGet("/purchase-invoices/"), apiGet("/vendors/")]);
+      const [b, v] = await Promise.all([
+        apiGet("/purchase-invoices/"),
+        apiGet("/vendors/"),
+      ]);
       setBills(Array.isArray(b) ? b : []);
       setVendors(Array.isArray(v) ? v : []);
     } catch (e) {
@@ -40,18 +46,22 @@ export default function VendorPaymentNew() {
   }, []);
 
   useEffect(() => {
-    function onResize() {
-      setIsMobile(window.innerWidth < 768);
+    function handleOutsideClick(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setShowBillList(false);
+      }
     }
 
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
   const openBills = useMemo(() => {
     return bills
       .filter((r) => num(r.balance) > 0)
-      .sort((a, b) => String(a.bill_no || "").localeCompare(String(b.bill_no || "")));
+      .sort((a, b) =>
+        String(a.bill_no || "").localeCompare(String(b.bill_no || ""))
+      );
   }, [bills]);
 
   const vendorNameByCode = useMemo(() => {
@@ -60,21 +70,58 @@ export default function VendorPaymentNew() {
     return m;
   }, [vendors]);
 
-  const selected = useMemo(() => openBills.find((r) => r.bill_no === billNo), [openBills, billNo]);
+  const filteredBills = useMemo(() => {
+    const q = billSearch.trim().toUpperCase();
+    if (!q) return openBills;
+
+    return openBills.filter((r) => {
+      const bill = String(r.bill_no || "").toUpperCase();
+      const vendorCode = String(r.vendor_code || "").toUpperCase();
+      const vendorName = String(vendorNameByCode.get(r.vendor_code) || "").toUpperCase();
+      const total = String(r.grand_total || "");
+      const balance = String(r.balance || "");
+
+      return (
+        bill.includes(q) ||
+        vendorCode.includes(q) ||
+        vendorName.includes(q) ||
+        total.includes(q) ||
+        balance.includes(q)
+      );
+    });
+  }, [openBills, billSearch, vendorNameByCode]);
+
+  const selected = useMemo(
+    () => openBills.find((r) => r.bill_no === billNo),
+    [openBills, billNo]
+  );
 
   const maxPayable = selected ? num(selected.balance) : 0;
+
+  function selectBill(row) {
+    const vendorName = vendorNameByCode.get(row.vendor_code) || "";
+    setBillNo(row.bill_no);
+    setBillSearch(
+      `${row.bill_no} | ${row.vendor_code}${vendorName ? " - " + vendorName : ""} | BAL ${money(row.balance)}`
+    );
+    setShowBillList(false);
+  }
 
   async function save() {
     setErr("");
     setOk("");
 
     if (!billNo) return setErr("Select a purchase bill.");
+
     const amt = num(amount);
     if (amt <= 0) return setErr("Enter a valid paid amount (> 0).");
 
     if (!selected) return setErr("Selected bill not found. Click Refresh.");
+
     if (amt > maxPayable) {
-      return setErr(`Payment amount cannot exceed bill balance. Balance is ${money(maxPayable)}.`);
+      return setErr(
+        `Payment amount cannot exceed bill balance. Balance is ${money(maxPayable)}.`
+      );
     }
 
     try {
@@ -83,7 +130,7 @@ export default function VendorPaymentNew() {
         remark: remark?.trim() || null,
       });
 
-      setOk("✅ Payment saved. Accounts Payable updated.");
+      setOk("Payment saved successfully.");
       setAmount("");
       setRemark("");
       await load();
@@ -94,17 +141,19 @@ export default function VendorPaymentNew() {
 
   function clear() {
     setBillNo("");
+    setBillSearch("");
     setAmount("");
     setRemark("");
     setErr("");
     setOk("");
+    setShowBillList(false);
   }
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>
       <h2 style={{ margin: 0, color: "#fff" }}>Vendor Payment</h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Record payment against a Purchase Bill (updates amount_paid, balance, status).
+        Record payment against a Purchase Bill (updates amount paid, balance, status).
       </p>
 
       {err && <div style={msgErr}>{err}</div>}
@@ -112,7 +161,9 @@ export default function VendorPaymentNew() {
 
       <div style={card}>
         <div style={toolbarBetween}>
-          <h3 style={{ marginTop: 0, marginBottom: 0, color: "#111" }}>Payment Details</h3>
+          <h3 style={{ marginTop: 0, marginBottom: 0, color: "#111" }}>
+            Payment Details
+          </h3>
           <button onClick={load} style={btnGhost}>
             Refresh
           </button>
@@ -120,30 +171,63 @@ export default function VendorPaymentNew() {
 
         <div style={{ height: 12 }} />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1.35fr 1fr 1.35fr",
-            gap: 16,
-            alignItems: "start",
-          }}
-        >
-          <div>
-            <label style={lbl}>Purchase Bill *</label>
-            <select value={billNo} onChange={(e) => setBillNo(e.target.value)} style={inp}>
-              <option value="">-- Select Unpaid Bill --</option>
-              {openBills.map((r) => {
-                const vName = vendorNameByCode.get(r.vendor_code) || "";
-                const label = `${r.bill_no} — ${r.vendor_code}${vName ? " (" + vName + ")" : ""} — Bal: ${money(
-                  r.balance
-                )}`;
-                return (
-                  <option key={r.bill_no} value={r.bill_no}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
+        <div style={grid}>
+          <div style={{ position: "relative" }} ref={pickerRef}>
+            <label style={lbl}>Purchase Bill Search *</label>
+
+            <input
+              value={billSearch}
+              onChange={(e) => {
+                setBillSearch(e.target.value);
+                setShowBillList(true);
+                if (!e.target.value.trim()) {
+                  setBillNo("");
+                }
+              }}
+              onFocus={() => setShowBillList(true)}
+              placeholder="Search by bill no / vendor / amount"
+              style={inp}
+            />
+
+            {showBillList && (
+              <div style={dropdown}>
+                <div style={dropdownHead}>
+                  {filteredBills.length} bill{filteredBills.length === 1 ? "" : "s"} found
+                </div>
+
+                <div style={dropdownList}>
+                  {filteredBills.length === 0 ? (
+                    <div style={emptyRow}>No matching unpaid bills found.</div>
+                  ) : (
+                    filteredBills.map((r) => {
+                      const vendorName = vendorNameByCode.get(r.vendor_code) || "";
+                      const active = r.bill_no === billNo;
+
+                      return (
+                        <button
+                          key={r.bill_no}
+                          type="button"
+                          onClick={() => selectBill(r)}
+                          style={{
+                            ...dropdownItem,
+                            ...(active ? dropdownItemActive : {}),
+                          }}
+                        >
+                          <div style={{ fontWeight: 900 }}>{r.bill_no}</div>
+                          <div style={dropdownSub}>
+                            Vendor: {r.vendor_code}
+                            {vendorName ? ` - ${vendorName}` : ""}
+                          </div>
+                          <div style={dropdownSub}>
+                            Total: {money(r.grand_total)} | Balance: {money(r.balance)}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
 
             <div style={hint}>
               Only bills with <b>Balance &gt; 0</b> are shown.
@@ -180,16 +264,15 @@ export default function VendorPaymentNew() {
 
         <div style={{ height: 16 }} />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))",
-            gap: 16,
-          }}
-        >
+        <div style={statGrid}>
+          <Info title="Selected Bill" value={selected?.bill_no || "-"} />
           <Info
             title="Vendor"
-            value={selected ? vendorNameByCode.get(selected.vendor_code) || selected.vendor_code : "-"}
+            value={
+              selected
+                ? vendorNameByCode.get(selected.vendor_code) || selected.vendor_code
+                : "-"
+            }
           />
           <Info title="Bill Total" value={selected ? money(selected.grand_total) : "-"} />
           <Info title="Paid So Far" value={selected ? money(selected.amount_paid) : "-"} />
@@ -213,7 +296,9 @@ function Info({ title, value }) {
   return (
     <div style={infoBox}>
       <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>{title}</div>
-      <div style={{ fontSize: 18, fontWeight: 900, color: "#111", lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: 18, fontWeight: 900, color: "#111", lineHeight: 1.2 }}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -225,6 +310,19 @@ const card = {
   border: "1px solid #e6e6e6",
   borderRadius: 16,
   padding: 16,
+};
+
+const grid = {
+  display: "grid",
+  gridTemplateColumns: "1.4fr 1fr 1.2fr",
+  gap: 16,
+  alignItems: "start",
+};
+
+const statGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 16,
 };
 
 const lbl = {
@@ -273,6 +371,60 @@ const infoBox = {
   border: "1px solid #eee",
   borderRadius: 14,
   padding: 12,
+};
+
+const dropdown = {
+  position: "absolute",
+  top: "100%",
+  left: 0,
+  right: 0,
+  marginTop: 6,
+  background: "#fff",
+  border: "1px solid #d9d9d9",
+  borderRadius: 12,
+  boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+  zIndex: 30,
+  overflow: "hidden",
+};
+
+const dropdownHead = {
+  padding: "10px 12px",
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#555",
+  background: "#f8f9fb",
+  borderBottom: "1px solid #ececec",
+};
+
+const dropdownList = {
+  maxHeight: 240,
+  overflowY: "auto",
+};
+
+const dropdownItem = {
+  width: "100%",
+  textAlign: "left",
+  border: "none",
+  borderBottom: "1px solid #f0f0f0",
+  background: "#fff",
+  padding: "10px 12px",
+  cursor: "pointer",
+};
+
+const dropdownItemActive = {
+  background: "#eef4ff",
+};
+
+const dropdownSub = {
+  fontSize: 12,
+  color: "#666",
+  marginTop: 2,
+};
+
+const emptyRow = {
+  padding: 12,
+  color: "#666",
+  fontSize: 13,
 };
 
 const btnPrimary = {
