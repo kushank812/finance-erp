@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet } from "../api/client";
 
@@ -13,13 +13,11 @@ export default function ReceiptView() {
   const [inv, setInv] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const didAutoPrint = useRef(false);
 
   useEffect(() => {
     (async () => {
       setErr("");
       setInv(null);
-      didAutoPrint.current = false;
 
       if (!invoiceNo) return;
 
@@ -34,13 +32,6 @@ export default function ReceiptView() {
       }
     })();
   }, [invoiceNo]);
-
-  useEffect(() => {
-    if (!loading && inv && !didAutoPrint.current) {
-      didAutoPrint.current = true;
-      setTimeout(() => window.print(), 300);
-    }
-  }, [inv, loading]);
 
   const totals = useMemo(() => {
     if (!inv) return null;
