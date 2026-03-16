@@ -1,12 +1,13 @@
 from decimal import Decimal
 from typing import Optional
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.sales_invoice import SalesInvoice
+from app.models.sales_invoice import SalesInvoiceHdr
 
 router = APIRouter(prefix="/sales-invoices", tags=["Receipts"])
 
@@ -19,7 +20,7 @@ class ReceiptIn(BaseModel):
 class SalesInvoiceReceiptOut(BaseModel):
     invoice_no: str
     customer_code: Optional[str] = None
-    invoice_date: Optional[object] = None
+    invoice_date: Optional[date] = None
     grand_total: Decimal
     amount_received: Decimal
     balance: Decimal
@@ -32,16 +33,19 @@ class SalesInvoiceReceiptOut(BaseModel):
 @router.post("/{invoice_no}/receive")
 def receive_payment(invoice_no: str, payload: ReceiptIn, db: Session = Depends(get_db)):
     invoice = (
-        db.query(SalesInvoice)
-        .filter(SalesInvoice.invoice_no == invoice_no)
+        db.query(SalesInvoiceHdr)
+        .filter(SalesInvoiceHdr.invoice_no == invoice_no)
         .first()
     )
+
     if not invoice:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
     grand_total = Decimal(str(invoice.grand_total or 0))
     amount_received = Decimal(str(invoice.amount_received or 0))
-    balance = Decimal(str(invoice.balance if invoice.balance is not None else (grand_total - amount_received)))
+    balance = Decimal(
+        str(invoice.balance if invoice.balance is not None else (grand_total - amount_received))
+    )
     receive_amount = Decimal(str(payload.amount))
 
     if receive_amount <= 0:

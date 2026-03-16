@@ -3,11 +3,10 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.purchase_invoice import PurchaseInvoice
 from app.models.vendor_payment import VendorPayment
 
 router = APIRouter(prefix="/vendor-payments", tags=["Vendor Payments"])

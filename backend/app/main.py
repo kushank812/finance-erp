@@ -23,7 +23,6 @@ from app.api.aging import router as aging_router
 from app.api.statement import router as statement_router
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
-from app.api.receipt import router as receipt_router
 from app.api.vendor_payment import router as vendor_payment_router
 
 app = FastAPI(
@@ -76,7 +75,6 @@ app.include_router(aging_router)
 app.include_router(statement_router)
 app.include_router(auth_router)
 app.include_router(users_router)
-app.include_router(receipt_router)
 app.include_router(vendor_payment_router)
 
 # ------------------------------------------------
