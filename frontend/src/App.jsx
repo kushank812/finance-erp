@@ -32,6 +32,10 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 
+/* NEW */
+import ReceiptView from "./pages/ReceiptView";
+import VendorPaymentView from "./pages/VendorPaymentView";
+
 function linkStyle(isActive) {
   return {
     color: isActive ? "#ffffff" : "#9bb7ff",
@@ -420,6 +424,16 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           }
         />
 
+        {/* NEW */}
+        <Route
+  path="/receipt/view/:receiptNo"
+  element={
+    <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+      <ReceiptView />
+    </ProtectedRoute>
+  }
+/>
+
         <Route
           path="/purchase/new"
           element={
@@ -443,6 +457,16 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           element={
             <ProtectedRoute authReady={authReady} authenticated={authenticated}>
               <PurchaseBillView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* NEW */}
+        <Route
+          path="/vendor-payment/view/:paymentNo"
+          element={
+            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+              <VendorPaymentView />
             </ProtectedRoute>
           }
         />

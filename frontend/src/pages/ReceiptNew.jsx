@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "../api/client";
 
 function money(n) {
@@ -6,6 +7,8 @@ function money(n) {
 }
 
 export default function ReceiptNew() {
+  const navigate = useNavigate();
+
   const [rows, setRows] = useState([]);
   const [invoiceNo, setInvoiceNo] = useState("");
   const [invoiceSearch, setInvoiceSearch] = useState("");
@@ -39,7 +42,6 @@ export default function ReceiptNew() {
         setShowInvoiceList(false);
       }
     }
-
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
@@ -103,10 +105,12 @@ export default function ReceiptNew() {
         remark: remark || null,
       });
 
-      setOk("Receipt saved successfully.");
+      setOk(`Receipt saved successfully for invoice ${invoiceNo}.`);
       setAmount("");
       setRemark("");
       await load();
+
+      navigate(`/receipt/view/${encodeURIComponent(invoiceNo)}`);
     } catch (e) {
       setErr(String(e.message || e));
     }
@@ -134,9 +138,7 @@ export default function ReceiptNew() {
               onChange={(e) => {
                 setInvoiceSearch(e.target.value);
                 setShowInvoiceList(true);
-                if (!e.target.value.trim()) {
-                  setInvoiceNo("");
-                }
+                if (!e.target.value.trim()) setInvoiceNo("");
               }}
               onFocus={() => setShowInvoiceList(true)}
               placeholder="Search by invoice no / customer / amount"
