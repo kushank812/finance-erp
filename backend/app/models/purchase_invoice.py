@@ -1,6 +1,12 @@
-from sqlalchemy import String, Integer, Date, Numeric, ForeignKey
+from datetime import datetime, timezone
+
+from sqlalchemy import String, Integer, Date, DateTime, Numeric, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class PurchaseInvoiceHdr(Base):
@@ -35,6 +41,12 @@ class PurchaseInvoiceHdr(Base):
         cascade="all, delete-orphan",
     )
 
+    payments = relationship(
+        "VendorPayment",
+        back_populates="bill",
+        cascade="all, delete-orphan",
+    )
+
 
 class PurchaseInvoiceDtl(Base):
     __tablename__ = "purchase_invoice_dtl"
@@ -60,3 +72,28 @@ class PurchaseInvoiceDtl(Base):
     line_total: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
 
     hdr = relationship("PurchaseInvoiceHdr", back_populates="lines")
+
+
+class VendorPayment(Base):
+    __tablename__ = "vendor_payment"
+
+    payment_no: Mapped[str] = mapped_column(String(50), primary_key=True, index=True)
+
+    bill_no: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("purchase_invoice_hdr.bill_no"),
+        nullable=False,
+        index=True,
+    )
+
+    payment_date: Mapped[object] = mapped_column(Date, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    remark: Mapped[str] = mapped_column(String(200), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+    bill = relationship("PurchaseInvoiceHdr", back_populates="payments")

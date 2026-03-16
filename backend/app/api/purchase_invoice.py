@@ -1,4 +1,3 @@
-# app/api/purchase_invoice.py
 from decimal import Decimal
 from datetime import date
 
@@ -7,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.purchase_invoice import PurchaseInvoiceHdr, PurchaseInvoiceDtl
+from app.models.purchase_invoice import PurchaseInvoiceHdr, PurchaseInvoiceDtl, VendorPayment
 from app.schemas.purchase_invoice import PurchaseInvoiceCreate, PurchaseInvoiceOut
 from app.utils.text import normalize_upper
 
@@ -32,9 +31,25 @@ def compute_status(balance: Decimal | float, grand_total: Decimal | float, due_d
     return "Pending"
 
 
+def next_payment_no(db: Session) -> str:
+    rows = db.query(VendorPayment).all()
+    max_no = 0
+
+    for r in rows:
+        text = str(r.payment_no or "")
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if digits:
+            max_no = max(max_no, int(digits))
+
+    return f"PAY{max_no + 1:04d}"
+
+
 @router.get("/", response_model=list[PurchaseInvoiceOut])
 def list_purchase_invoices(db: Session = Depends(get_db)):
-    rows = db.query(PurchaseInvoiceHdr).order_by(PurchaseInvoiceHdr.bill_date.desc(), PurchaseInvoiceHdr.bill_no.desc()).all()
+    rows = db.query(PurchaseInvoiceHdr).order_by(
+        PurchaseInvoiceHdr.bill_date.desc(),
+        PurchaseInvoiceHdr.bill_no.desc()
+    ).all()
 
     changed = False
     for r in rows:
@@ -42,6 +57,7 @@ def list_purchase_invoices(db: Session = Depends(get_db)):
         if r.status != new_status:
             r.status = new_status
             changed = True
+
     if changed:
         db.commit()
 
@@ -132,7 +148,7 @@ def create_purchase_invoice(payload: PurchaseInvoiceCreate, db: Session = Depend
     return hdr
 
 
-@router.post("/{bill_no}/pay", response_model=PurchaseInvoiceOut)
+@router.post("/{bill_no}/pay")
 def pay_bill(bill_no: str, payload: PayBillIn, db: Session = Depends(get_db)):
     obj = db.get(PurchaseInvoiceHdr, bill_no)
     if not obj:
@@ -145,13 +161,29 @@ def pay_bill(bill_no: str, payload: PayBillIn, db: Session = Depends(get_db)):
     if amount > Decimal(str(obj.balance or 0)):
         raise HTTPException(status_code=400, detail="Paid amount cannot exceed balance")
 
+    payment_no = next_payment_no(db)
+
+    payment = VendorPayment(
+        payment_no=payment_no,
+        bill_no=obj.bill_no,
+        payment_date=date.today(),
+        amount=amount,
+        remark=str(payload.remark).strip().upper() if payload.remark and str(payload.remark).strip() else None,
+    )
+    db.add(payment)
+
     obj.amount_paid = Decimal(str(obj.amount_paid or 0)) + amount
     obj.balance = Decimal(str(obj.grand_total or 0)) - Decimal(str(obj.amount_paid or 0))
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
 
-    if payload.remark is not None and str(payload.remark).strip():
-        obj.remark = str(payload.remark).strip().upper()
-
     db.commit()
-    db.refresh(obj)
-    return obj
+    db.refresh(payment)
+
+    return {
+        "ok": True,
+        "payment_no": payment.payment_no,
+        "bill_no": payment.bill_no,
+        "payment_date": str(payment.payment_date),
+        "amount": float(payment.amount),
+        "remark": payment.remark,
+    }

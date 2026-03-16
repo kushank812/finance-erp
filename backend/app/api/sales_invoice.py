@@ -1,4 +1,3 @@
-# app/api/sales_invoice.py
 from decimal import Decimal
 from datetime import date
 
@@ -7,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.sales_invoice import SalesInvoiceHdr, SalesInvoiceDtl
+from app.models.sales_invoice import SalesInvoiceHdr, SalesInvoiceDtl, SalesReceipt
 from app.schemas.sales_invoice import SalesInvoiceCreate, SalesInvoiceOut
 from app.utils.text import normalize_upper
 
@@ -32,17 +31,33 @@ def compute_status(balance: Decimal | float, grand_total: Decimal | float, due_d
     return "Pending"
 
 
+def next_receipt_no(db: Session) -> str:
+    rows = db.query(SalesReceipt).all()
+    max_no = 0
+
+    for r in rows:
+        text = str(r.receipt_no or "")
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if digits:
+            max_no = max(max_no, int(digits))
+
+    return f"RCPT{max_no + 1:04d}"
+
+
 @router.get("/", response_model=list[SalesInvoiceOut])
 def list_sales_invoices(db: Session = Depends(get_db)):
-    rows = db.query(SalesInvoiceHdr).order_by(SalesInvoiceHdr.invoice_date.desc(), SalesInvoiceHdr.invoice_no.desc()).all()
+    rows = db.query(SalesInvoiceHdr).order_by(
+        SalesInvoiceHdr.invoice_date.desc(),
+        SalesInvoiceHdr.invoice_no.desc()
+    ).all()
 
-    # keep statuses fresh
     changed = False
     for r in rows:
         new_status = compute_status(r.balance, r.grand_total, r.due_date)
         if r.status != new_status:
             r.status = new_status
             changed = True
+
     if changed:
         db.commit()
 
@@ -133,7 +148,7 @@ def create_sales_invoice(payload: SalesInvoiceCreate, db: Session = Depends(get_
     return hdr
 
 
-@router.post("/{invoice_no}/receive", response_model=SalesInvoiceOut)
+@router.post("/{invoice_no}/receive")
 def receive_payment(invoice_no: str, payload: ReceivePaymentIn, db: Session = Depends(get_db)):
     obj = db.get(SalesInvoiceHdr, invoice_no)
     if not obj:
@@ -146,13 +161,29 @@ def receive_payment(invoice_no: str, payload: ReceivePaymentIn, db: Session = De
     if amount > Decimal(str(obj.balance or 0)):
         raise HTTPException(status_code=400, detail="Received amount cannot exceed balance")
 
+    receipt_no = next_receipt_no(db)
+
+    receipt = SalesReceipt(
+        receipt_no=receipt_no,
+        invoice_no=obj.invoice_no,
+        receipt_date=date.today(),
+        amount=amount,
+        remark=str(payload.remark).strip().upper() if payload.remark and str(payload.remark).strip() else None,
+    )
+    db.add(receipt)
+
     obj.amount_received = Decimal(str(obj.amount_received or 0)) + amount
     obj.balance = Decimal(str(obj.grand_total or 0)) - Decimal(str(obj.amount_received or 0))
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
 
-    if payload.remark is not None and str(payload.remark).strip():
-        obj.remark = str(payload.remark).strip().upper()
-
     db.commit()
-    db.refresh(obj)
-    return obj
+    db.refresh(receipt)
+
+    return {
+        "ok": True,
+        "receipt_no": receipt.receipt_no,
+        "invoice_no": receipt.invoice_no,
+        "receipt_date": str(receipt.receipt_date),
+        "amount": float(receipt.amount),
+        "remark": receipt.remark,
+    }
