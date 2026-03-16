@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet } from "../api/client";
 
@@ -14,26 +14,24 @@ export default function VendorPaymentView() {
   const [bill, setBill] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const didAutoPrint = useRef(false);
 
   useEffect(() => {
     (async () => {
       setErr("");
       setDoc(null);
       setBill(null);
+      didAutoPrint.current = false;
 
       if (!paymentNo) return;
 
       setLoading(true);
       try {
-        const payment = await apiGet(
-          `/vendor-payments/${encodeURIComponent(paymentNo)}`
-        );
+        const payment = await apiGet(`/vendor-payments/${encodeURIComponent(paymentNo)}`);
         setDoc(payment);
 
         if (payment?.bill_no) {
-          const billDoc = await apiGet(
-            `/purchase-invoices/${encodeURIComponent(payment.bill_no)}`
-          );
+          const billDoc = await apiGet(`/purchase-invoices/${encodeURIComponent(payment.bill_no)}`);
           setBill(billDoc);
         }
       } catch (e) {
@@ -43,6 +41,13 @@ export default function VendorPaymentView() {
       }
     })();
   }, [paymentNo]);
+
+  useEffect(() => {
+    if (!loading && doc && !didAutoPrint.current) {
+      didAutoPrint.current = true;
+      setTimeout(() => window.print(), 300);
+    }
+  }, [doc, loading]);
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: 14 }}>
@@ -76,7 +81,7 @@ export default function VendorPaymentView() {
         {!paymentNo ? (
           <div style={{ color: "#111" }}>Missing payment number in URL.</div>
         ) : loading ? (
-          <div style={{ color: "#111" }}>Loading payment…</div>
+          <div style={{ color: "#111" }}>Loading payment...</div>
         ) : !doc ? (
           <div style={{ color: "#111" }}>No payment found.</div>
         ) : (
