@@ -245,12 +245,6 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
               <>
                 <div style={groupLabelStyle()}>Masters</div>
 
-                {canManageUsers(currentUser) && (
-                  <NavLink to="/users" style={({ isActive }) => linkStyle(isActive)}>
-                    Users
-                  </NavLink>
-                )}
-
                 <NavLink to="/customers" style={({ isActive }) => linkStyle(isActive)}>
                   Customers
                 </NavLink>
@@ -262,6 +256,12 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
                 <NavLink to="/vendors" style={({ isActive }) => linkStyle(isActive)}>
                   Vendors
                 </NavLink>
+
+                {canManageUsers(currentUser) && (
+                  <NavLink to="/users" style={({ isActive }) => linkStyle(isActive)}>
+                    Users
+                  </NavLink>
+                )}
 
                 <div style={divider} />
               </>
