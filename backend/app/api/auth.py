@@ -12,6 +12,8 @@ from app.utils.security import (
     hash_session_token,
     hash_password,
 )
+from app.utils.audit import log_activity
+from app.utils.audit_constants import AuditAction, AuditModule
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -36,7 +38,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     raw_token = request.cookies.get(SESSION_COOKIE_NAME)
 
     if not raw_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
 
     token_hash = hash_session_token(raw_token)
 
@@ -47,17 +52,26 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     )
 
     if not session:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
 
     if session.expires_at < utc_now():
         db.delete(session)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired",
+        )
 
     user = db.get(User, session.user_id)
 
     if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
 
     session.last_seen_at = utc_now()
     db.commit()
@@ -84,7 +98,12 @@ def require_operator_or_admin(current_user: User = Depends(get_current_user)) ->
 
 
 @router.post("/login", response_model=LoginOut)
-def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
+def login(
+    payload: LoginIn,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     delete_expired_sessions(db)
 
     user = db.get(User, payload.user_id.strip().upper())
@@ -118,9 +137,20 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     )
 
     db.add(session)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=user.user_id,
+        action=AuditAction.LOGIN,
+        module=AuditModule.USER,
+        record_id=user.user_id,
+        record_name=user.full_name,
+        details="User logged in",
+    )
+
     db.commit()
 
-    # IMPORTANT: production cookie settings
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=raw_token,
@@ -146,6 +176,8 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     raw_token = request.cookies.get(SESSION_COOKIE_NAME)
+    user_id = None
+    full_name = None
 
     if raw_token:
         token_hash = hash_session_token(raw_token)
@@ -157,6 +189,21 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
         )
 
         if session:
+            user_id = session.user_id
+            user = db.get(User, session.user_id)
+            full_name = user.full_name if user else None
+
+            log_activity(
+                db=db,
+                request=request,
+                user_id=user_id,
+                action=AuditAction.LOGOUT,
+                module=AuditModule.USER,
+                record_id=user_id,
+                record_name=full_name,
+                details="User logged out",
+            )
+
             db.delete(session)
             db.commit()
 
@@ -181,6 +228,7 @@ def me(current_user: User = Depends(get_current_user)):
 @router.post("/change-password")
 def change_password(
     payload: ChangePasswordIn,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -191,10 +239,23 @@ def change_password(
         raise HTTPException(status_code=400, detail="New password must be different")
 
     current_user.password_hash = hash_password(payload.new_password)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.PASSWORD_CHANGE,
+        module=AuditModule.USER,
+        record_id=current_user.user_id,
+        record_name=current_user.full_name,
+        details="User changed own password",
+    )
+
     db.commit()
 
-    # Log out all sessions after password change
-    db.query(UserSession).filter(UserSession.user_id == current_user.user_id).delete()
+    db.query(UserSession).filter(
+        UserSession.user_id == current_user.user_id
+    ).delete()
     db.commit()
 
     return {

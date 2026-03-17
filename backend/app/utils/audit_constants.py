@@ -1,0 +1,23 @@
+from enum import Enum
+
+
+class AuditAction(str, Enum):
+    CREATE = "CREATE"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
+    DEACTIVATE = "DEACTIVATE"
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    PASSWORD_CHANGE = "PASSWORD_CHANGE"
+    PASSWORD_RESET = "PASSWORD_RESET"
+
+
+class AuditModule(str, Enum):
+    USER = "USER"
+    CUSTOMER = "CUSTOMER"
+    VENDOR = "VENDOR"
+    ITEM = "ITEM"
+    SALES_INVOICE = "SALES_INVOICE"
+    PURCHASE_INVOICE = "PURCHASE_INVOICE"
+    RECEIPT = "RECEIPT"
+    VENDOR_PAYMENT = "VENDOR_PAYMENT"

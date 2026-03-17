@@ -34,6 +34,7 @@ import ChangePassword from "./pages/ChangePassword";
 
 import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
+import AuditLogs from "./pages/AuditLogs";
 
 function linkStyle(isActive) {
   return {
@@ -97,6 +98,10 @@ function canManageUsers(user) {
   return isAdmin(user);
 }
 
+function canViewAudit(user) {
+  return isAdmin(user);
+}
+
 function canDoTransactions(user) {
   return isAdmin(user) || isOperator(user);
 }
@@ -137,6 +142,78 @@ function ProtectedRoute({ children, authReady, authenticated }) {
 
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return children;
+}
+
+function AdminRoute({ children, authReady, authenticated, currentUser }) {
+  const location = useLocation();
+
+  if (!authReady) {
+    return <FullPageLoader />;
+  }
+
+  if (!authenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!isAdmin(currentUser)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function MastersRoute({ children, authReady, authenticated, currentUser }) {
+  const location = useLocation();
+
+  if (!authReady) {
+    return <FullPageLoader />;
+  }
+
+  if (!authenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canViewMasters(currentUser)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function TransactionRoute({ children, authReady, authenticated, currentUser }) {
+  const location = useLocation();
+
+  if (!authReady) {
+    return <FullPageLoader />;
+  }
+
+  if (!authenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canDoTransactions(currentUser)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function ReportsRoute({ children, authReady, authenticated, currentUser }) {
+  const location = useLocation();
+
+  if (!authReady) {
+    return <FullPageLoader />;
+  }
+
+  if (!authenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canViewReports(currentUser)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -267,6 +344,18 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
               </>
             )}
 
+            {canViewAudit(currentUser) && (
+              <>
+                <div style={groupLabelStyle()}>Admin</div>
+
+                <NavLink to="/audit" style={({ isActive }) => linkStyle(isActive)}>
+                  Audit Logs
+                </NavLink>
+
+                <div style={divider} />
+              </>
+            )}
+
             <NavLink to="/change-password" style={({ isActive }) => linkStyle(isActive)}>
               Change Password
             </NavLink>
@@ -354,144 +443,221 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
         <Route
           path="/entry"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <EntryScreen />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/customers"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <MastersRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <CustomerMaster />
-            </ProtectedRoute>
+            </MastersRoute>
           }
         />
 
         <Route
           path="/items"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <MastersRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <ItemMaster />
-            </ProtectedRoute>
+            </MastersRoute>
           }
         />
 
         <Route
           path="/vendors"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <MastersRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <VendorMaster />
-            </ProtectedRoute>
+            </MastersRoute>
           }
         />
 
         <Route
           path="/users"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <AdminRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <Users />
-            </ProtectedRoute>
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/audit"
+          element={
+            <AdminRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <AuditLogs />
+            </AdminRoute>
           }
         />
 
         <Route
           path="/billing/new"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <BillingNew />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/receipt/new"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <ReceiptNew />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/billing/view/:invoiceNo"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <SalesInvoiceDirectView />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/receipt/view/:invoiceNo"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <ReceiptView />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/purchase/new"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <PurchaseBillNew />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/purchase/pay"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <VendorPaymentNew />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/purchase/view/:billNo"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <PurchaseBillView />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/vendor-payment/view/:paymentNo"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <VendorPaymentView />
-            </ProtectedRoute>
+            </TransactionRoute>
           }
         />
 
         <Route
           path="/ledger"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <ReportsRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <Ledger />
-            </ProtectedRoute>
+            </ReportsRoute>
           }
         />
 
         <Route
           path="/aging"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <ReportsRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <Aging />
-            </ProtectedRoute>
+            </ReportsRoute>
           }
         />
 
         <Route
           path="/statement"
           element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+            <ReportsRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
               <Statement />
-            </ProtectedRoute>
+            </ReportsRoute>
           }
         />
 

@@ -1,13 +1,17 @@
 from decimal import Decimal
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_operator_or_admin
 from app.core.database import get_db
 from app.models.sales_invoice import SalesInvoiceHdr, SalesInvoiceDtl, SalesReceipt
+from app.models.user import User
 from app.schemas.sales_invoice import SalesInvoiceCreate, SalesInvoiceOut
+from app.utils.audit import log_activity
+from app.utils.audit_constants import AuditAction, AuditModule
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/sales-invoices", tags=["Sales Invoices"])
@@ -18,7 +22,11 @@ class ReceivePaymentIn(BaseModel):
     remark: str | None = None
 
 
-def compute_status(balance: Decimal | float, grand_total: Decimal | float, due_date: date | None) -> str:
+def compute_status(
+    balance: Decimal | float,
+    grand_total: Decimal | float,
+    due_date: date | None,
+) -> str:
     bal = Decimal(str(balance or 0))
     total = Decimal(str(grand_total or 0))
 
@@ -45,10 +53,13 @@ def next_receipt_no(db: Session) -> str:
 
 
 @router.get("/", response_model=list[SalesInvoiceOut])
-def list_sales_invoices(db: Session = Depends(get_db)):
+def list_sales_invoices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     rows = db.query(SalesInvoiceHdr).order_by(
         SalesInvoiceHdr.invoice_date.desc(),
-        SalesInvoiceHdr.invoice_no.desc()
+        SalesInvoiceHdr.invoice_no.desc(),
     ).all()
 
     changed = False
@@ -65,7 +76,11 @@ def list_sales_invoices(db: Session = Depends(get_db)):
 
 
 @router.get("/{invoice_no}", response_model=SalesInvoiceOut)
-def get_sales_invoice(invoice_no: str, db: Session = Depends(get_db)):
+def get_sales_invoice(
+    invoice_no: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     obj = db.get(SalesInvoiceHdr, invoice_no)
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
@@ -80,7 +95,12 @@ def get_sales_invoice(invoice_no: str, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=SalesInvoiceOut)
-def create_sales_invoice(payload: SalesInvoiceCreate, db: Session = Depends(get_db)):
+def create_sales_invoice(
+    payload: SalesInvoiceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     data = payload.model_dump()
     data = normalize_upper(data)
 
@@ -143,13 +163,43 @@ def create_sales_invoice(payload: SalesInvoiceCreate, db: Session = Depends(get_
     )
 
     db.add(hdr)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.CREATE,
+        module=AuditModule.SALES_INVOICE,
+        record_id=hdr.invoice_no,
+        record_name=hdr.invoice_no,
+        details=f"Sales invoice created: {hdr.invoice_no}",
+        new_values={
+            "invoice_no": hdr.invoice_no,
+            "customer_code": hdr.customer_code,
+            "invoice_date": str(hdr.invoice_date),
+            "due_date": str(hdr.due_date) if hdr.due_date else None,
+            "subtotal": float(hdr.subtotal),
+            "tax_percent": float(hdr.tax_percent),
+            "tax_amount": float(hdr.tax_amount),
+            "grand_total": float(hdr.grand_total),
+            "status": hdr.status,
+            "line_count": len(lines),
+        },
+    )
+
     db.commit()
     db.refresh(hdr)
     return hdr
 
 
 @router.post("/{invoice_no}/receive")
-def receive_payment(invoice_no: str, payload: ReceivePaymentIn, db: Session = Depends(get_db)):
+def receive_payment(
+    invoice_no: str,
+    payload: ReceivePaymentIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     obj = db.get(SalesInvoiceHdr, invoice_no)
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
@@ -163,18 +213,48 @@ def receive_payment(invoice_no: str, payload: ReceivePaymentIn, db: Session = De
 
     receipt_no = next_receipt_no(db)
 
+    old_values = {
+        "amount_received": float(obj.amount_received or 0),
+        "balance": float(obj.balance or 0),
+        "status": obj.status,
+    }
+
     receipt = SalesReceipt(
         receipt_no=receipt_no,
         invoice_no=obj.invoice_no,
         receipt_date=date.today(),
         amount=amount,
-        remark=str(payload.remark).strip().upper() if payload.remark and str(payload.remark).strip() else None,
+        remark=str(payload.remark).strip().upper()
+        if payload.remark and str(payload.remark).strip()
+        else None,
     )
     db.add(receipt)
 
     obj.amount_received = Decimal(str(obj.amount_received or 0)) + amount
     obj.balance = Decimal(str(obj.grand_total or 0)) - Decimal(str(obj.amount_received or 0))
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.CREATE,
+        module=AuditModule.RECEIPT,
+        record_id=receipt.receipt_no,
+        record_name=receipt.receipt_no,
+        details=f"Payment received for invoice {obj.invoice_no}",
+        old_values=old_values,
+        new_values={
+            "receipt_no": receipt.receipt_no,
+            "invoice_no": obj.invoice_no,
+            "receipt_date": str(receipt.receipt_date),
+            "amount": float(amount),
+            "remark": receipt.remark,
+            "amount_received": float(obj.amount_received),
+            "balance": float(obj.balance),
+            "status": obj.status,
+        },
+    )
 
     db.commit()
     db.refresh(receipt)

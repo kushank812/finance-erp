@@ -1,13 +1,17 @@
 from decimal import Decimal
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_operator_or_admin
 from app.core.database import get_db
 from app.models.purchase_invoice import PurchaseInvoiceHdr, PurchaseInvoiceDtl, VendorPayment
+from app.models.user import User
 from app.schemas.purchase_invoice import PurchaseInvoiceCreate, PurchaseInvoiceOut
+from app.utils.audit import log_activity
+from app.utils.audit_constants import AuditAction, AuditModule
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/purchase-invoices", tags=["Purchase Invoices"])
@@ -45,7 +49,10 @@ def next_payment_no(db: Session) -> str:
 
 
 @router.get("/", response_model=list[PurchaseInvoiceOut])
-def list_purchase_invoices(db: Session = Depends(get_db)):
+def list_purchase_invoices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     rows = db.query(PurchaseInvoiceHdr).order_by(
         PurchaseInvoiceHdr.bill_date.desc(),
         PurchaseInvoiceHdr.bill_no.desc()
@@ -65,7 +72,11 @@ def list_purchase_invoices(db: Session = Depends(get_db)):
 
 
 @router.get("/{bill_no}", response_model=PurchaseInvoiceOut)
-def get_purchase_invoice(bill_no: str, db: Session = Depends(get_db)):
+def get_purchase_invoice(
+    bill_no: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     obj = db.get(PurchaseInvoiceHdr, bill_no)
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
@@ -80,7 +91,12 @@ def get_purchase_invoice(bill_no: str, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=PurchaseInvoiceOut)
-def create_purchase_invoice(payload: PurchaseInvoiceCreate, db: Session = Depends(get_db)):
+def create_purchase_invoice(
+    payload: PurchaseInvoiceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     data = payload.model_dump()
     data = normalize_upper(data)
 
@@ -143,13 +159,43 @@ def create_purchase_invoice(payload: PurchaseInvoiceCreate, db: Session = Depend
     )
 
     db.add(hdr)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.CREATE,
+        module=AuditModule.PURCHASE_INVOICE,
+        record_id=hdr.bill_no,
+        record_name=hdr.bill_no,
+        details=f"Purchase invoice created: {hdr.bill_no}",
+        new_values={
+            "bill_no": hdr.bill_no,
+            "vendor_code": hdr.vendor_code,
+            "bill_date": str(hdr.bill_date),
+            "due_date": str(hdr.due_date) if hdr.due_date else None,
+            "subtotal": float(hdr.subtotal),
+            "tax_percent": float(hdr.tax_percent),
+            "tax_amount": float(hdr.tax_amount),
+            "grand_total": float(hdr.grand_total),
+            "status": hdr.status,
+            "line_count": len(lines),
+        },
+    )
+
     db.commit()
     db.refresh(hdr)
     return hdr
 
 
 @router.post("/{bill_no}/pay")
-def pay_bill(bill_no: str, payload: PayBillIn, db: Session = Depends(get_db)):
+def pay_bill(
+    bill_no: str,
+    payload: PayBillIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
     obj = db.get(PurchaseInvoiceHdr, bill_no)
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
@@ -163,18 +209,48 @@ def pay_bill(bill_no: str, payload: PayBillIn, db: Session = Depends(get_db)):
 
     payment_no = next_payment_no(db)
 
+    old_values = {
+        "amount_paid": float(obj.amount_paid or 0),
+        "balance": float(obj.balance or 0),
+        "status": obj.status,
+    }
+
     payment = VendorPayment(
         payment_no=payment_no,
         bill_no=obj.bill_no,
         payment_date=date.today(),
         amount=amount,
-        remark=str(payload.remark).strip().upper() if payload.remark and str(payload.remark).strip() else None,
+        remark=str(payload.remark).strip().upper()
+        if payload.remark and str(payload.remark).strip()
+        else None,
     )
     db.add(payment)
 
     obj.amount_paid = Decimal(str(obj.amount_paid or 0)) + amount
     obj.balance = Decimal(str(obj.grand_total or 0)) - Decimal(str(obj.amount_paid or 0))
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.CREATE,
+        module=AuditModule.VENDOR_PAYMENT,
+        record_id=payment.payment_no,
+        record_name=payment.payment_no,
+        details=f"Vendor payment for bill {obj.bill_no}",
+        old_values=old_values,
+        new_values={
+            "payment_no": payment.payment_no,
+            "bill_no": obj.bill_no,
+            "payment_date": str(payment.payment_date),
+            "amount": float(amount),
+            "remark": payment.remark,
+            "amount_paid": float(obj.amount_paid),
+            "balance": float(obj.balance),
+            "status": obj.status,
+        },
+    )
 
     db.commit()
     db.refresh(payment)
