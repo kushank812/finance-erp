@@ -1,192 +1,143 @@
-// src/pages/PurchaseBillNew.jsx
+// src/pages/BillingNew.jsx
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost } from "../api/client";
 
-function money(n) {
-  return Number(n || 0).toFixed(2);
-}
-function num(n) {
-  const x = Number(n);
-  return Number.isFinite(x) ? x : 0;
-}
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-const emptyHdr = {
-  vendor_code: "",
-  bill_date: todayISO(),
-  due_date: "",
-  tax_percent: 0,
-  remark: "",
-};
-
 const emptyLine = { item_code: "", qty: 1, rate: 0 };
 
-export default function PurchaseBillNew() {
-  const [hdr, setHdr] = useState(emptyHdr);
-  const [lines, setLines] = useState([{ ...emptyLine }]);
-
-  const [vendors, setVendors] = useState([]);
+export default function BillingNew() {
+  const [customers, setCustomers] = useState([]);
   const [items, setItems] = useState([]);
 
-  const [vendorSearch, setVendorSearch] = useState("");
-  const [itemSearches, setItemSearches] = useState([""]);
+  const [customerCode, setCustomerCode] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+  const [dueDate, setDueDate] = useState("");
+  const [taxPercent, setTaxPercent] = useState(0);
+  const [remark, setRemark] = useState("");
 
+  const [lines, setLines] = useState([{ ...emptyLine }]);
   const [err, setErr] = useState("");
-  const [ok, setOk] = useState("");
+  const [okMsg, setOkMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadMasters();
+    (async () => {
+      setErr("");
+      try {
+        const [c, it] = await Promise.all([
+          apiGet("/customers/"),
+          apiGet("/items/"),
+        ]);
+        setCustomers(Array.isArray(c) ? c : []);
+        setItems(Array.isArray(it) ? it : []);
+      } catch (e) {
+        setErr(String(e.message || e));
+      }
+    })();
   }, []);
 
-  async function loadMasters() {
-    setErr("");
-    try {
-      const [v, it] = await Promise.all([apiGet("/vendors/"), apiGet("/items/")]);
-      setVendors(Array.isArray(v) ? v : []);
-      setItems(Array.isArray(it) ? it : []);
-    } catch (e) {
-      setErr(String(e.message || e));
-    }
-  }
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return customers;
 
-  const filteredVendors = useMemo(() => {
-    const q = vendorSearch.trim().toLowerCase();
-    if (!q) return vendors;
-
-    return vendors.filter((v) => {
+    return customers.filter((c) => {
       return (
-        String(v.vendor_code || "").toLowerCase().includes(q) ||
-        String(v.vendor_name || "").toLowerCase().includes(q) ||
-        String(v.city || "").toLowerCase().includes(q) ||
-        String(v.mobile_no || "").toLowerCase().includes(q) ||
-        String(v.email_id || "").toLowerCase().includes(q) ||
-        String(v.gst_no || "").toLowerCase().includes(q)
+        String(c.customer_code || "").toLowerCase().includes(q) ||
+        String(c.customer_name || "").toLowerCase().includes(q) ||
+        String(c.city || "").toLowerCase().includes(q) ||
+        String(c.mobile_no || "").toLowerCase().includes(q) ||
+        String(c.email_id || "").toLowerCase().includes(q) ||
+        String(c.gst_no || "").toLowerCase().includes(q)
       );
     });
-  }, [vendors, vendorSearch]);
+  }, [customers, customerSearch]);
 
-  function filteredItemsForRow(idx) {
-    const q = String(itemSearches[idx] || "").trim().toLowerCase();
-    if (!q) return items;
+  const itemMap = useMemo(() => {
+    const m = new Map();
+    items.forEach((x) => m.set(x.item_code, x));
+    return m;
+  }, [items]);
 
-    return items.filter((it) => {
-      return (
-        String(it.item_code || "").toLowerCase().includes(q) ||
-        String(it.item_name || "").toLowerCase().includes(q) ||
-        String(it.units || "").toLowerCase().includes(q)
-      );
-    });
+  function setLine(i, patch) {
+    setLines((prev) =>
+      prev.map((ln, idx) => (idx === i ? { ...ln, ...patch } : ln))
+    );
   }
 
-  function setHdrField(k, v) {
-    setHdr((p) => ({ ...p, [k]: v }));
+  function addRow() {
+    setLines((prev) => [...prev, { ...emptyLine }]);
   }
 
-  function setLine(idx, key, value) {
-    setLines((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], [key]: value };
-      return copy;
-    });
+  function removeRow(i) {
+    setLines((prev) =>
+      prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)
+    );
   }
 
-  function setItemSearch(idx, value) {
-    setItemSearches((prev) => {
-      const copy = [...prev];
-      copy[idx] = value;
-      return copy;
-    });
-  }
+  const calc = useMemo(() => {
+    const subtotal = lines.reduce((sum, ln) => {
+      const qty = Number(ln.qty || 0);
+      const rate = Number(ln.rate || 0);
+      return sum + qty * rate;
+    }, 0);
 
-  function addLine() {
-    setLines((p) => [...p, { ...emptyLine }]);
-    setItemSearches((p) => [...p, ""]);
-  }
+    const taxAmt = (subtotal * Number(taxPercent || 0)) / 100;
+    const grand = subtotal + taxAmt;
 
-  function removeLine(idx) {
-    setLines((p) => (p.length === 1 ? p : p.filter((_, i) => i !== idx)));
-    setItemSearches((p) => (p.length === 1 ? p : p.filter((_, i) => i !== idx)));
-  }
+    return {
+      subtotal: round2(subtotal),
+      taxAmt: round2(taxAmt),
+      grand: round2(grand),
+    };
+  }, [lines, taxPercent]);
 
-  function onSelectItem(idx, item_code) {
-    const it = items.find((x) => x.item_code === item_code);
-
-    setLines((prev) => {
-      const alreadyUsed = prev.some((ln, i) => i !== idx && ln.item_code === item_code);
-      if (item_code && alreadyUsed) {
-        setErr(`Item "${item_code}" already added in another line. Increase Qty instead.`);
-        return prev;
-      }
-
-      const copy = [...prev];
-      copy[idx] = {
-        ...copy[idx],
-        item_code,
-        rate: it ? Number(it.cost_price || 0) : 0,
-      };
-      return copy;
-    });
-  }
-
-  const computed = useMemo(() => {
-    const lineTotals = lines.map((ln) => num(ln.qty) * num(ln.rate));
-    const subtotal = lineTotals.reduce((s, x) => s + x, 0);
-    const taxPercent = num(hdr.tax_percent);
-    const taxAmount = (subtotal * taxPercent) / 100;
-    const grandTotal = subtotal + taxAmount;
-    return { lineTotals, subtotal, taxAmount, grandTotal };
-  }, [lines, hdr.tax_percent]);
-
-  function clearAll() {
-    setHdr({ ...emptyHdr, bill_date: todayISO() });
+  function resetForm() {
+    setCustomerCode("");
+    setCustomerSearch("");
+    setDueDate("");
+    setTaxPercent(0);
+    setRemark("");
     setLines([{ ...emptyLine }]);
-    setVendorSearch("");
-    setItemSearches([""]);
-    setErr("");
-    setOk("");
   }
 
   async function save() {
     setErr("");
-    setOk("");
+    setOkMsg("");
 
-    if (!hdr.vendor_code) return setErr("Vendor is required.");
-    if (!hdr.bill_date) return setErr("Bill Date is required.");
+    if (!customerCode) return setErr("Please select a Customer.");
 
-    const validLines = lines.filter((l) => l.item_code);
-    if (validLines.length === 0) return setErr("Add at least 1 item line (select an item).");
-
-    for (let i = 0; i < validLines.length; i++) {
-      const l = validLines[i];
-      if (num(l.qty) <= 0) return setErr(`Line ${i + 1}: Qty must be > 0`);
-      if (num(l.rate) < 0) return setErr(`Line ${i + 1}: Rate cannot be negative`);
-    }
-
-    const payload = {
-      vendor_code: hdr.vendor_code,
-      bill_date: hdr.bill_date,
-      due_date: hdr.due_date || null,
-      tax_percent: num(hdr.tax_percent || 0),
-      remark: hdr.remark?.trim() || null,
-      lines: validLines.map((l) => ({
+    const cleanLines = lines
+      .filter((l) => l.item_code)
+      .map((l) => ({
         item_code: l.item_code,
-        qty: num(l.qty),
-        rate: num(l.rate),
-      })),
-    };
+        qty: Number(l.qty || 0),
+        rate: Number(l.rate || 0),
+      }));
+
+    if (cleanLines.length === 0)
+      return setErr("Add at least 1 item line.");
 
     try {
       setSaving(true);
-      const created = await apiPost("/purchase-invoices/", payload);
-      setOk(`✅ Purchase Bill "${created?.bill_no || ""}" saved. Payables updated.`);
-      clearAll();
+
+      const created = await apiPost("/sales-invoices/", {
+        customer_code: customerCode,
+        invoice_date: invoiceDate,
+        due_date: dueDate || null,
+        tax_percent: Number(taxPercent || 0),
+        remark: remark || null,
+        lines: cleanLines,
+      });
+
+      setOkMsg(
+        `Invoice saved successfully. Generated Invoice No: ${
+          created?.invoice_no || ""
+        }`
+      );
+
+      resetForm();
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -196,60 +147,59 @@ export default function PurchaseBillNew() {
 
   return (
     <div style={page}>
-      <h2 style={{ margin: 0, color: "#fff" }}>Create Purchase Bill</h2>
+      <h2 style={{ margin: 0, color: "#fff" }}>
+        Create New Bill (Sales Invoice)
+      </h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Select vendor + items from masters and save purchase bill.
+        Select customer + items from masters and save invoice.
       </p>
 
-      {err && <div style={msgErr}>{err}</div>}
-      {ok && <div style={msgOk}>{ok}</div>}
+      {err && box(err, "#ffecec", "#a40000")}
+      {okMsg && box(okMsg, "#eaffea", "#0a6a0a")}
 
       {/* Header */}
       <div style={card}>
-        <h3 style={{ marginTop: 0, color: "#111" }}>Bill Header</h3>
+        <h3 style={{ marginTop: 0, color: "#111" }}>Invoice Header</h3>
 
         <div style={formGrid}>
           <AutoField
-            label="Bill No"
+            label="Invoice No"
             text="Auto-generated on save"
-            hint="The system will generate the next bill number automatically."
           />
 
-          <VendorSelect
-            vendorSearch={vendorSearch}
-            setVendorSearch={setVendorSearch}
-            vendorCode={hdr.vendor_code}
-            setVendorCode={(value) => setHdrField("vendor_code", value)}
-            vendors={filteredVendors}
+          <CustomerSelect
+            customerSearch={customerSearch}
+            setCustomerSearch={setCustomerSearch}
+            customerCode={customerCode}
+            setCustomerCode={setCustomerCode}
+            customers={filteredCustomers}
           />
 
           <Field
-            label="Bill Date"
+            label="Invoice Date"
             type="date"
-            value={hdr.bill_date}
-            onChange={(e) => setHdrField("bill_date", e.target.value)}
+            value={invoiceDate}
+            onChange={(e) => setInvoiceDate(e.target.value)}
           />
 
           <Field
             label="Due Date"
             type="date"
-            value={hdr.due_date}
-            onChange={(e) => setHdrField("due_date", e.target.value)}
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
           />
 
           <Field
             label="Tax %"
             type="number"
-            value={hdr.tax_percent}
-            onChange={(e) => setHdrField("tax_percent", e.target.value)}
-            placeholder="0"
+            value={taxPercent}
+            onChange={(e) => setTaxPercent(e.target.value)}
           />
 
           <Field
             label="Remark"
-            value={hdr.remark}
-            onChange={(e) => setHdrField("remark", e.target.value)}
-            placeholder="Optional note..."
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
           />
         </div>
       </div>
@@ -260,13 +210,13 @@ export default function PurchaseBillNew() {
       <div style={card}>
         <div style={toolbarWrap}>
           <h3 style={{ margin: 0, color: "#111" }}>Line Items</h3>
-          <button onClick={addLine} style={btnPrimary}>
+          <button onClick={addRow} style={btnPrimary}>
             + Add Row
           </button>
         </div>
 
         <div style={{ overflowX: "auto", marginTop: 10 }}>
-          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 980 }}>
+          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 900 }}>
             <thead>
               <tr style={{ background: "#f6f7f9" }}>
                 <th align="left">Item</th>
@@ -278,30 +228,28 @@ export default function PurchaseBillNew() {
             </thead>
 
             <tbody>
-              {lines.map((ln, idx) => {
+              {lines.map((ln, i) => {
                 const qty = Number(ln.qty || 0);
                 const rate = Number(ln.rate || 0);
                 const lineTotal = round2(qty * rate);
 
                 return (
-                  <tr key={idx} style={{ borderTop: "1px solid #eee" }}>
-                    <td style={{ minWidth: 300 }}>
-                      <input
-                        value={itemSearches[idx] || ""}
-                        onChange={(e) => setItemSearch(idx, e.target.value)}
-                        placeholder="Search item by code, name, units..."
-                        style={input}
-                      />
-
-                      <div style={{ height: 6 }} />
-
+                  <tr key={i} style={{ borderTop: "1px solid #eee" }}>
+                    <td>
                       <select
                         value={ln.item_code}
-                        onChange={(e) => onSelectItem(idx, e.target.value)}
+                        onChange={(e) => {
+                          const code = e.target.value;
+                          const it = itemMap.get(code);
+                          setLine(i, {
+                            item_code: code,
+                            rate: it ? Number(it.selling_price || 0) : 0,
+                          });
+                        }}
                         style={input}
                       >
                         <option value="">-- Select Item --</option>
-                        {filteredItemsForRow(idx).map((it) => (
+                        {items.map((it) => (
                           <option key={it.item_code} value={it.item_code}>
                             {it.item_code} - {it.item_name}
                           </option>
@@ -313,7 +261,7 @@ export default function PurchaseBillNew() {
                       <input
                         type="number"
                         value={ln.qty}
-                        onChange={(e) => setLine(idx, "qty", e.target.value)}
+                        onChange={(e) => setLine(i, { qty: e.target.value })}
                         style={input}
                       />
                     </td>
@@ -322,15 +270,20 @@ export default function PurchaseBillNew() {
                       <input
                         type="number"
                         value={ln.rate}
-                        onChange={(e) => setLine(idx, "rate", e.target.value)}
+                        onChange={(e) => setLine(i, { rate: e.target.value })}
                         style={input}
                       />
                     </td>
 
-                    <td style={{ color: "#111", fontWeight: 800 }}>{lineTotal}</td>
+                    <td style={{ color: "#111", fontWeight: 800 }}>
+                      {lineTotal}
+                    </td>
 
                     <td>
-                      <button onClick={() => removeLine(idx)} style={btnDanger} disabled={saving}>
+                      <button
+                        onClick={() => removeRow(i)}
+                        style={btnDanger}
+                      >
                         Remove
                       </button>
                     </td>
@@ -345,18 +298,15 @@ export default function PurchaseBillNew() {
 
         <div style={totalsRow}>
           <div style={totalsBox}>
-            <Row label="Subtotal" value={money(computed.subtotal)} />
-            <Row label="Tax Amount" value={money(computed.taxAmount)} />
-            <Row label="Grand Total" value={money(computed.grandTotal)} bold />
+            <Row label="Subtotal" value={calc.subtotal} />
+            <Row label="Tax Amount" value={calc.taxAmt} />
+            <Row label="Grand Total" value={calc.grand} bold />
           </div>
         </div>
 
         <div style={toolbarWrap}>
-          <button onClick={save} style={btnPrimary} disabled={saving}>
-            {saving ? "Saving..." : "Save Purchase Bill"}
-          </button>
-          <button onClick={clearAll} style={btnGhost} disabled={saving}>
-            Clear
+          <button onClick={save} style={btnPrimary}>
+            {saving ? "Saving..." : "Save Invoice"}
           </button>
         </div>
       </div>
@@ -364,53 +314,52 @@ export default function PurchaseBillNew() {
   );
 }
 
-function Field({ label, value, onChange, type = "text", placeholder }) {
-  return (
-    <div style={field}>
-      <label style={labelStyle}>{label}</label>
-      <input type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} style={input} />
-    </div>
-  );
-}
+/* small helpers */
 
-function AutoField({ label, text, hint }) {
+function AutoField({ label, text }) {
   return (
     <div style={field}>
       <label style={labelStyle}>{label}</label>
       <div style={autoBox}>{text}</div>
-      {hint ? <div style={hintText}>{hint}</div> : null}
     </div>
   );
 }
 
-function VendorSelect({
-  vendorSearch,
-  setVendorSearch,
-  vendorCode,
-  setVendorCode,
-  vendors,
+function Field({ label, ...props }) {
+  return (
+    <div style={field}>
+      <label style={labelStyle}>{label}</label>
+      <input {...props} style={input} />
+    </div>
+  );
+}
+
+function CustomerSelect({
+  customerSearch,
+  setCustomerSearch,
+  customerCode,
+  setCustomerCode,
+  customers,
 }) {
   return (
     <div style={field}>
-      <label style={labelStyle}>Vendor</label>
+      <label style={labelStyle}>Customer</label>
 
       <input
-        type="text"
-        value={vendorSearch}
-        onChange={(e) => setVendorSearch(e.target.value)}
-        placeholder="Search vendor by code, name, city..."
+        value={customerSearch}
+        onChange={(e) => setCustomerSearch(e.target.value)}
         style={input}
       />
 
       <select
-        value={vendorCode}
-        onChange={(e) => setVendorCode(e.target.value)}
+        value={customerCode}
+        onChange={(e) => setCustomerCode(e.target.value)}
         style={input}
       >
-        <option value="">-- Select Vendor --</option>
-        {vendors.map((v) => (
-          <option key={v.vendor_code} value={v.vendor_code}>
-            {v.vendor_code} - {v.vendor_name}
+        <option value="">-- Select Customer --</option>
+        {customers.map((c) => (
+          <option key={c.customer_code} value={c.customer_code}>
+            {c.customer_code} - {c.customer_name}
           </option>
         ))}
       </select>
@@ -420,7 +369,7 @@ function VendorSelect({
 
 function Row({ label, value, bold }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", color: "#111", fontWeight: bold ? 900 : 600 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: bold ? 900 : 600 }}>
       <span>{label}</span>
       <span>{value}</span>
     </div>
@@ -431,114 +380,25 @@ function round2(n) {
   return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
 }
 
-/* ---- styles ---- */
+function box(msg, bg, color) {
+  return (
+    <div style={{ background: bg, padding: 10, borderRadius: 12, color, marginBottom: 12 }}>
+      {msg}
+    </div>
+  );
+}
+
+/* styles */
 
 const page = { maxWidth: 1100, margin: "0 auto", padding: 14 };
-
-const card = { background: "white", border: "1px solid #e6e6e6", borderRadius: 16, padding: 16 };
-
-const formGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-  alignItems: "end",
-};
-
-const toolbarWrap = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  alignItems: "end",
-  justifyContent: "space-between",
-};
-
+const card = { background: "white", borderRadius: 16, padding: 16 };
+const formGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 12 };
+const toolbarWrap = { display: "flex", justifyContent: "space-between" };
 const field = { display: "flex", flexDirection: "column", gap: 6 };
-
-const labelStyle = { fontSize: 13, color: "#222", fontWeight: 800 };
-
-const input = {
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  background: "#fff",
-  color: "#111",
-  width: "100%",
-  outline: "none",
-};
-
-const autoBox = {
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  background: "#f7f7f7",
-  color: "#555",
-  fontWeight: 700,
-  width: "100%",
-  boxSizing: "border-box",
-};
-
-const hintText = {
-  fontSize: 12,
-  color: "#666",
-  marginTop: 2,
-};
-
+const labelStyle = { fontWeight: 800 };
+const input = { padding: 10, border: "1px solid #ccc", borderRadius: 10 };
+const autoBox = { padding: 10, background: "#f7f7f7", borderRadius: 10 };
 const totalsRow = { display: "flex", justifyContent: "flex-end" };
-
-const totalsBox = {
-  width: "min(420px, 100%)",
-  display: "grid",
-  gap: 8,
-  background: "#f7f8fa",
-  border: "1px solid #eee",
-  borderRadius: 14,
-  padding: 12,
-};
-
-const btnPrimary = {
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const btnGhost = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "white",
-  color: "#111",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const btnDanger = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #ff9a9a",
-  background: "#ffecec",
-  color: "#a40000",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  padding: 10,
-  borderRadius: 12,
-  color: "#a40000",
-  marginBottom: 12,
-};
-
-const msgOk = {
-  background: "#eaffea",
-  border: "1px solid #bde7bd",
-  padding: 10,
-  borderRadius: 12,
-  color: "#0a6a0a",
-  marginBottom: 12,
-};
+const totalsBox = { padding: 10, background: "#f7f8fa", borderRadius: 12 };
+const btnPrimary = { padding: 10, background: "#0b5cff", color: "white", borderRadius: 10 };
+const btnDanger = { padding: 8, background: "#ffecec", color: "red", borderRadius: 10 };
