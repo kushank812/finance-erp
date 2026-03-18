@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_admin
@@ -18,7 +19,6 @@ router = APIRouter(
     prefix="/users",
     tags=["Users"],
 )
-
 
 VALID_ROLES = {"ADMIN", "OPERATOR", "VIEWER"}
 
@@ -47,7 +47,7 @@ def create_user(
 
     existing = db.get(User, user_id)
     if existing:
-        raise HTTPException(status_code=400, detail="User ID already exists")
+        raise HTTPException(status_code=409, detail="User ID already exists")
 
     obj = User(
         user_id=user_id,
@@ -76,7 +76,12 @@ def create_user(
         },
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="User ID already exists")
+
     db.refresh(obj)
     return obj
 
@@ -89,13 +94,23 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    obj = db.get(User, user_id.upper())
+    user_id = user_id.strip().upper()
+    obj = db.get(User, user_id)
     if not obj:
         raise HTTPException(status_code=404, detail="User not found")
 
     role = payload.role.strip().upper()
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role")
+
+    # Prevent admin from deactivating self
+    if obj.user_id == current_user.user_id and payload.is_active is False:
+        raise HTTPException(status_code=400, detail="You cannot deactivate yourself")
+
+    # Prevent making the last admin inactive or non-admin is more complex;
+    # for now at least protect self role downgrade.
+    if obj.user_id == current_user.user_id and role != "ADMIN":
+        raise HTTPException(status_code=400, detail="You cannot change your own role from ADMIN")
 
     old_values = {
         "full_name": obj.full_name,
@@ -107,15 +122,22 @@ def update_user(
     obj.role = role
     obj.is_active = payload.is_active
 
+    action = AuditAction.DEACTIVATE if old_values["is_active"] and not obj.is_active else AuditAction.UPDATE
+    details = (
+        f"User deactivated: {obj.user_id}"
+        if action == AuditAction.DEACTIVATE
+        else f"User updated: {obj.user_id}"
+    )
+
     log_activity(
         db=db,
         request=request,
         user_id=current_user.user_id,
-        action=AuditAction.UPDATE,
+        action=action,
         module=AuditModule.USER,
         record_id=obj.user_id,
         record_name=obj.full_name,
-        details=f"User updated: {obj.user_id}",
+        details=details,
         old_values=old_values,
         new_values={
             "full_name": obj.full_name,
@@ -124,7 +146,15 @@ def update_user(
         },
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Could not update user due to a conflicting change",
+        )
+
     db.refresh(obj)
     return obj
 
@@ -137,7 +167,8 @@ def reset_user_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    obj = db.get(User, user_id.upper())
+    user_id = user_id.strip().upper()
+    obj = db.get(User, user_id)
     if not obj:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -154,6 +185,13 @@ def reset_user_password(
         details=f"Password reset for user: {obj.user_id}",
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Could not reset password due to a conflicting change",
+        )
 
     return {"ok": True, "message": "Password reset successfully"}

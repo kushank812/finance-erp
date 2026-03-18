@@ -12,6 +12,7 @@ import app.models.sales_invoice
 import app.models.purchase_invoice
 import app.models.user
 import app.models.audit_log
+import app.models.sequence
 
 # Routers
 from app.api.customer import router as customer_router
@@ -72,7 +73,6 @@ app.include_router(audit_router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
 
 @app.get("/health/db")
 def health_db():

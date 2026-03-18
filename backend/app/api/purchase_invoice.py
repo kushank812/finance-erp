@@ -3,6 +3,8 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin
@@ -12,6 +14,7 @@ from app.models.user import User
 from app.schemas.purchase_invoice import PurchaseInvoiceCreate, PurchaseInvoiceOut
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
+from app.utils.numbering import get_next_number
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/purchase-invoices", tags=["Purchase Invoices"])
@@ -22,7 +25,11 @@ class PayBillIn(BaseModel):
     remark: str | None = None
 
 
-def compute_status(balance: Decimal | float, grand_total: Decimal | float, due_date: date | None) -> str:
+def compute_status(
+    balance: Decimal | float,
+    grand_total: Decimal | float,
+    due_date: date | None,
+) -> str:
     bal = Decimal(str(balance or 0))
     total = Decimal(str(grand_total or 0))
 
@@ -35,19 +42,6 @@ def compute_status(balance: Decimal | float, grand_total: Decimal | float, due_d
     return "Pending"
 
 
-def next_payment_no(db: Session) -> str:
-    rows = db.query(VendorPayment).all()
-    max_no = 0
-
-    for r in rows:
-        text = str(r.payment_no or "")
-        digits = "".join(ch for ch in text if ch.isdigit())
-        if digits:
-            max_no = max(max_no, int(digits))
-
-    return f"PAY{max_no + 1:04d}"
-
-
 @router.get("/", response_model=list[PurchaseInvoiceOut])
 def list_purchase_invoices(
     db: Session = Depends(get_db),
@@ -55,18 +49,12 @@ def list_purchase_invoices(
 ):
     rows = db.query(PurchaseInvoiceHdr).order_by(
         PurchaseInvoiceHdr.bill_date.desc(),
-        PurchaseInvoiceHdr.bill_no.desc()
+        PurchaseInvoiceHdr.bill_no.desc(),
     ).all()
 
-    changed = False
+    # Do not write in GET. Compute display status only.
     for r in rows:
-        new_status = compute_status(r.balance, r.grand_total, r.due_date)
-        if r.status != new_status:
-            r.status = new_status
-            changed = True
-
-    if changed:
-        db.commit()
+        r.status = compute_status(r.balance, r.grand_total, r.due_date)
 
     return rows
 
@@ -77,15 +65,12 @@ def get_purchase_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    obj = db.get(PurchaseInvoiceHdr, bill_no)
+    obj = db.get(PurchaseInvoiceHdr, bill_no.strip().upper())
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
-    new_status = compute_status(obj.balance, obj.grand_total, obj.due_date)
-    if obj.status != new_status:
-        obj.status = new_status
-        db.commit()
-        db.refresh(obj)
+    # Do not commit in GET.
+    obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
 
     return obj
 
@@ -100,17 +85,13 @@ def create_purchase_invoice(
     data = payload.model_dump()
     data = normalize_upper(data)
 
-    bill_no = data["bill_no"]
+    bill_no = str(data["bill_no"]).strip().upper()
     vendor_code = data["vendor_code"]
     bill_date = data["bill_date"]
     due_date = data.get("due_date")
     tax_percent = Decimal(str(data.get("tax_percent") or 0))
     remark = data.get("remark")
     lines = data.get("lines", [])
-
-    existing = db.get(PurchaseInvoiceHdr, bill_no)
-    if existing:
-        raise HTTPException(status_code=400, detail="Bill number already exists")
 
     if not lines:
         raise HTTPException(status_code=400, detail="At least one line is required")
@@ -183,7 +164,15 @@ def create_purchase_invoice(
         },
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Bill number already exists",
+        )
+
     db.refresh(hdr)
     return hdr
 
@@ -196,7 +185,18 @@ def pay_bill(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    obj = db.get(PurchaseInvoiceHdr, bill_no)
+    bill_no = bill_no.strip().upper()
+
+    # Lock bill row so two users cannot post payment on same bill concurrently
+    obj = (
+        db.execute(
+            select(PurchaseInvoiceHdr)
+            .where(PurchaseInvoiceHdr.bill_no == bill_no)
+            .with_for_update()
+        )
+        .scalar_one_or_none()
+    )
+
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
@@ -204,16 +204,20 @@ def pay_bill(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than 0")
 
-    if amount > Decimal(str(obj.balance or 0)):
+    current_balance = Decimal(str(obj.balance or 0))
+    if amount > current_balance:
         raise HTTPException(status_code=400, detail="Paid amount cannot exceed balance")
-
-    payment_no = next_payment_no(db)
 
     old_values = {
         "amount_paid": float(obj.amount_paid or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
     }
+
+    try:
+        payment_no = get_next_number(db, "VENDOR_PAYMENT")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     payment = VendorPayment(
         payment_no=payment_no,
@@ -252,7 +256,15 @@ def pay_bill(
         },
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Could not save vendor payment due to a concurrent update. Please try again.",
+        )
+
     db.refresh(payment)
 
     return {

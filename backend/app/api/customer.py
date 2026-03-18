@@ -1,5 +1,6 @@
 # app/api/customer.py
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin
@@ -56,10 +57,11 @@ def create_customer(
     current_user: User = Depends(require_operator_or_admin),
 ):
     data = normalize_upper(payload.model_dump())
+    customer_code = str(data["customer_code"]).strip().upper()
 
-    existing = db.get(Customer, data["customer_code"])
+    existing = db.get(Customer, customer_code)
     if existing:
-        raise HTTPException(status_code=400, detail="Customer code already exists")
+        raise HTTPException(status_code=409, detail="Customer code already exists")
 
     obj = Customer(**data)
     db.add(obj)
@@ -76,7 +78,12 @@ def create_customer(
         new_values=data,
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Customer code already exists")
+
     db.refresh(obj)
     return obj
 
@@ -112,7 +119,15 @@ def update_customer(
         new_values=customer_snapshot(obj),
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Could not update customer due to a conflicting change",
+        )
+
     db.refresh(obj)
     return obj
 
@@ -144,5 +159,14 @@ def delete_customer(
     )
 
     db.delete(obj)
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Customer cannot be deleted because it is linked to existing records",
+        )
+
     return {"ok": True}

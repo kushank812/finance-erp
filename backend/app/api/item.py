@@ -1,5 +1,6 @@
 # app/api/item.py
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin
@@ -54,10 +55,11 @@ def create_item(
     current_user: User = Depends(require_operator_or_admin),
 ):
     data = normalize_upper(payload.model_dump())
+    item_code = str(data["item_code"]).strip().upper()
 
-    existing = db.get(Item, data["item_code"])
+    existing = db.get(Item, item_code)
     if existing:
-        raise HTTPException(status_code=400, detail="Item code already exists")
+        raise HTTPException(status_code=409, detail="Item code already exists")
 
     obj = Item(**data)
     db.add(obj)
@@ -74,7 +76,12 @@ def create_item(
         new_values=data,
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Item code already exists")
+
     db.refresh(obj)
     return obj
 
@@ -110,7 +117,15 @@ def update_item(
         new_values=item_snapshot(obj),
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Could not update item due to a conflicting change",
+        )
+
     db.refresh(obj)
     return obj
 
@@ -142,5 +157,14 @@ def delete_item(
     )
 
     db.delete(obj)
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Item cannot be deleted because it is linked to existing records",
+        )
+
     return {"ok": True}

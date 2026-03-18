@@ -3,6 +3,8 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin
@@ -12,6 +14,7 @@ from app.models.user import User
 from app.schemas.sales_invoice import SalesInvoiceCreate, SalesInvoiceOut
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
+from app.utils.numbering import get_next_number
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/sales-invoices", tags=["Sales Invoices"])
@@ -39,19 +42,6 @@ def compute_status(
     return "Pending"
 
 
-def next_receipt_no(db: Session) -> str:
-    rows = db.query(SalesReceipt).all()
-    max_no = 0
-
-    for r in rows:
-        text = str(r.receipt_no or "")
-        digits = "".join(ch for ch in text if ch.isdigit())
-        if digits:
-            max_no = max(max_no, int(digits))
-
-    return f"RCPT{max_no + 1:04d}"
-
-
 @router.get("/", response_model=list[SalesInvoiceOut])
 def list_sales_invoices(
     db: Session = Depends(get_db),
@@ -62,15 +52,9 @@ def list_sales_invoices(
         SalesInvoiceHdr.invoice_no.desc(),
     ).all()
 
-    changed = False
+    # Do not write in GET. Compute display status only.
     for r in rows:
-        new_status = compute_status(r.balance, r.grand_total, r.due_date)
-        if r.status != new_status:
-            r.status = new_status
-            changed = True
-
-    if changed:
-        db.commit()
+        r.status = compute_status(r.balance, r.grand_total, r.due_date)
 
     return rows
 
@@ -81,15 +65,12 @@ def get_sales_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    obj = db.get(SalesInvoiceHdr, invoice_no)
+    obj = db.get(SalesInvoiceHdr, invoice_no.strip().upper())
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
-    new_status = compute_status(obj.balance, obj.grand_total, obj.due_date)
-    if obj.status != new_status:
-        obj.status = new_status
-        db.commit()
-        db.refresh(obj)
+    # Do not commit in GET.
+    obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
 
     return obj
 
@@ -104,17 +85,13 @@ def create_sales_invoice(
     data = payload.model_dump()
     data = normalize_upper(data)
 
-    invoice_no = data["invoice_no"]
+    invoice_no = str(data["invoice_no"]).strip().upper()
     customer_code = data["customer_code"]
     invoice_date = data["invoice_date"]
     due_date = data.get("due_date")
     tax_percent = Decimal(str(data.get("tax_percent") or 0))
     remark = data.get("remark")
     lines = data.get("lines", [])
-
-    existing = db.get(SalesInvoiceHdr, invoice_no)
-    if existing:
-        raise HTTPException(status_code=400, detail="Invoice number already exists")
 
     if not lines:
         raise HTTPException(status_code=400, detail="At least one line is required")
@@ -187,7 +164,15 @@ def create_sales_invoice(
         },
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Invoice number already exists",
+        )
+
     db.refresh(hdr)
     return hdr
 
@@ -200,7 +185,18 @@ def receive_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    obj = db.get(SalesInvoiceHdr, invoice_no)
+    invoice_no = invoice_no.strip().upper()
+
+    # Lock invoice row so two users cannot post payment on same invoice concurrently
+    obj = (
+        db.execute(
+            select(SalesInvoiceHdr)
+            .where(SalesInvoiceHdr.invoice_no == invoice_no)
+            .with_for_update()
+        )
+        .scalar_one_or_none()
+    )
+
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
@@ -208,16 +204,20 @@ def receive_payment(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than 0")
 
-    if amount > Decimal(str(obj.balance or 0)):
+    current_balance = Decimal(str(obj.balance or 0))
+    if amount > current_balance:
         raise HTTPException(status_code=400, detail="Received amount cannot exceed balance")
-
-    receipt_no = next_receipt_no(db)
 
     old_values = {
         "amount_received": float(obj.amount_received or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
     }
+
+    try:
+        receipt_no = get_next_number(db, "RECEIPT")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     receipt = SalesReceipt(
         receipt_no=receipt_no,
@@ -256,7 +256,15 @@ def receive_payment(
         },
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Could not save receipt due to a concurrent update. Please try again.",
+        )
+
     db.refresh(receipt)
 
     return {
