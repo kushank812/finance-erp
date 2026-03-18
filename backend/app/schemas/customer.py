@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 from typing import Optional
 
+
 class CustomerCreate(BaseModel):
-    customer_code: str
     customer_name: str
     customer_address_line1: Optional[str] = None
     customer_address_line2: Optional[str] = None
@@ -14,6 +14,7 @@ class CustomerCreate(BaseModel):
     ph_no: Optional[str] = None
     email_id: Optional[str] = None
     gst_no: Optional[str] = None
+
 
 class CustomerUpdate(BaseModel):
     customer_name: Optional[str] = None
@@ -27,6 +28,7 @@ class CustomerUpdate(BaseModel):
     ph_no: Optional[str] = None
     email_id: Optional[str] = None
     gst_no: Optional[str] = None
+
 
 class CustomerOut(BaseModel):
     customer_code: str

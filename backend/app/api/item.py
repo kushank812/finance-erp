@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.item import ItemCreate, ItemUpdate, ItemOut
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
+from app.utils.numbering import get_next_number
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/items", tags=["Items"])
@@ -19,11 +20,10 @@ def item_snapshot(obj: Item) -> dict:
     return {
         "item_code": obj.item_code,
         "item_name": getattr(obj, "item_name", None),
-        "uom": getattr(obj, "uom", None),
-        "rate": float(obj.rate) if getattr(obj, "rate", None) is not None else None,
-        "gst_percent": float(obj.gst_percent) if getattr(obj, "gst_percent", None) is not None else None,
-        "hsn_code": getattr(obj, "hsn_code", None),
-        "remark": getattr(obj, "remark", None),
+        "units": getattr(obj, "units", None),
+        "opening_balance": float(obj.opening_balance) if getattr(obj, "opening_balance", None) is not None else None,
+        "cost_price": float(obj.cost_price) if getattr(obj, "cost_price", None) is not None else None,
+        "selling_price": float(obj.selling_price) if getattr(obj, "selling_price", None) is not None else None,
     }
 
 
@@ -55,11 +55,13 @@ def create_item(
     current_user: User = Depends(require_operator_or_admin),
 ):
     data = normalize_upper(payload.model_dump())
-    item_code = str(data["item_code"]).strip().upper()
 
-    existing = db.get(Item, item_code)
-    if existing:
-        raise HTTPException(status_code=409, detail="Item code already exists")
+    try:
+        item_code = get_next_number(db, "ITEM")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    data["item_code"] = item_code
 
     obj = Item(**data)
     db.add(obj)
@@ -73,14 +75,14 @@ def create_item(
         record_id=obj.item_code,
         record_name=getattr(obj, "item_name", obj.item_code),
         details=f"Item created: {obj.item_code}",
-        new_values=data,
+        new_values=item_snapshot(obj),
     )
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Item code already exists")
+        raise HTTPException(status_code=409, detail="Could not create item due to a conflicting change")
 
     db.refresh(obj)
     return obj
@@ -121,10 +123,7 @@ def update_item(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Could not update item due to a conflicting change",
-        )
+        raise HTTPException(status_code=409, detail="Could not update item due to a conflicting change")
 
     db.refresh(obj)
     return obj
@@ -162,9 +161,6 @@ def delete_item(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Item cannot be deleted because it is linked to existing records",
-        )
+        raise HTTPException(status_code=409, detail="Item cannot be deleted because it is linked to existing records")
 
     return {"ok": True}

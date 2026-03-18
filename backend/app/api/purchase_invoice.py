@@ -52,7 +52,6 @@ def list_purchase_invoices(
         PurchaseInvoiceHdr.bill_no.desc(),
     ).all()
 
-    # Do not write in GET. Compute display status only.
     for r in rows:
         r.status = compute_status(r.balance, r.grand_total, r.due_date)
 
@@ -69,9 +68,7 @@ def get_purchase_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
-    # Do not commit in GET.
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
-
     return obj
 
 
@@ -85,7 +82,11 @@ def create_purchase_invoice(
     data = payload.model_dump()
     data = normalize_upper(data)
 
-    bill_no = str(data["bill_no"]).strip().upper()
+    try:
+        bill_no = get_next_number(db, "PURCHASE_INVOICE")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
     vendor_code = data["vendor_code"]
     bill_date = data["bill_date"]
     due_date = data.get("due_date")
@@ -168,10 +169,7 @@ def create_purchase_invoice(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Bill number already exists",
-        )
+        raise HTTPException(status_code=409, detail="Could not create purchase invoice due to a conflicting change")
 
     db.refresh(hdr)
     return hdr
@@ -187,7 +185,6 @@ def pay_bill(
 ):
     bill_no = bill_no.strip().upper()
 
-    # Lock bill row so two users cannot post payment on same bill concurrently
     obj = (
         db.execute(
             select(PurchaseInvoiceHdr)
@@ -260,10 +257,7 @@ def pay_bill(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Could not save vendor payment due to a concurrent update. Please try again.",
-        )
+        raise HTTPException(status_code=409, detail="Could not save vendor payment due to a concurrent update. Please try again.")
 
     db.refresh(payment)
 

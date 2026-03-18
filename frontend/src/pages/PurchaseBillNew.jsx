@@ -18,7 +18,6 @@ function todayISO() {
 }
 
 const emptyHdr = {
-  bill_no: "",
   vendor_code: "",
   bill_date: todayISO(),
   due_date: "",
@@ -158,7 +157,6 @@ export default function PurchaseBillNew() {
     setErr("");
     setOk("");
 
-    if (!hdr.bill_no.trim()) return setErr("Bill No is required (Example: BILL-001).");
     if (!hdr.vendor_code) return setErr("Vendor is required.");
     if (!hdr.bill_date) return setErr("Bill Date is required.");
 
@@ -172,7 +170,6 @@ export default function PurchaseBillNew() {
     }
 
     const payload = {
-      bill_no: hdr.bill_no.trim(),
       vendor_code: hdr.vendor_code,
       bill_date: hdr.bill_date,
       due_date: hdr.due_date || null,
@@ -187,8 +184,8 @@ export default function PurchaseBillNew() {
 
     try {
       setSaving(true);
-      await apiPost("/purchase-invoices/", payload);
-      setOk(`✅ Purchase Bill "${payload.bill_no}" saved. Payables updated.`);
+      const created = await apiPost("/purchase-invoices/", payload);
+      setOk(`✅ Purchase Bill "${created?.bill_no || ""}" saved. Payables updated.`);
       clearAll();
     } catch (e) {
       setErr(String(e.message || e));
@@ -212,11 +209,10 @@ export default function PurchaseBillNew() {
         <h3 style={{ marginTop: 0, color: "#111" }}>Bill Header</h3>
 
         <div style={formGrid}>
-          <Field
+          <AutoField
             label="Bill No"
-            value={hdr.bill_no}
-            onChange={(e) => setHdrField("bill_no", e.target.value)}
-            placeholder="BILL001"
+            text="Auto-generated on save"
+            hint="The system will generate the next bill number automatically."
           />
 
           <VendorSelect
@@ -377,6 +373,16 @@ function Field({ label, value, onChange, type = "text", placeholder }) {
   );
 }
 
+function AutoField({ label, text, hint }) {
+  return (
+    <div style={field}>
+      <label style={labelStyle}>{label}</label>
+      <div style={autoBox}>{text}</div>
+      {hint ? <div style={hintText}>{hint}</div> : null}
+    </div>
+  );
+}
+
 function VendorSelect({
   vendorSearch,
   setVendorSearch,
@@ -458,6 +464,23 @@ const input = {
   color: "#111",
   width: "100%",
   outline: "none",
+};
+
+const autoBox = {
+  padding: 10,
+  border: "1px solid #d0d0d0",
+  borderRadius: 10,
+  background: "#f7f7f7",
+  color: "#555",
+  fontWeight: 700,
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const hintText = {
+  fontSize: 12,
+  color: "#666",
+  marginTop: 2,
 };
 
 const totalsRow = { display: "flex", justifyContent: "flex-end" };

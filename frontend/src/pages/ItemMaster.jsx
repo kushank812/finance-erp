@@ -108,33 +108,45 @@ export default function ItemMaster() {
     setForm({ ...empty });
   }
 
-  async function saveOrUpdate() {
-    setErr("");
-    setOk("");
-
-    if (!String(form.item_code || "").trim() || !String(form.item_name || "").trim()) {
-      setErr("Item Code and Item Name are required.");
-      return;
-    }
-
-    const payload = {
-      item_code: String(form.item_code || "").trim(),
+  function buildCreatePayload() {
+    return {
       item_name: String(form.item_name || "").trim(),
       units: String(form.units || "").trim(),
       opening_balance: num(form.opening_balance),
       cost_price: num(form.cost_price),
       selling_price: num(form.selling_price),
     };
+  }
+
+  function buildUpdatePayload() {
+    return {
+      item_name: String(form.item_name || "").trim(),
+      units: String(form.units || "").trim(),
+      opening_balance: num(form.opening_balance),
+      cost_price: num(form.cost_price),
+      selling_price: num(form.selling_price),
+    };
+  }
+
+  async function saveOrUpdate() {
+    setErr("");
+    setOk("");
+
+    if (!String(form.item_name || "").trim()) {
+      setErr("Item Name is required.");
+      return;
+    }
 
     try {
       setSaving(true);
 
       if (isEditing) {
-        await apiPut(`/items/${encodeURIComponent(editingCode)}`, payload);
+        await apiPut(`/items/${encodeURIComponent(editingCode)}`, buildUpdatePayload());
         setOk(`✅ Item "${editingCode}" updated.`);
       } else {
-        await apiPost("/items/", payload);
-        setOk(`✅ Item "${payload.item_code}" saved.`);
+        const created = await apiPost("/items/", buildCreatePayload());
+        const code = created?.item_code || "";
+        setOk(`✅ Item created successfully. Generated Code: ${code}`);
       }
 
       cancelEdit();
@@ -164,6 +176,13 @@ export default function ItemMaster() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function clearCreateForm() {
+    if (isEditing) return;
+    setForm({ ...empty });
+    setErr("");
+    setOk("");
   }
 
   return (
@@ -201,14 +220,22 @@ export default function ItemMaster() {
         <div style={sectionTitle}>Item Details</div>
 
         <div style={grid2}>
-          <Field
-            label="Item Code *"
-            value={form.item_code}
-            disabled={isEditing}
-            onChange={(e) => update("item_code", e.target.value)}
-            placeholder="ITEM001"
-            hint={isEditing ? "Code cannot be changed in edit mode." : "Must be unique (example: ITEM001)."}
-          />
+          {isEditing ? (
+            <Field
+              label="Item Code"
+              value={form.item_code}
+              disabled
+              onChange={() => {}}
+              hint="Item code is system-generated and cannot be changed."
+            />
+          ) : (
+            <div>
+              <div style={lbl}>Item Code</div>
+              <div style={autoCodeBox}>Auto-generated on save</div>
+              <div style={hintTxt}>The system will generate the next item code automatically.</div>
+            </div>
+          )}
+
           <Field
             label="Item Name *"
             value={form.item_name}
@@ -262,7 +289,7 @@ export default function ItemMaster() {
           </button>
 
           <button
-            onClick={() => setForm({ ...empty })}
+            onClick={clearCreateForm}
             disabled={isEditing || saving}
             style={{
               ...btnGhost,
@@ -380,6 +407,17 @@ const inp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+};
+
+const autoCodeBox = {
+  width: "100%",
+  padding: 10,
+  border: "1px solid #d0d0d0",
+  borderRadius: 10,
+  background: "#f7f7f7",
+  color: "#555",
+  fontWeight: 700,
+  boxSizing: "border-box",
 };
 
 const searchInp = {

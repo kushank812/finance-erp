@@ -56,7 +56,7 @@ const empty = {
   gst_no: "",
 };
 
-function Field({ label, value, onChange, placeholder, type = "text", hint }) {
+function Field({ label, value, onChange, placeholder, type = "text", hint, disabled = false }) {
   return (
     <div>
       <div style={lbl}>{label}</div>
@@ -65,7 +65,12 @@ function Field({ label, value, onChange, placeholder, type = "text", hint }) {
         onChange={onChange}
         placeholder={placeholder}
         type={type}
-        style={inp}
+        disabled={disabled}
+        style={{
+          ...inp,
+          background: disabled ? "#f4f4f4" : "#fff",
+          cursor: disabled ? "not-allowed" : "text",
+        }}
       />
       {hint ? <div style={hintTxt}>{hint}</div> : null}
     </div>
@@ -145,21 +150,53 @@ export default function VendorMaster() {
     setOk("");
   }
 
+  function buildCreatePayload() {
+    return {
+      vendor_name: form.vendor_name,
+      vendor_address_line1: form.vendor_address_line1,
+      vendor_address_line2: form.vendor_address_line2,
+      vendor_address_line3: form.vendor_address_line3,
+      city: form.city,
+      state: form.state,
+      pincode: form.pincode,
+      mobile_no: form.mobile_no,
+      ph_no: form.ph_no,
+      email_id: form.email_id,
+      gst_no: form.gst_no,
+    };
+  }
+
+  function buildUpdatePayload() {
+    return {
+      vendor_name: form.vendor_name,
+      vendor_address_line1: form.vendor_address_line1,
+      vendor_address_line2: form.vendor_address_line2,
+      vendor_address_line3: form.vendor_address_line3,
+      city: form.city,
+      state: form.state,
+      pincode: form.pincode,
+      mobile_no: form.mobile_no,
+      ph_no: form.ph_no,
+      email_id: form.email_id,
+      gst_no: form.gst_no,
+    };
+  }
+
   async function save() {
     setErr("");
     setOk("");
 
-    if (!form.vendor_code?.trim()) return setErr("Vendor Code is required.");
     if (!form.vendor_name?.trim()) return setErr("Vendor Name is required.");
 
     try {
       setSaving(true);
 
       if (!isEditing) {
-        await apiPost("/vendors/", form);
-        setOk(`✅ Vendor "${form.vendor_code.trim()}" saved.`);
+        const created = await apiPost("/vendors/", buildCreatePayload());
+        const code = created?.vendor_code || "";
+        setOk(`✅ Vendor created successfully. Generated Code: ${code}`);
       } else {
-        await apiPut(`/vendors/${encodeURIComponent(editingCode)}`, form);
+        await apiPut(`/vendors/${encodeURIComponent(editingCode)}`, buildUpdatePayload());
         setOk(`✅ Vendor "${editingCode}" updated.`);
       }
 
@@ -212,13 +249,12 @@ export default function VendorMaster() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
       <h2 style={{ margin: 0, color: "#fff" }}>Vendor Master</h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Create, edit, delete and view vendors (responsive for phone + laptop).
+        Create, edit, delete and view vendors.
       </p>
 
       {err && <div style={msgErr}>{err}</div>}
       {ok && <div style={msgOk}>{ok}</div>}
 
-      {/* Form Card */}
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0, color: "#111" }}>
@@ -242,13 +278,23 @@ export default function VendorMaster() {
 
         <div style={sectionTitle}>Vendor Details</div>
         <div style={grid2}>
-          <Field
-            label="Vendor Code *"
-            value={form.vendor_code}
-            onChange={(e) => update("vendor_code", e.target.value)}
-            placeholder="VEND001"
-            hint={isEditing ? "Tip: Keep code same while editing." : "Must be unique (example: VEND001)."}
-          />
+          {isEditing ? (
+            <Field
+              label="Vendor Code"
+              value={form.vendor_code}
+              onChange={() => {}}
+              placeholder=""
+              hint="Vendor code is system-generated and cannot be changed."
+              disabled
+            />
+          ) : (
+            <div>
+              <div style={lbl}>Vendor Code</div>
+              <div style={autoCodeBox}>Auto-generated on save</div>
+              <div style={hintTxt}>The system will generate the next vendor code automatically.</div>
+            </div>
+          )}
+
           <Field
             label="Vendor Name *"
             value={form.vendor_name}
@@ -342,9 +388,16 @@ export default function VendorMaster() {
 
       <div style={{ height: 14 }} />
 
-      {/* List Card */}
       <div style={card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <h3 style={{ margin: 0, color: "#111" }}>Vendors List</h3>
           <button onClick={load} style={btnGhost} disabled={saving}>
             Refresh
@@ -379,9 +432,9 @@ export default function VendorMaster() {
                 <tr key={r.vendor_code} style={{ borderTop: "1px solid #eee" }}>
                   <td style={{ color: "#111", fontWeight: 900 }}>{r.vendor_code}</td>
                   <td style={{ color: "#111" }}>{r.vendor_name}</td>
-                  <td style={{ color: "#111" }}>{r.city}</td>
-                  <td style={{ color: "#111" }}>{r.mobile_no}</td>
-                  <td style={{ color: "#111" }}>{r.gst_no}</td>
+                  <td style={{ color: "#111" }}>{r.city || ""}</td>
+                  <td style={{ color: "#111" }}>{r.mobile_no || ""}</td>
+                  <td style={{ color: "#111" }}>{r.gst_no || ""}</td>
                   <td align="center">
                     <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                       <button onClick={() => startEdit(r)} style={btnMini} disabled={saving}>
@@ -431,6 +484,17 @@ const inp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+};
+
+const autoCodeBox = {
+  width: "100%",
+  padding: 10,
+  border: "1px solid #d0d0d0",
+  borderRadius: 10,
+  background: "#f7f7f7",
+  color: "#555",
+  fontWeight: 700,
+  boxSizing: "border-box",
 };
 
 const searchInp = {

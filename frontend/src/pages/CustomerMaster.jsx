@@ -157,21 +157,53 @@ export default function CustomerMaster() {
     setOk("");
   }
 
+  function buildCreatePayload() {
+    return {
+      customer_name: form.customer_name,
+      customer_address_line1: form.customer_address_line1,
+      customer_address_line2: form.customer_address_line2,
+      customer_address_line3: form.customer_address_line3,
+      city: form.city,
+      state: form.state,
+      pincode: form.pincode,
+      mobile_no: form.mobile_no,
+      ph_no: form.ph_no,
+      email_id: form.email_id,
+      gst_no: form.gst_no,
+    };
+  }
+
+  function buildUpdatePayload() {
+    return {
+      customer_name: form.customer_name,
+      customer_address_line1: form.customer_address_line1,
+      customer_address_line2: form.customer_address_line2,
+      customer_address_line3: form.customer_address_line3,
+      city: form.city,
+      state: form.state,
+      pincode: form.pincode,
+      mobile_no: form.mobile_no,
+      ph_no: form.ph_no,
+      email_id: form.email_id,
+      gst_no: form.gst_no,
+    };
+  }
+
   async function save() {
     setErr("");
     setOk("");
 
-    if (!form.customer_code?.trim()) return setErr("Customer Code is required.");
     if (!form.customer_name?.trim()) return setErr("Customer Name is required.");
 
     try {
       setSaving(true);
 
       if (!isEditing) {
-        await apiPost("/customers/", form);
-        setOk(`✅ Customer "${form.customer_code}" saved.`);
+        const created = await apiPost("/customers/", buildCreatePayload());
+        const code = created?.customer_code || "";
+        setOk(`✅ Customer created successfully. Generated Code: ${code}`);
       } else {
-        await apiPut(`/customers/${encodeURIComponent(editingCode)}`, form);
+        await apiPut(`/customers/${encodeURIComponent(editingCode)}`, buildUpdatePayload());
         setOk(`✅ Customer "${editingCode}" updated.`);
       }
 
@@ -252,14 +284,23 @@ export default function CustomerMaster() {
 
         <div style={sectionTitle}>Customer Details</div>
         <div style={grid2}>
-          <Field
-            label="Customer Code *"
-            value={form.customer_code}
-            onChange={(e) => update("customer_code", e.target.value)}
-            placeholder="CUST001"
-            hint={isEditing ? "Code cannot be changed in edit mode." : "Must be unique. Example: CUST001"}
-            disabled={isEditing}
-          />
+          {isEditing ? (
+            <Field
+              label="Customer Code"
+              value={form.customer_code}
+              onChange={() => {}}
+              placeholder=""
+              hint="Customer code is system-generated and cannot be changed."
+              disabled
+            />
+          ) : (
+            <div>
+              <Label text="Customer Code" />
+              <div style={autoCodeBox}>Auto-generated on save</div>
+              <Hint text="The system will generate the next customer code automatically." />
+            </div>
+          )}
+
           <Field
             label="Customer Name *"
             value={form.customer_name}
@@ -462,6 +503,17 @@ const inp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+};
+
+const autoCodeBox = {
+  width: "100%",
+  padding: 10,
+  border: "1px solid #d0d0d0",
+  borderRadius: 10,
+  background: "#f7f7f7",
+  color: "#555",
+  fontWeight: 700,
+  boxSizing: "border-box",
 };
 
 const searchInp = {

@@ -52,7 +52,6 @@ def list_sales_invoices(
         SalesInvoiceHdr.invoice_no.desc(),
     ).all()
 
-    # Do not write in GET. Compute display status only.
     for r in rows:
         r.status = compute_status(r.balance, r.grand_total, r.due_date)
 
@@ -69,9 +68,7 @@ def get_sales_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
-    # Do not commit in GET.
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
-
     return obj
 
 
@@ -85,7 +82,11 @@ def create_sales_invoice(
     data = payload.model_dump()
     data = normalize_upper(data)
 
-    invoice_no = str(data["invoice_no"]).strip().upper()
+    try:
+        invoice_no = get_next_number(db, "SALES_INVOICE")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
     customer_code = data["customer_code"]
     invoice_date = data["invoice_date"]
     due_date = data.get("due_date")
@@ -168,10 +169,7 @@ def create_sales_invoice(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Invoice number already exists",
-        )
+        raise HTTPException(status_code=409, detail="Could not create sales invoice due to a conflicting change")
 
     db.refresh(hdr)
     return hdr
@@ -187,7 +185,6 @@ def receive_payment(
 ):
     invoice_no = invoice_no.strip().upper()
 
-    # Lock invoice row so two users cannot post payment on same invoice concurrently
     obj = (
         db.execute(
             select(SalesInvoiceHdr)
@@ -260,10 +257,7 @@ def receive_payment(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Could not save receipt due to a concurrent update. Please try again.",
-        )
+        raise HTTPException(status_code=409, detail="Could not save receipt due to a concurrent update. Please try again.")
 
     db.refresh(receipt)
 

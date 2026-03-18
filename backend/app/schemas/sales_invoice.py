@@ -2,19 +2,21 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date
 
+
 class SalesInvoiceLineCreate(BaseModel):
     item_code: str
     qty: float
     rate: float
 
+
 class SalesInvoiceCreate(BaseModel):
-    invoice_no: str
     customer_code: str
     invoice_date: date
     due_date: Optional[date] = None
     tax_percent: Optional[float] = 0
     remark: Optional[str] = None
     lines: List[SalesInvoiceLineCreate]
+
 
 class SalesInvoiceLineOut(BaseModel):
     id: int
@@ -25,6 +27,7 @@ class SalesInvoiceLineOut(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class SalesInvoiceOut(BaseModel):
     invoice_no: str

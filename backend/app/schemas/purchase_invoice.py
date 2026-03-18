@@ -10,7 +10,6 @@ class PurchaseInvoiceLineCreate(BaseModel):
 
 
 class PurchaseInvoiceCreate(BaseModel):
-    bill_no: str
     vendor_code: str
     bill_date: date
     due_date: Optional[date] = None

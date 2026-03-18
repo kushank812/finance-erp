@@ -11,6 +11,7 @@ from app.models.user import User
 from app.schemas.vendor import VendorCreate, VendorUpdate, VendorOut
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
+from app.utils.numbering import get_next_number
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/vendors", tags=["Vendors"])
@@ -20,12 +21,15 @@ def vendor_snapshot(obj: Vendor) -> dict:
     return {
         "vendor_code": obj.vendor_code,
         "vendor_name": getattr(obj, "vendor_name", None),
-        "address": getattr(obj, "address", None),
+        "vendor_address_line1": getattr(obj, "vendor_address_line1", None),
+        "vendor_address_line2": getattr(obj, "vendor_address_line2", None),
+        "vendor_address_line3": getattr(obj, "vendor_address_line3", None),
         "city": getattr(obj, "city", None),
         "state": getattr(obj, "state", None),
         "pincode": getattr(obj, "pincode", None),
         "mobile_no": getattr(obj, "mobile_no", None),
-        "email": getattr(obj, "email", None),
+        "ph_no": getattr(obj, "ph_no", None),
+        "email_id": getattr(obj, "email_id", None),
         "gst_no": getattr(obj, "gst_no", None),
     }
 
@@ -112,11 +116,13 @@ def create_vendor(
     current_user: User = Depends(require_operator_or_admin),
 ):
     data = normalize_upper(payload.model_dump())
-    vendor_code = str(data["vendor_code"]).strip().upper()
 
-    existing = db.get(Vendor, vendor_code)
-    if existing:
-        raise HTTPException(status_code=409, detail="Vendor code already exists")
+    try:
+        vendor_code = get_next_number(db, "VENDOR")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    data["vendor_code"] = vendor_code
 
     obj = Vendor(**data)
     db.add(obj)
@@ -130,14 +136,14 @@ def create_vendor(
         record_id=obj.vendor_code,
         record_name=obj.vendor_name,
         details=f"Vendor created: {obj.vendor_code}",
-        new_values=data,
+        new_values=vendor_snapshot(obj),
     )
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Vendor code already exists")
+        raise HTTPException(status_code=409, detail="Could not create vendor due to a conflicting change")
 
     db.refresh(obj)
     return obj
@@ -178,10 +184,7 @@ def update_vendor(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Could not update vendor due to a conflicting change",
-        )
+        raise HTTPException(status_code=409, detail="Could not update vendor due to a conflicting change")
 
     db.refresh(obj)
     return obj
@@ -219,9 +222,6 @@ def delete_vendor(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Vendor cannot be deleted because it is linked to existing records",
-        )
+        raise HTTPException(status_code=409, detail="Vendor cannot be deleted because it is linked to existing records")
 
     return {"ok": True}
