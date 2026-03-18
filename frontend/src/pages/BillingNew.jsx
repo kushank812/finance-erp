@@ -10,9 +10,7 @@ export default function BillingNew() {
 
   const [customerCode, setCustomerCode] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
+  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState("");
   const [taxPercent, setTaxPercent] = useState(0);
   const [remark, setRemark] = useState("");
@@ -26,10 +24,7 @@ export default function BillingNew() {
     (async () => {
       setErr("");
       try {
-        const [c, it] = await Promise.all([
-          apiGet("/customers/"),
-          apiGet("/items/"),
-        ]);
+        const [c, it] = await Promise.all([apiGet("/customers/"), apiGet("/items/")]);
         setCustomers(Array.isArray(c) ? c : []);
         setItems(Array.isArray(it) ? it : []);
       } catch (e) {
@@ -46,6 +41,9 @@ export default function BillingNew() {
       return (
         String(c.customer_code || "").toLowerCase().includes(q) ||
         String(c.customer_name || "").toLowerCase().includes(q) ||
+        String(c.customer_address_line1 || "").toLowerCase().includes(q) ||
+        String(c.customer_address_line2 || "").toLowerCase().includes(q) ||
+        String(c.customer_address_line3 || "").toLowerCase().includes(q) ||
         String(c.city || "").toLowerCase().includes(q) ||
         String(c.mobile_no || "").toLowerCase().includes(q) ||
         String(c.email_id || "").toLowerCase().includes(q) ||
@@ -61,9 +59,7 @@ export default function BillingNew() {
   }, [items]);
 
   function setLine(i, patch) {
-    setLines((prev) =>
-      prev.map((ln, idx) => (idx === i ? { ...ln, ...patch } : ln))
-    );
+    setLines((prev) => prev.map((ln, idx) => (idx === i ? { ...ln, ...patch } : ln)));
   }
 
   function addRow() {
@@ -71,9 +67,7 @@ export default function BillingNew() {
   }
 
   function removeRow(i) {
-    setLines((prev) =>
-      prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)
-    );
+    setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)));
   }
 
   const calc = useMemo(() => {
@@ -93,13 +87,14 @@ export default function BillingNew() {
     };
   }, [lines, taxPercent]);
 
-  function resetForm() {
+  function clearForm() {
     setCustomerCode("");
     setCustomerSearch("");
     setDueDate("");
     setTaxPercent(0);
     setRemark("");
     setLines([{ ...emptyLine }]);
+    setErr("");
   }
 
   async function save() {
@@ -116,8 +111,13 @@ export default function BillingNew() {
         rate: Number(l.rate || 0),
       }));
 
-    if (cleanLines.length === 0)
-      return setErr("Add at least 1 item line.");
+    if (cleanLines.length === 0) return setErr("Add at least 1 item line.");
+
+    for (let i = 0; i < cleanLines.length; i++) {
+      const ln = cleanLines[i];
+      if (Number(ln.qty) <= 0) return setErr(`Line ${i + 1}: Qty must be greater than 0.`);
+      if (Number(ln.rate) < 0) return setErr(`Line ${i + 1}: Rate cannot be negative.`);
+    }
 
     try {
       setSaving(true);
@@ -131,13 +131,8 @@ export default function BillingNew() {
         lines: cleanLines,
       });
 
-      setOkMsg(
-        `Invoice saved successfully. Generated Invoice No: ${
-          created?.invoice_no || ""
-        }`
-      );
-
-      resetForm();
+      setOkMsg(`✅ Invoice "${created?.invoice_no || ""}" saved successfully.`);
+      clearForm();
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -147,9 +142,7 @@ export default function BillingNew() {
 
   return (
     <div style={page}>
-      <h2 style={{ margin: 0, color: "#fff" }}>
-        Create New Bill (Sales Invoice)
-      </h2>
+      <h2 style={{ margin: 0, color: "#fff" }}>Create New Bill (Sales Invoice)</h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
         Select customer + items from masters and save invoice.
       </p>
@@ -165,6 +158,7 @@ export default function BillingNew() {
           <AutoField
             label="Invoice No"
             text="Auto-generated on save"
+            hint="The system will generate the next invoice number automatically."
           />
 
           <CustomerSelect
@@ -194,12 +188,14 @@ export default function BillingNew() {
             type="number"
             value={taxPercent}
             onChange={(e) => setTaxPercent(e.target.value)}
+            placeholder="0"
           />
 
           <Field
             label="Remark"
             value={remark}
             onChange={(e) => setRemark(e.target.value)}
+            placeholder="Optional note..."
           />
         </div>
       </div>
@@ -210,7 +206,7 @@ export default function BillingNew() {
       <div style={card}>
         <div style={toolbarWrap}>
           <h3 style={{ margin: 0, color: "#111" }}>Line Items</h3>
-          <button onClick={addRow} style={btnPrimary}>
+          <button onClick={addRow} style={btnPrimary} disabled={saving}>
             + Add Row
           </button>
         </div>
@@ -226,7 +222,6 @@ export default function BillingNew() {
                 <th align="left">Action</th>
               </tr>
             </thead>
-
             <tbody>
               {lines.map((ln, i) => {
                 const qty = Number(ln.qty || 0);
@@ -275,15 +270,10 @@ export default function BillingNew() {
                       />
                     </td>
 
-                    <td style={{ color: "#111", fontWeight: 800 }}>
-                      {lineTotal}
-                    </td>
+                    <td style={{ color: "#111", fontWeight: 800 }}>{lineTotal}</td>
 
                     <td>
-                      <button
-                        onClick={() => removeRow(i)}
-                        style={btnDanger}
-                      >
+                      <button onClick={() => removeRow(i)} style={btnDanger} disabled={saving}>
                         Remove
                       </button>
                     </td>
@@ -305,7 +295,7 @@ export default function BillingNew() {
         </div>
 
         <div style={toolbarWrap}>
-          <button onClick={save} style={btnPrimary}>
+          <button onClick={save} style={btnPrimary} disabled={saving}>
             {saving ? "Saving..." : "Save Invoice"}
           </button>
         </div>
@@ -314,22 +304,27 @@ export default function BillingNew() {
   );
 }
 
-/* small helpers */
-
-function AutoField({ label, text }) {
+function Field({ label, value, onChange, type = "text", placeholder }) {
   return (
     <div style={field}>
       <label style={labelStyle}>{label}</label>
-      <div style={autoBox}>{text}</div>
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        style={input}
+      />
     </div>
   );
 }
 
-function Field({ label, ...props }) {
+function AutoField({ label, text, hint }) {
   return (
     <div style={field}>
       <label style={labelStyle}>{label}</label>
-      <input {...props} style={input} />
+      <div style={autoBox}>{text}</div>
+      {hint ? <div style={hintText}>{hint}</div> : null}
     </div>
   );
 }
@@ -346,8 +341,10 @@ function CustomerSelect({
       <label style={labelStyle}>Customer</label>
 
       <input
+        type="text"
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
+        placeholder="Search customer by code, name, city, mobile..."
         style={input}
       />
 
@@ -369,7 +366,14 @@ function CustomerSelect({
 
 function Row({ label, value, bold }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: bold ? 900 : 600 }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        color: "#111",
+        fontWeight: bold ? 900 : 600,
+      }}
+    >
       <span>{label}</span>
       <span>{value}</span>
     </div>
@@ -382,23 +386,101 @@ function round2(n) {
 
 function box(msg, bg, color) {
   return (
-    <div style={{ background: bg, padding: 10, borderRadius: 12, color, marginBottom: 12 }}>
+    <div
+      style={{
+        background: bg,
+        border: "1px solid #ddd",
+        padding: 10,
+        borderRadius: 12,
+        color,
+        marginBottom: 12,
+      }}
+    >
       {msg}
     </div>
   );
 }
 
-/* styles */
+/* ---- styles ---- */
 
 const page = { maxWidth: 1100, margin: "0 auto", padding: 14 };
-const card = { background: "white", borderRadius: 16, padding: 16 };
-const formGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 12 };
-const toolbarWrap = { display: "flex", justifyContent: "space-between" };
+
+const card = { background: "white", border: "1px solid #e6e6e6", borderRadius: 16, padding: 16 };
+
+const formGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+  alignItems: "end",
+};
+
+const toolbarWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  alignItems: "end",
+  justifyContent: "space-between",
+};
+
 const field = { display: "flex", flexDirection: "column", gap: 6 };
-const labelStyle = { fontWeight: 800 };
-const input = { padding: 10, border: "1px solid #ccc", borderRadius: 10 };
-const autoBox = { padding: 10, background: "#f7f7f7", borderRadius: 10 };
+
+const labelStyle = { fontSize: 13, color: "#222", fontWeight: 800 };
+
+const input = {
+  padding: 10,
+  border: "1px solid #d0d0d0",
+  borderRadius: 10,
+  background: "#fff",
+  color: "#111",
+  width: "100%",
+  outline: "none",
+};
+
+const autoBox = {
+  padding: 10,
+  border: "1px solid #d0d0d0",
+  borderRadius: 10,
+  background: "#f7f7f7",
+  color: "#555",
+  fontWeight: 700,
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const hintText = {
+  fontSize: 12,
+  color: "#666",
+  marginTop: 2,
+};
+
 const totalsRow = { display: "flex", justifyContent: "flex-end" };
-const totalsBox = { padding: 10, background: "#f7f8fa", borderRadius: 12 };
-const btnPrimary = { padding: 10, background: "#0b5cff", color: "white", borderRadius: 10 };
-const btnDanger = { padding: 8, background: "#ffecec", color: "red", borderRadius: 10 };
+
+const totalsBox = {
+  width: "min(420px, 100%)",
+  display: "grid",
+  gap: 8,
+  background: "#f7f8fa",
+  border: "1px solid #eee",
+  borderRadius: 14,
+  padding: 12,
+};
+
+const btnPrimary = {
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #0b5cff",
+  background: "#0b5cff",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const btnDanger = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #ff9a9a",
+  background: "#ffecec",
+  color: "#a40000",
+  cursor: "pointer",
+  fontWeight: 800,
+};
