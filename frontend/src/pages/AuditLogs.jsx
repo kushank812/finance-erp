@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
 
 function fmtDateTime(value) {
@@ -15,6 +15,16 @@ function safeJson(value) {
   } catch {
     return String(value);
   }
+}
+
+function prettifyEnum(value) {
+  if (!value) return "";
+  return String(value).replaceAll("_", " ");
+}
+
+function normalizeOptions(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.map((v) => String(v || "").trim()).filter(Boolean))];
 }
 
 function actionBadgeStyle(action) {
@@ -80,11 +90,38 @@ function actionBadgeStyle(action) {
   }
 }
 
+const fallbackModuleOptions = [
+  "USER",
+  "CUSTOMER",
+  "VENDOR",
+  "ITEM",
+  "SALES_INVOICE",
+  "PURCHASE_INVOICE",
+  "RECEIPT",
+  "VENDOR_PAYMENT",
+  "AUTH",
+];
+
+const fallbackActionOptions = [
+  "CREATE",
+  "UPDATE",
+  "DELETE",
+  "DEACTIVATE",
+  "LOGIN",
+  "LOGOUT",
+  "PASSWORD_CHANGE",
+  "PASSWORD_RESET",
+];
+
 export default function AuditLogs() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [metaLoading, setMetaLoading] = useState(false);
   const [err, setErr] = useState("");
   const [selected, setSelected] = useState(null);
+
+  const [moduleOptions, setModuleOptions] = useState(fallbackModuleOptions);
+  const [actionOptions, setActionOptions] = useState(fallbackActionOptions);
 
   const [filters, setFilters] = useState({
     user_id: "",
@@ -96,29 +133,33 @@ export default function AuditLogs() {
     limit: "100",
   });
 
-  const moduleOptions = [
-    "",
-    "USER",
-    "CUSTOMER",
-    "VENDOR",
-    "ITEM",
-    "SALES_INVOICE",
-    "PURCHASE_INVOICE",
-    "RECEIPT",
-    "VENDOR_PAYMENT",
-  ];
+  async function loadMeta() {
+    try {
+      setMetaLoading(true);
 
-  const actionOptions = [
-    "",
-    "CREATE",
-    "UPDATE",
-    "DELETE",
-    "DEACTIVATE",
-    "LOGIN",
-    "LOGOUT",
-    "PASSWORD_CHANGE",
-    "PASSWORD_RESET",
-  ];
+      const data = await apiGet("/audit-meta/");
+
+      const nextModules = normalizeOptions(data?.modules);
+      const nextActions = normalizeOptions(data?.actions);
+
+      if (nextModules.length > 0) {
+        setModuleOptions(nextModules);
+      } else {
+        setModuleOptions(fallbackModuleOptions);
+      }
+
+      if (nextActions.length > 0) {
+        setActionOptions(nextActions);
+      } else {
+        setActionOptions(fallbackActionOptions);
+      }
+    } catch {
+      setModuleOptions(fallbackModuleOptions);
+      setActionOptions(fallbackActionOptions);
+    } finally {
+      setMetaLoading(false);
+    }
+  }
 
   async function loadLogs(customFilters = filters) {
     try {
@@ -140,7 +181,9 @@ export default function AuditLogs() {
         params.set("record_id", customFilters.record_id.trim().toUpperCase());
       }
       if (customFilters.date_from) {
-        params.set("date_from", new Date(customFilters.date_from).toISOString());
+        const start = new Date(customFilters.date_from);
+        start.setHours(0, 0, 0, 0);
+        params.set("date_from", start.toISOString());
       }
       if (customFilters.date_to) {
         const end = new Date(customFilters.date_to);
@@ -161,6 +204,7 @@ export default function AuditLogs() {
   }
 
   useEffect(() => {
+    loadMeta();
     loadLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -190,18 +234,24 @@ export default function AuditLogs() {
     await loadLogs(fresh);
   }
 
+  const recordsLoadedText = useMemo(() => {
+    if (loading) return "…";
+    return String(rows.length);
+  }, [loading, rows.length]);
+
   return (
     <div style={pageWrap}>
       <div style={heroCard}>
         <div>
           <h1 style={heroTitle}>Audit Logs</h1>
           <p style={heroSub}>
-            Track user actions across masters, transactions, payments, password changes, and authentication activity.
+            Track user actions across masters, transactions, payments, password
+            changes, and authentication activity.
           </p>
         </div>
 
         <div style={summaryChip}>
-          <div style={summaryValue}>{rows.length}</div>
+          <div style={summaryValue}>{recordsLoadedText}</div>
           <div style={summaryLabel}>Records Loaded</div>
         </div>
       </div>
@@ -224,10 +274,12 @@ export default function AuditLogs() {
               value={filters.module}
               onChange={(e) => setFilter("module", e.target.value)}
               style={inputStyle}
+              disabled={metaLoading}
             >
+              <option value="">ALL MODULES</option>
               {moduleOptions.map((opt) => (
-                <option key={opt || "ALL"} value={opt}>
-                  {opt || "ALL MODULES"}
+                <option key={opt} value={opt}>
+                  {prettifyEnum(opt)}
                 </option>
               ))}
             </select>
@@ -238,10 +290,12 @@ export default function AuditLogs() {
               value={filters.action}
               onChange={(e) => setFilter("action", e.target.value)}
               style={inputStyle}
+              disabled={metaLoading}
             >
+              <option value="">ALL ACTIONS</option>
               {actionOptions.map((opt) => (
-                <option key={opt || "ALL"} value={opt}>
-                  {opt || "ALL ACTIONS"}
+                <option key={opt} value={opt}>
+                  {prettifyEnum(opt)}
                 </option>
               ))}
             </select>
@@ -251,7 +305,7 @@ export default function AuditLogs() {
             <input
               value={filters.record_id}
               onChange={(e) => setFilter("record_id", e.target.value)}
-              placeholder="SI0001 / RCPT0001 / ADMIN"
+              placeholder="INV0001 / RCPT0001 / ADMIN"
               style={inputStyle}
             />
           </Field>
@@ -350,10 +404,12 @@ export default function AuditLogs() {
                       >
                         <td style={tdStyle}>{fmtDateTime(row.created_at)}</td>
                         <td style={tdStyle}>{row.user_id || "—"}</td>
-                        <td style={tdStyle}>{row.module || "—"}</td>
+                        <td style={tdStyle}>
+                          {prettifyEnum(row.module) || "—"}
+                        </td>
                         <td style={tdStyle}>
                           <span style={actionBadgeStyle(row.action)}>
-                            {row.action || "—"}
+                            {prettifyEnum(row.action) || "—"}
                           </span>
                         </td>
                         <td style={tdStyle}>{row.record_id || "—"}</td>
@@ -383,8 +439,8 @@ export default function AuditLogs() {
             <Detail label="Log ID" value={selected.id} />
             <Detail label="Created At" value={fmtDateTime(selected.created_at)} />
             <Detail label="User ID" value={selected.user_id} />
-            <Detail label="Module" value={selected.module} />
-            <Detail label="Action" value={selected.action} />
+            <Detail label="Module" value={prettifyEnum(selected.module)} />
+            <Detail label="Action" value={prettifyEnum(selected.action)} />
             <Detail label="Record ID" value={selected.record_id} />
             <Detail label="Record Name" value={selected.record_name} />
             <Detail label="Details" value={selected.details} />

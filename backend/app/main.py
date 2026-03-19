@@ -28,6 +28,7 @@ from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.api.vendor_payment import router as vendor_payment_router
 from app.api.audit import router as audit_router
+from app.api.audit_meta import router as audit_meta_router
 
 app = FastAPI(
     title="Finance AP/AR Backend",
@@ -68,7 +69,7 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(vendor_payment_router)
 app.include_router(audit_router)
-
+app.include_router(audit_meta_router)
 
 @app.get("/health")
 def health():
