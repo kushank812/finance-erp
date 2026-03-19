@@ -1,4 +1,3 @@
-# app/api/customer.py
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,6 +9,7 @@ from app.models.user import User
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerOut
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
+from app.utils.numbering import get_next_number
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
@@ -19,12 +19,15 @@ def customer_snapshot(obj: Customer) -> dict:
     return {
         "customer_code": obj.customer_code,
         "customer_name": obj.customer_name,
-        "address": getattr(obj, "address", None),
+        "customer_address_line1": getattr(obj, "customer_address_line1", None),
+        "customer_address_line2": getattr(obj, "customer_address_line2", None),
+        "customer_address_line3": getattr(obj, "customer_address_line3", None),
         "city": getattr(obj, "city", None),
         "state": getattr(obj, "state", None),
         "pincode": getattr(obj, "pincode", None),
         "mobile_no": getattr(obj, "mobile_no", None),
-        "email": getattr(obj, "email", None),
+        "ph_no": getattr(obj, "ph_no", None),
+        "email_id": getattr(obj, "email_id", None),
         "gst_no": getattr(obj, "gst_no", None),
     }
 
@@ -57,11 +60,16 @@ def create_customer(
     current_user: User = Depends(require_operator_or_admin),
 ):
     data = normalize_upper(payload.model_dump())
-    customer_code = str(data["customer_code"]).strip().upper()
 
-    existing = db.get(Customer, customer_code)
-    if existing:
-        raise HTTPException(status_code=409, detail="Customer code already exists")
+    if not data.get("customer_name"):
+        raise HTTPException(status_code=400, detail="Customer name is required")
+
+    try:
+        customer_code = get_next_number(db, "CUSTOMER")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    data["customer_code"] = customer_code
 
     obj = Customer(**data)
     db.add(obj)
@@ -75,14 +83,17 @@ def create_customer(
         record_id=obj.customer_code,
         record_name=obj.customer_name,
         details=f"Customer created: {obj.customer_code}",
-        new_values=data,
+        new_values=customer_snapshot(obj),
     )
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Customer code already exists")
+        raise HTTPException(
+            status_code=409,
+            detail="Could not create customer due to a conflicting change",
+        )
 
     db.refresh(obj)
     return obj
@@ -102,6 +113,9 @@ def update_customer(
 
     old_values = customer_snapshot(obj)
     data = normalize_upper(payload.model_dump(exclude_unset=True))
+
+    # never allow customer code change from update payload
+    data.pop("customer_code", None)
 
     for k, v in data.items():
         setattr(obj, k, v)

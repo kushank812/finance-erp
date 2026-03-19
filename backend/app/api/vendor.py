@@ -1,4 +1,3 @@
-# app/api/vendor.py
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -117,6 +116,9 @@ def create_vendor(
 ):
     data = normalize_upper(payload.model_dump())
 
+    if not data.get("vendor_name"):
+        raise HTTPException(status_code=400, detail="Vendor name is required")
+
     try:
         vendor_code = get_next_number(db, "VENDOR")
     except ValueError as e:
@@ -143,7 +145,10 @@ def create_vendor(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not create vendor due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail="Could not create vendor due to a conflicting change",
+        )
 
     db.refresh(obj)
     return obj
@@ -163,6 +168,9 @@ def update_vendor(
 
     old_values = vendor_snapshot(obj)
     data = normalize_upper(payload.model_dump(exclude_unset=True))
+
+    # never allow vendor code change from update payload
+    data.pop("vendor_code", None)
 
     for k, v in data.items():
         setattr(obj, k, v)
@@ -184,7 +192,10 @@ def update_vendor(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not update vendor due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail="Could not update vendor due to a conflicting change",
+        )
 
     db.refresh(obj)
     return obj
@@ -222,6 +233,9 @@ def delete_vendor(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Vendor cannot be deleted because it is linked to existing records")
+        raise HTTPException(
+            status_code=409,
+            detail="Vendor cannot be deleted because it is linked to existing records",
+        )
 
     return {"ok": True}

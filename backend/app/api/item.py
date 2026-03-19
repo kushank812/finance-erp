@@ -1,4 +1,3 @@
-# app/api/item.py
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,9 +20,15 @@ def item_snapshot(obj: Item) -> dict:
         "item_code": obj.item_code,
         "item_name": getattr(obj, "item_name", None),
         "units": getattr(obj, "units", None),
-        "opening_balance": float(obj.opening_balance) if getattr(obj, "opening_balance", None) is not None else None,
-        "cost_price": float(obj.cost_price) if getattr(obj, "cost_price", None) is not None else None,
-        "selling_price": float(obj.selling_price) if getattr(obj, "selling_price", None) is not None else None,
+        "opening_balance": float(obj.opening_balance)
+        if getattr(obj, "opening_balance", None) is not None
+        else None,
+        "cost_price": float(obj.cost_price)
+        if getattr(obj, "cost_price", None) is not None
+        else None,
+        "selling_price": float(obj.selling_price)
+        if getattr(obj, "selling_price", None) is not None
+        else None,
     }
 
 
@@ -56,6 +61,9 @@ def create_item(
 ):
     data = normalize_upper(payload.model_dump())
 
+    if not data.get("item_name"):
+        raise HTTPException(status_code=400, detail="Item name is required")
+
     try:
         item_code = get_next_number(db, "ITEM")
     except ValueError as e:
@@ -82,7 +90,10 @@ def create_item(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not create item due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail="Could not create item due to a conflicting change",
+        )
 
     db.refresh(obj)
     return obj
@@ -102,6 +113,9 @@ def update_item(
 
     old_values = item_snapshot(obj)
     data = normalize_upper(payload.model_dump(exclude_unset=True))
+
+    # never allow item code change from update payload
+    data.pop("item_code", None)
 
     for k, v in data.items():
         setattr(obj, k, v)
@@ -123,7 +137,10 @@ def update_item(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not update item due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail="Could not update item due to a conflicting change",
+        )
 
     db.refresh(obj)
     return obj
@@ -161,6 +178,9 @@ def delete_item(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Item cannot be deleted because it is linked to existing records")
+        raise HTTPException(
+            status_code=409,
+            detail="Item cannot be deleted because it is linked to existing records",
+        )
 
     return {"ok": True}
