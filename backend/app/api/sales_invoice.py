@@ -79,8 +79,7 @@ def create_sales_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    data = payload.model_dump()
-    data = normalize_upper(data)
+    data = normalize_upper(payload.model_dump())
 
     try:
         invoice_no = get_next_number(db, "SALES_INVOICE")
@@ -167,9 +166,9 @@ def create_sales_invoice(
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not create sales invoice due to a conflicting change")
+        raise HTTPException(status_code=409, detail=str(e.orig))
 
     db.refresh(hdr)
     return hdr
@@ -227,8 +226,11 @@ def receive_payment(
     )
     db.add(receipt)
 
-    obj.amount_received = Decimal(str(obj.amount_received or 0)) + amount
-    obj.balance = Decimal(str(obj.grand_total or 0)) - Decimal(str(obj.amount_received or 0))
+    new_amount_received = Decimal(str(obj.amount_received or 0)) + amount
+    new_balance = Decimal(str(obj.grand_total or 0)) - new_amount_received
+
+    obj.amount_received = new_amount_received
+    obj.balance = new_balance
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
 
     log_activity(
@@ -255,9 +257,9 @@ def receive_payment(
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not save receipt due to a concurrent update. Please try again.")
+        raise HTTPException(status_code=409, detail=str(e.orig))
 
     db.refresh(receipt)
 
