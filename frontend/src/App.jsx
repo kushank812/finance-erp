@@ -111,7 +111,11 @@ function canViewReports(user) {
 }
 
 function canViewMasters(user) {
-  return isAdmin(user) || isOperator(user);
+  return isAdmin(user) || isOperator(user) || isViewer(user);
+}
+
+function canViewDocuments(user) {
+  return isAdmin(user) || isOperator(user) || isViewer(user);
 }
 
 function FullPageLoader() {
@@ -213,6 +217,24 @@ function ReportsRoute({ children, authReady, authenticated, currentUser }) {
   }
 
   if (!canViewReports(currentUser)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function DocumentViewRoute({ children, authReady, authenticated, currentUser }) {
+  const location = useLocation();
+
+  if (!authReady) {
+    return <FullPageLoader />;
+  }
+
+  if (!authenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!canViewDocuments(currentUser)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -547,26 +569,26 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
         <Route
           path="/billing/view/:invoiceNo"
           element={
-            <TransactionRoute
+            <DocumentViewRoute
               authReady={authReady}
               authenticated={authenticated}
               currentUser={currentUser}
             >
               <SalesInvoiceDirectView />
-            </TransactionRoute>
+            </DocumentViewRoute>
           }
         />
 
         <Route
           path="/receipt/view/:invoiceNo"
           element={
-            <TransactionRoute
+            <DocumentViewRoute
               authReady={authReady}
               authenticated={authenticated}
               currentUser={currentUser}
             >
               <ReceiptView />
-            </TransactionRoute>
+            </DocumentViewRoute>
           }
         />
 
@@ -599,26 +621,26 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
         <Route
           path="/purchase/view/:billNo"
           element={
-            <TransactionRoute
+            <DocumentViewRoute
               authReady={authReady}
               authenticated={authenticated}
               currentUser={currentUser}
             >
               <PurchaseBillView />
-            </TransactionRoute>
+            </DocumentViewRoute>
           }
         />
 
         <Route
           path="/vendor-payment/view/:paymentNo"
           element={
-            <TransactionRoute
+            <DocumentViewRoute
               authReady={authReady}
               authenticated={authenticated}
               currentUser={currentUser}
             >
               <VendorPaymentView />
-            </TransactionRoute>
+            </DocumentViewRoute>
           }
         />
 
