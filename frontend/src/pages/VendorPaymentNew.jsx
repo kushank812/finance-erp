@@ -32,13 +32,29 @@ export default function VendorPaymentNew() {
   async function load() {
     setErr("");
     setOk("");
+
     try {
       const [b, v] = await Promise.all([
         apiGet("/purchase-invoices/"),
         apiGet("/vendors/"),
       ]);
-      setBills(Array.isArray(b) ? b : []);
-      setVendors(Array.isArray(v) ? v : []);
+
+      const allBills = Array.isArray(b) ? b : [];
+      const allVendors = Array.isArray(v) ? v : [];
+
+      const openBills = allBills
+        .filter((r) => num(r.balance) > 0)
+        .sort((a, b) =>
+          String(a.bill_no || "").localeCompare(String(b.bill_no || ""))
+        );
+
+      setBills(openBills);
+      setVendors(allVendors);
+
+      if (billNo && !openBills.some((r) => r.bill_no === billNo)) {
+        setBillNo("");
+        setBillSearch("");
+      }
     } catch (e) {
       setErr(String(e.message || e));
     }
@@ -54,30 +70,29 @@ export default function VendorPaymentNew() {
         setShowBillList(false);
       }
     }
+
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  const openBills = useMemo(() => {
-    return bills
-      .filter((r) => num(r.balance) > 0)
-      .sort((a, b) => String(a.bill_no || "").localeCompare(String(b.bill_no || "")));
-  }, [bills]);
-
   const vendorNameByCode = useMemo(() => {
     const m = new Map();
-    for (const v of vendors) m.set(v.vendor_code, v.vendor_name);
+    for (const v of vendors) {
+      m.set(v.vendor_code, v.vendor_name);
+    }
     return m;
   }, [vendors]);
 
   const filteredBills = useMemo(() => {
     const q = billSearch.trim().toUpperCase();
-    if (!q) return openBills;
+    if (!q) return bills;
 
-    return openBills.filter((r) => {
+    return bills.filter((r) => {
       const bill = String(r.bill_no || "").toUpperCase();
       const vendorCode = String(r.vendor_code || "").toUpperCase();
-      const vendorName = String(vendorNameByCode.get(r.vendor_code) || "").toUpperCase();
+      const vendorName = String(
+        vendorNameByCode.get(r.vendor_code) || ""
+      ).toUpperCase();
       const total = String(r.grand_total || "");
       const balance = String(r.balance || "");
 
@@ -89,20 +104,23 @@ export default function VendorPaymentNew() {
         balance.includes(q)
       );
     });
-  }, [openBills, billSearch, vendorNameByCode]);
+  }, [bills, billSearch, vendorNameByCode]);
 
   const selected = useMemo(
-    () => openBills.find((r) => r.bill_no === billNo),
-    [openBills, billNo]
+    () => bills.find((r) => r.bill_no === billNo),
+    [bills, billNo]
   );
 
   const maxPayable = selected ? num(selected.balance) : 0;
 
   function selectBill(row) {
     const vendorName = vendorNameByCode.get(row.vendor_code) || "";
+
     setBillNo(row.bill_no);
     setBillSearch(
-      `${row.bill_no} | ${row.vendor_code}${vendorName ? " - " + vendorName : ""} | BAL ${money(row.balance)}`
+      `${row.bill_no} | ${row.vendor_code}${
+        vendorName ? " - " + vendorName : ""
+      } | BAL ${money(row.balance)}`
     );
     setShowBillList(false);
   }
@@ -111,27 +129,41 @@ export default function VendorPaymentNew() {
     setErr("");
     setOk("");
 
-    if (!billNo) return setErr("Select a purchase bill.");
+    if (!billNo) {
+      setErr("Select a purchase bill.");
+      return;
+    }
 
     const amt = num(amount);
-    if (amt <= 0) return setErr("Enter a valid paid amount (> 0).");
+    if (amt <= 0) {
+      setErr("Enter a valid paid amount (> 0).");
+      return;
+    }
 
-    if (!selected) return setErr("Selected bill not found. Click Refresh.");
+    if (!selected) {
+      setErr("Selected bill not found. Click Refresh.");
+      return;
+    }
 
     if (amt > maxPayable) {
-      return setErr(
+      setErr(
         `Payment amount cannot exceed bill balance. Balance is ${money(maxPayable)}.`
       );
+      return;
     }
 
     try {
-      const res = await apiPost(`/purchase-invoices/${encodeURIComponent(billNo)}/pay`, {
-        amount: amt,
-        remark: remark?.trim() || null,
-      });
+      const res = await apiPost(
+        `/purchase-invoices/${encodeURIComponent(billNo)}/pay`,
+        {
+          amount: amt,
+          remark: remark?.trim() || null,
+        }
+      );
 
       if (!res?.payment_no) {
-        return setErr("Payment saved, but backend did not return payment number.");
+        setErr("Payment saved, but backend did not return payment number.");
+        return;
       }
 
       setOk(`Payment saved successfully. Payment No: ${res.payment_no}`);
@@ -186,7 +218,9 @@ export default function VendorPaymentNew() {
               onChange={(e) => {
                 setBillSearch(e.target.value);
                 setShowBillList(true);
-                if (!e.target.value.trim()) setBillNo("");
+                if (!e.target.value.trim()) {
+                  setBillNo("");
+                }
               }}
               onFocus={() => setShowBillList(true)}
               placeholder="Search bill / vendor"
@@ -196,7 +230,8 @@ export default function VendorPaymentNew() {
             {showBillList && (
               <div style={dropdown}>
                 <div style={dropdownHead}>
-                  {filteredBills.length} bill{filteredBills.length === 1 ? "" : "s"} found
+                  {filteredBills.length} bill
+                  {filteredBills.length === 1 ? "" : "s"} found
                 </div>
 
                 <div style={dropdownList}>

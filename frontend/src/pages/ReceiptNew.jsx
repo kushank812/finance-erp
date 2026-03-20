@@ -26,7 +26,17 @@ export default function ReceiptNew() {
     setOk("");
     try {
       const data = await apiGet("/sales-invoices/");
-      setRows(Array.isArray(data) ? data : []);
+      const allRows = Array.isArray(data) ? data : [];
+      const openInvoices = allRows.filter((r) => Number(r.balance || 0) > 0);
+      setRows(openInvoices);
+
+      if (
+        invoiceNo &&
+        !openInvoices.some((r) => r.invoice_no === invoiceNo)
+      ) {
+        setInvoiceNo("");
+        setInvoiceSearch("");
+      }
     } catch (e) {
       setErr(String(e.message || e));
     }
@@ -178,7 +188,7 @@ export default function ReceiptNew() {
 
                 <div style={dropdownList}>
                   {filteredInvoices.length === 0 ? (
-                    <div style={emptyRow}>No matching invoices found.</div>
+                    <div style={emptyRow}>No unpaid invoices found.</div>
                   ) : (
                     filteredInvoices.map((r) => {
                       const active = r.invoice_no === invoiceNo;
