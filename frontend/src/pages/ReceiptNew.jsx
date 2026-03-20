@@ -86,31 +86,53 @@ export default function ReceiptNew() {
     setErr("");
     setOk("");
 
-    if (!invoiceNo) return setErr("Select an invoice.");
+    if (!invoiceNo) {
+      setErr("Select an invoice.");
+      return;
+    }
 
     const amt = Number(amount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      return setErr("Enter a valid received amount (> 0).");
+      setErr("Enter a valid received amount (> 0).");
+      return;
     }
 
     if (selected && amt > selectedBalance) {
-      return setErr(
+      setErr(
         `Receipt amount cannot exceed invoice balance. Balance is ${money(selectedBalance)}.`
       );
+      return;
     }
 
     try {
-      await apiPost(`/sales-invoices/${encodeURIComponent(invoiceNo)}/receive`, {
-        amount: amt,
-        remark: remark || null,
-      });
+      const saved = await apiPost(
+        `/sales-invoices/${encodeURIComponent(invoiceNo)}/receive`,
+        {
+          amount: amt,
+          remark: remark || null,
+        }
+      );
 
-      setOk(`Receipt saved successfully for invoice ${invoiceNo}.`);
+      const receiptNo = saved?.receipt_no || "";
+      const savedInvoiceNo = saved?.invoice_no || invoiceNo;
+
+      setOk(
+        receiptNo
+          ? `Receipt ${receiptNo} saved successfully for invoice ${savedInvoiceNo}.`
+          : `Receipt saved successfully for invoice ${savedInvoiceNo}.`
+      );
+
       setAmount("");
       setRemark("");
       await load();
 
-      navigate(`/receipt/view/${encodeURIComponent(invoiceNo)}`);
+      if (receiptNo) {
+        navigate(`/receipt/view/${encodeURIComponent(receiptNo)}`);
+      } else {
+        setErr(
+          "Receipt was saved, but receipt number was not returned from backend."
+        );
+      }
     } catch (e) {
       setErr(String(e.message || e));
     }
@@ -138,7 +160,9 @@ export default function ReceiptNew() {
               onChange={(e) => {
                 setInvoiceSearch(e.target.value);
                 setShowInvoiceList(true);
-                if (!e.target.value.trim()) setInvoiceNo("");
+                if (!e.target.value.trim()) {
+                  setInvoiceNo("");
+                }
               }}
               onFocus={() => setShowInvoiceList(true)}
               placeholder="Search by invoice no / customer / amount"
@@ -148,7 +172,8 @@ export default function ReceiptNew() {
             {showInvoiceList && (
               <div style={dropdown}>
                 <div style={dropdownHead}>
-                  {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? "" : "s"} found
+                  {filteredInvoices.length} invoice
+                  {filteredInvoices.length === 1 ? "" : "s"} found
                 </div>
 
                 <div style={dropdownList}>
@@ -215,8 +240,14 @@ export default function ReceiptNew() {
         <div style={statGrid}>
           <Info title="Selected Invoice" value={selected?.invoice_no || "-"} />
           <Info title="Customer" value={selected?.customer_code || "-"} />
-          <Info title="Invoice Total" value={selected ? money(selected.grand_total) : "-"} />
-          <Info title="Current Balance" value={selected ? money(selected.balance) : "-"} />
+          <Info
+            title="Invoice Total"
+            value={selected ? money(selected.grand_total) : "-"}
+          />
+          <Info
+            title="Current Balance"
+            value={selected ? money(selected.balance) : "-"}
+          />
         </div>
 
         <div style={toolbarWrap}>

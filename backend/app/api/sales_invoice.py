@@ -25,6 +25,15 @@ class ReceivePaymentIn(BaseModel):
     remark: str | None = None
 
 
+class ReceiptCreatedOut(BaseModel):
+    ok: bool
+    receipt_no: str
+    invoice_no: str
+    receipt_date: str
+    amount: float
+    remark: str | None = None
+
+
 def compute_status(
     balance: Decimal | float,
     grand_total: Decimal | float,
@@ -174,7 +183,7 @@ def create_sales_invoice(
     return hdr
 
 
-@router.post("/{invoice_no}/receive")
+@router.post("/{invoice_no}/receive", response_model=ReceiptCreatedOut)
 def receive_payment(
     invoice_no: str,
     payload: ReceivePaymentIn,
@@ -202,7 +211,10 @@ def receive_payment(
 
     current_balance = Decimal(str(obj.balance or 0))
     if amount > current_balance:
-        raise HTTPException(status_code=400, detail="Received amount cannot exceed balance")
+        raise HTTPException(
+            status_code=400,
+            detail="Received amount cannot exceed balance",
+        )
 
     old_values = {
         "amount_received": float(obj.amount_received or 0),
@@ -211,7 +223,7 @@ def receive_payment(
     }
 
     try:
-        receipt_no = get_next_number(db, "RECEIPT", "RCPT")
+        receipt_no = get_next_number(db, "RECEIPT", "RCT")
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -263,11 +275,11 @@ def receive_payment(
 
     db.refresh(receipt)
 
-    return {
-        "ok": True,
-        "receipt_no": receipt.receipt_no,
-        "invoice_no": receipt.invoice_no,
-        "receipt_date": str(receipt.receipt_date),
-        "amount": float(receipt.amount),
-        "remark": receipt.remark,
-    }
+    return ReceiptCreatedOut(
+        ok=True,
+        receipt_no=receipt.receipt_no,
+        invoice_no=receipt.invoice_no,
+        receipt_date=str(receipt.receipt_date),
+        amount=float(receipt.amount),
+        remark=receipt.remark,
+    )

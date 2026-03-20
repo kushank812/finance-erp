@@ -7,48 +7,79 @@ function money(n) {
 }
 
 export default function ReceiptView() {
-  const { invoiceNo } = useParams();
+  const { receiptNo } = useParams();
   const nav = useNavigate();
 
-  const [inv, setInv] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [invoice, setInvoice] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    async function loadReceipt() {
+    async function loadReceiptAndInvoice() {
       setErr("");
-      setInv(null);
+      setReceipt(null);
+      setInvoice(null);
 
-      if (!invoiceNo) return;
+      if (!receiptNo) return;
 
       setLoading(true);
       try {
-        const data = await apiGet(`/sales-invoices/${encodeURIComponent(invoiceNo)}`);
-        if (active) setInv(data);
+        const receiptData = await apiGet(
+          `/receipts/${encodeURIComponent(receiptNo)}`
+        );
+
+        if (!active) return;
+        setReceipt(receiptData || null);
+
+        if (receiptData?.invoice_no) {
+          const invoiceData = await apiGet(
+            `/sales-invoices/${encodeURIComponent(receiptData.invoice_no)}`
+          );
+          if (!active) return;
+          setInvoice(invoiceData || null);
+        }
       } catch (e) {
-        if (active) setErr(String(e.message || e));
+        if (active) {
+          setErr(String(e.message || e));
+        }
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
-    loadReceipt();
+    loadReceiptAndInvoice();
 
     return () => {
       active = false;
     };
-  }, [invoiceNo]);
+  }, [receiptNo]);
 
   const totals = useMemo(() => {
-    if (!inv) return null;
+    const invoiceTotal = Number(invoice?.grand_total || 0);
+    const totalReceived = Number(invoice?.amount_received || 0);
+    const currentReceiptAmount = Number(receipt?.amount || 0);
+
+    const receivedBeforeThisReceipt =
+      totalReceived > 0 ? Math.max(totalReceived - currentReceiptAmount, 0) : 0;
+
+    const balanceAfterReceipt = Number(invoice?.balance || 0);
+
     return {
-      grandTotal: money(inv.grand_total),
-      received: money(inv.amount_received),
-      balance: money(inv.balance),
+      invoiceTotal: money(invoiceTotal),
+      receivedBeforeThisReceipt: money(receivedBeforeThisReceipt),
+      currentReceiptAmount: money(currentReceiptAmount),
+      totalReceived: money(totalReceived),
+      balanceAfterReceipt: money(balanceAfterReceipt),
     };
-  }, [inv]);
+  }, [invoice, receipt]);
+
+  const titleReceiptNo = receipt?.receipt_no || receiptNo || "-";
+  const linkedInvoiceNo = receipt?.invoice_no || invoice?.invoice_no || "-";
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: 14 }}>
@@ -56,7 +87,7 @@ export default function ReceiptView() {
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Receipt Voucher</h2>
           <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            Invoice No: <b>{invoiceNo}</b>
+            Receipt No: <b>{titleReceiptNo}</b>
           </p>
         </div>
 
@@ -69,7 +100,7 @@ export default function ReceiptView() {
             type="button"
             onClick={() => window.print()}
             style={btnPrimary}
-            disabled={!inv || loading}
+            disabled={!receipt || loading}
           >
             Print / Save PDF
           </button>
@@ -79,11 +110,11 @@ export default function ReceiptView() {
       {err && <div style={msgErr}>{err}</div>}
 
       <div id="print-area" style={paper}>
-        {!invoiceNo ? (
-          <div style={{ color: "#111" }}>Missing invoice number in URL.</div>
+        {!receiptNo ? (
+          <div style={{ color: "#111" }}>Missing receipt number in URL.</div>
         ) : loading ? (
           <div style={{ color: "#111" }}>Loading receipt...</div>
-        ) : !inv ? (
+        ) : !receipt ? (
           <div style={{ color: "#111" }}>No receipt data found.</div>
         ) : (
           <>
@@ -94,27 +125,42 @@ export default function ReceiptView() {
               </div>
 
               <div style={{ textAlign: "right" }}>
-                <div style={bigId}>{inv.invoice_no}</div>
-                <div style={muted}>Receipt Reference: {inv.invoice_no}</div>
+                <div style={bigId}>{receipt.receipt_no}</div>
+                <div style={muted}>Linked Invoice: {linkedInvoiceNo}</div>
               </div>
             </div>
 
             <div style={hr} />
 
             <div style={metaGrid}>
-              <Info label="Receipt Ref / Invoice No" value={inv.invoice_no} />
-              <Info label="Customer Code" value={inv.customer_code || "-"} />
-              <Info label="Invoice Date" value={String(inv.invoice_date || "")} />
-              <Info label="Remark" value={inv.remark || "-"} />
+              <Info label="Receipt No" value={receipt.receipt_no || "-"} />
+              <Info label="Receipt Date" value={String(receipt.receipt_date || "-")} />
+              <Info label="Invoice No" value={linkedInvoiceNo} />
+              <Info label="Customer Code" value={invoice?.customer_code || "-"} />
+              <Info label="Invoice Date" value={String(invoice?.invoice_date || "-")} />
+              <Info label="Receipt Remark" value={receipt.remark || "-"} />
             </div>
 
             <div style={{ height: 14 }} />
 
             <div style={totalsWrap}>
-              <TotalRow label="Invoice Total" value={totals.grandTotal} />
-              <TotalRow label="Amount Received" value={totals.received} strong />
+              <TotalRow label="Invoice Total" value={totals.invoiceTotal} />
+              <TotalRow
+                label="Received Before This Receipt"
+                value={totals.receivedBeforeThisReceipt}
+              />
+              <TotalRow
+                label="This Receipt Amount"
+                value={totals.currentReceiptAmount}
+                strong
+              />
               <div style={hr} />
-              <TotalRow label="Balance" value={totals.balance} strong />
+              <TotalRow label="Total Received" value={totals.totalReceived} />
+              <TotalRow
+                label="Balance After Receipt"
+                value={totals.balanceAfterReceipt}
+                strong
+              />
             </div>
 
             <div style={{ height: 18 }} />
@@ -177,6 +223,7 @@ const paper = {
   border: "1px solid #e6e6e6",
   borderRadius: 16,
   padding: 16,
+  marginTop: 12,
 };
 
 const docHeader = {
@@ -214,7 +261,7 @@ const infoValue = {
 
 const totalsWrap = {
   marginLeft: "auto",
-  width: "min(380px, 100%)",
+  width: "min(420px, 100%)",
   border: "1px solid #eee",
   borderRadius: 14,
   padding: 12,
@@ -276,10 +323,24 @@ const msgErr = {
 
 const printCss = `
 @media print {
-  html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
-  #root { padding: 0 !important; margin: 0 !important; }
-  nav { display: none !important; }
-  button, input, select, textarea { display: none !important; }
+  html, body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #root {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  nav {
+    display: none !important;
+  }
+
+  button, input, select, textarea {
+    display: none !important;
+  }
 
   #print-area {
     border: none !important;
