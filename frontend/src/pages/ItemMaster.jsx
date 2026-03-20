@@ -16,7 +16,16 @@ function num(v) {
   return Number.isFinite(x) ? x : 0;
 }
 
-function Field({ label, value, onChange, type = "text", disabled = false, placeholder, hint }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  disabled = false,
+  readOnly = false,
+  placeholder,
+  hint,
+}) {
   return (
     <div>
       <div style={lbl}>{label}</div>
@@ -24,13 +33,14 @@ function Field({ label, value, onChange, type = "text", disabled = false, placeh
         type={type}
         value={value ?? ""}
         disabled={disabled}
+        readOnly={readOnly}
         onChange={onChange}
         placeholder={placeholder}
         style={{
           ...inp,
-          background: disabled ? "#f4f4f4" : "#fff",
-          cursor: disabled ? "not-allowed" : "text",
-          opacity: disabled ? 0.85 : 1,
+          background: disabled || readOnly ? "#f4f4f4" : "#fff",
+          cursor: disabled || readOnly ? "not-allowed" : "text",
+          opacity: disabled || readOnly ? 0.85 : 1,
         }}
       />
       {hint ? <div style={hintTxt}>{hint}</div> : null}
@@ -44,10 +54,17 @@ export default function ItemMaster() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [editingCode, setEditingCode] = useState(null);
+  const [viewingCode, setViewingCode] = useState(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
 
+  const role = String(currentUser?.role || "").toUpperCase();
   const isEditing = !!editingCode;
+  const isViewing = !!viewingCode && !editingCode;
+  const isViewer = role === "VIEWER";
+  const canWrite = role === "ADMIN" || role === "OPERATOR";
+
   const saveLabel = useMemo(() => (isEditing ? "Update Item" : "Save Item"), [isEditing]);
 
   const filteredRows = useMemo(() => {
@@ -76,18 +93,40 @@ export default function ItemMaster() {
     }
   }
 
+  async function loadCurrentUser() {
+    try {
+      const me = await apiGet("/auth/me");
+      setCurrentUser(me || null);
+    } catch {
+      setCurrentUser(null);
+    }
+  }
+
   useEffect(() => {
+    loadCurrentUser();
     load();
   }, []);
 
   function update(key, val) {
+    if (!canWrite) return;
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
-  function startEdit(row) {
+  function loadIntoForm(row, mode = "view") {
     setErr("");
     setOk("");
-    setEditingCode(row.item_code);
+
+    if (mode === "edit") {
+      if (!canWrite) {
+        setErr("Viewer access is read-only.");
+        return;
+      }
+      setEditingCode(row.item_code);
+      setViewingCode(null);
+    } else {
+      setViewingCode(row.item_code);
+      setEditingCode(null);
+    }
 
     setForm({
       item_code: row.item_code ?? "",
@@ -101,10 +140,23 @@ export default function ItemMaster() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function startEdit(row) {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+    loadIntoForm(row, "edit");
+  }
+
+  function startView(row) {
+    loadIntoForm(row, "view");
+  }
+
   function cancelEdit() {
     setErr("");
     setOk("");
     setEditingCode(null);
+    setViewingCode(null);
     setForm({ ...empty });
   }
 
@@ -129,6 +181,11 @@ export default function ItemMaster() {
   }
 
   async function saveOrUpdate() {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+
     setErr("");
     setOk("");
 
@@ -159,6 +216,11 @@ export default function ItemMaster() {
   }
 
   async function remove(code) {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+
     const yes = window.confirm(`Delete item "${code}"?`);
     if (!yes) return;
 
@@ -168,7 +230,7 @@ export default function ItemMaster() {
     try {
       setSaving(true);
       await apiDelete(`/items/${encodeURIComponent(code)}`);
-      if (editingCode === code) cancelEdit();
+      if (editingCode === code || viewingCode === code) cancelEdit();
       setOk(`✅ Item "${code}" deleted.`);
       await load();
     } catch (e) {
@@ -179,7 +241,7 @@ export default function ItemMaster() {
   }
 
   function clearCreateForm() {
-    if (isEditing) return;
+    if (!canWrite || isEditing) return;
     setForm({ ...empty });
     setErr("");
     setOk("");
@@ -189,17 +251,30 @@ export default function ItemMaster() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
       <h2 style={{ margin: 0, color: "#fff" }}>Item Master</h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Create, edit, delete and view items (responsive for phone + laptop).
+        {isViewer
+          ? "View item list and details in read-only mode."
+          : "Create, edit, delete and view items (responsive for phone + laptop)."}
       </p>
+
+      <div style={debugBox}>
+        ROLE: {role || "NO ROLE"} | CAN WRITE: {canWrite ? "YES" : "NO"}
+      </div>
 
       {err && <div style={msgErr}>{err}</div>}
       {ok && <div style={msgOk}>{ok}</div>}
 
-      {/* Form Card */}
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0, color: "#111" }}>
-            {isEditing ? `Edit Item (${editingCode})` : "Create Item"}
+            {isViewer
+              ? viewingCode
+                ? `View Item (${viewingCode})`
+                : "Item Details"
+              : isEditing
+              ? `Edit Item (${editingCode})`
+              : isViewing
+              ? `View Item (${viewingCode})`
+              : "Create Item"}
           </h3>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -207,9 +282,9 @@ export default function ItemMaster() {
               Refresh
             </button>
 
-            {isEditing && (
+            {(isEditing || isViewing) && (
               <button onClick={cancelEdit} style={btnGhost} disabled={saving}>
-                Cancel Edit
+                {isViewer ? "Clear View" : isEditing ? "Cancel Edit" : "Clear View"}
               </button>
             )}
           </div>
@@ -217,10 +292,18 @@ export default function ItemMaster() {
 
         <div style={{ height: 12 }} />
 
+        {isViewer && (
+          <div style={readOnlyBanner}>
+            VIEWER MODE: You can view item details, but you cannot create, edit, or delete items.
+          </div>
+        )}
+
+        <div style={{ height: 12 }} />
+
         <div style={sectionTitle}>Item Details</div>
 
         <div style={grid2}>
-          {isEditing ? (
+          {isEditing || isViewing ? (
             <Field
               label="Item Code"
               value={form.item_code}
@@ -231,8 +314,14 @@ export default function ItemMaster() {
           ) : (
             <div>
               <div style={lbl}>Item Code</div>
-              <div style={autoCodeBox}>Auto-generated on save</div>
-              <div style={hintTxt}>The system will generate the next item code automatically.</div>
+              <div style={autoCodeBox}>
+                {isViewer ? "Visible after selecting an item" : "Auto-generated on save"}
+              </div>
+              <div style={hintTxt}>
+                {isViewer
+                  ? "Select an item from the list to view the item code."
+                  : "The system will generate the next item code automatically."}
+              </div>
             </div>
           )}
 
@@ -241,6 +330,7 @@ export default function ItemMaster() {
             value={form.item_name}
             onChange={(e) => update("item_name", e.target.value)}
             placeholder="Item Name"
+            readOnly={!canWrite}
           />
         </div>
 
@@ -254,6 +344,7 @@ export default function ItemMaster() {
             value={form.units}
             onChange={(e) => update("units", e.target.value)}
             placeholder="pcs / kg / box"
+            readOnly={!canWrite}
           />
           <Field
             label="Opening Balance"
@@ -261,6 +352,7 @@ export default function ItemMaster() {
             value={form.opening_balance}
             onChange={(e) => update("opening_balance", e.target.value)}
             placeholder="0"
+            readOnly={!canWrite}
           />
           <Field
             label="Cost Price"
@@ -268,6 +360,7 @@ export default function ItemMaster() {
             value={form.cost_price}
             onChange={(e) => update("cost_price", e.target.value)}
             placeholder="0.00"
+            readOnly={!canWrite}
           />
         </div>
 
@@ -280,31 +373,33 @@ export default function ItemMaster() {
             value={form.selling_price}
             onChange={(e) => update("selling_price", e.target.value)}
             placeholder="0.00"
+            readOnly={!canWrite}
           />
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <button onClick={saveOrUpdate} style={btnPrimary} disabled={saving}>
-            {saving ? "Saving..." : saveLabel}
-          </button>
+        {canWrite && (
+          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+            <button onClick={saveOrUpdate} style={btnPrimary} disabled={saving}>
+              {saving ? "Saving..." : saveLabel}
+            </button>
 
-          <button
-            onClick={clearCreateForm}
-            disabled={isEditing || saving}
-            style={{
-              ...btnGhost,
-              cursor: isEditing || saving ? "not-allowed" : "pointer",
-              opacity: isEditing || saving ? 0.6 : 1,
-            }}
-          >
-            Clear
-          </button>
-        </div>
+            <button
+              onClick={clearCreateForm}
+              disabled={isEditing || saving}
+              style={{
+                ...btnGhost,
+                cursor: isEditing || saving ? "not-allowed" : "pointer",
+                opacity: isEditing || saving ? 0.6 : 1,
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ height: 14 }} />
 
-      {/* List Card */}
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0, color: "#111" }}>Items List</h3>
@@ -355,12 +450,20 @@ export default function ItemMaster() {
                   </td>
                   <td align="center">
                     <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                      <button onClick={() => startEdit(r)} style={btnMini} disabled={saving}>
-                        Edit
+                      <button onClick={() => startView(r)} style={btnViewMini} disabled={saving}>
+                        View
                       </button>
-                      <button onClick={() => remove(r.item_code)} style={btnDangerMini} disabled={saving}>
-                        Delete
-                      </button>
+
+                      {canWrite && (
+                        <>
+                          <button onClick={() => startEdit(r)} style={btnMini} disabled={saving}>
+                            Edit
+                          </button>
+                          <button onClick={() => remove(r.item_code)} style={btnDangerMini} disabled={saving}>
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -378,7 +481,15 @@ export default function ItemMaster() {
         </div>
 
         <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-          Tip: Tap <b>Edit</b> to load an item into the form, then press <b>Update Item</b>.
+          {canWrite ? (
+            <>
+              Tip: Tap <b>Edit</b> to load an item into the form, then press <b>Update Item</b>.
+            </>
+          ) : (
+            <>
+              Tip: Tap <b>View</b> to load item details in read-only mode.
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -407,6 +518,7 @@ const inp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+  boxSizing: "border-box",
 };
 
 const autoCodeBox = {
@@ -429,6 +541,7 @@ const searchInp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+  boxSizing: "border-box",
 };
 
 const grid1 = {
@@ -479,6 +592,16 @@ const btnMini = {
   fontWeight: 900,
 };
 
+const btnViewMini = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #4b5563",
+  background: "#4b5563",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
 const btnDangerMini = {
   padding: "8px 12px",
   borderRadius: 10,
@@ -505,4 +628,24 @@ const msgOk = {
   borderRadius: 12,
   color: "#0a6a0a",
   marginBottom: 12,
+};
+
+const readOnlyBanner = {
+  background: "#f4f7ff",
+  border: "1px solid #cdd9ff",
+  padding: 10,
+  borderRadius: 12,
+  color: "#1d3f91",
+  fontWeight: 700,
+  marginBottom: 4,
+};
+
+const debugBox = {
+  background: "#fff7d6",
+  border: "1px solid #e5d37a",
+  padding: 10,
+  borderRadius: 12,
+  color: "#5c4700",
+  marginBottom: 12,
+  fontWeight: 800,
 };
