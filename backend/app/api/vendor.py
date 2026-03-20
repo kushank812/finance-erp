@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.auth import require_operator_or_admin
+from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
 from app.models.vendor import Vendor
 from app.models.purchase_invoice import PurchaseInvoiceHdr
@@ -36,7 +36,7 @@ def vendor_snapshot(obj: Vendor) -> dict:
 @router.get("/", response_model=list[VendorOut])
 def list_vendors(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     return db.query(Vendor).order_by(Vendor.vendor_code).all()
 
@@ -45,7 +45,7 @@ def list_vendors(
 def get_vendor(
     vendor_code: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     obj = db.get(Vendor, vendor_code.strip().upper())
     if not obj:
@@ -57,7 +57,7 @@ def get_vendor(
 def get_vendor_statement(
     vendor_code: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     vendor_code = vendor_code.strip().upper()
 
@@ -169,7 +169,6 @@ def update_vendor(
     old_values = vendor_snapshot(obj)
     data = normalize_upper(payload.model_dump(exclude_unset=True))
 
-    # never allow vendor code change from update payload
     data.pop("vendor_code", None)
 
     for k, v in data.items():
