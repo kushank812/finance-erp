@@ -239,14 +239,6 @@ export default function AuditLogs() {
     return String(rows.length);
   }, [loading, rows.length]);
 
-  const visibleModuleOptions = useMemo(() => {
-    return ["", ...moduleOptions];
-  }, [moduleOptions]);
-
-  const visibleActionOptions = useMemo(() => {
-    return ["", ...actionOptions];
-  }, [actionOptions]);
-
   return (
     <div style={pageWrap}>
       <div style={heroCard}>
@@ -275,6 +267,38 @@ export default function AuditLogs() {
               placeholder="ADMIN"
               style={inputStyle}
             />
+          </Field>
+
+          <Field label="Module">
+            <select
+              value={filters.module}
+              onChange={(e) => setFilter("module", e.target.value)}
+              style={inputStyle}
+              disabled={metaLoading}
+            >
+              <option value="">ALL MODULES</option>
+              {moduleOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {prettifyEnum(opt)}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Action">
+            <select
+              value={filters.action}
+              onChange={(e) => setFilter("action", e.target.value)}
+              style={inputStyle}
+              disabled={metaLoading}
+            >
+              <option value="">ALL ACTIONS</option>
+              {actionOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {prettifyEnum(opt)}
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field label="Record ID">
@@ -315,52 +339,6 @@ export default function AuditLogs() {
               <option value="200">200</option>
               <option value="500">500</option>
             </select>
-          </Field>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <Field label="Module">
-            <div style={chipBox(metaLoading)}>
-              {visibleModuleOptions.map((opt) => {
-                const label = opt ? prettifyEnum(opt) : "ALL MODULES";
-                const active = filters.module === opt;
-
-                return (
-                  <button
-                    key={opt || "__ALL_MODULES__"}
-                    type="button"
-                    onClick={() => setFilter("module", opt)}
-                    disabled={metaLoading}
-                    style={chipStyle(active)}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <Field label="Action">
-            <div style={chipBox(metaLoading)}>
-              {visibleActionOptions.map((opt) => {
-                const label = opt ? prettifyEnum(opt) : "ALL ACTIONS";
-                const active = filters.action === opt;
-
-                return (
-                  <button
-                    key={opt || "__ALL_ACTIONS__"}
-                    type="button"
-                    onClick={() => setFilter("action", opt)}
-                    disabled={metaLoading}
-                    style={chipStyle(active)}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
           </Field>
         </div>
 
@@ -603,36 +581,6 @@ const inputStyle = {
   boxSizing: "border-box",
   fontSize: 14,
 };
-
-const chipBox = (disabled) => ({
-  width: "100%",
-  padding: 12,
-  borderRadius: 16,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.04)",
-  boxSizing: "border-box",
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  opacity: disabled ? 0.75 : 1,
-});
-
-const chipStyle = (active) => ({
-  border: active
-    ? "1px solid rgba(75,130,255,0.70)"
-    : "1px solid rgba(255,255,255,0.12)",
-  background: active
-    ? "linear-gradient(180deg, #2b6cff, #1147c8)"
-    : "rgba(255,255,255,0.05)",
-  color: "#ffffff",
-  borderRadius: 999,
-  padding: "10px 14px",
-  fontSize: 13,
-  fontWeight: 800,
-  cursor: "pointer",
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
-});
 
 const buttonRow = {
   display: "flex",
