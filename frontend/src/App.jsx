@@ -580,7 +580,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
         />
 
         <Route
-          path="/receipt/view/:invoiceNo"
+          path="/receipt/view/:receiptNo"
           element={
             <DocumentViewRoute
               authReady={authReady}
