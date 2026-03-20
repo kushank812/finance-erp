@@ -6,6 +6,14 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+function sortRowsByDate(list) {
+  return [...list].sort((a, b) => {
+    const da = new Date(a?.date || 0).getTime();
+    const db = new Date(b?.date || 0).getTime();
+    return da - db;
+  });
+}
+
 export default function Statement() {
   const [mode, setMode] = useState("CUSTOMER"); // CUSTOMER | VENDOR
 
@@ -35,21 +43,82 @@ export default function Statement() {
       setCustomers(cList);
       setVendors(vList);
 
-      if (cList.length > 0 && !customerCode) {
-        setCustomerCode(cList[0].customer_code);
-      }
-
-      if (vList.length > 0 && !vendorCode) {
-        setVendorCode(vList[0].vendor_code);
-      }
+      // DO NOT auto-select first customer/vendor
+      // user must choose manually
     } catch (e) {
       setErr(String(e.message || e));
     }
   }
 
+  async function loadAllStatements(type) {
+    setErr("");
+    setLoading(true);
+
+    try {
+      if (type === "CUSTOMER") {
+        const codes = customers.map((c) => c.customer_code).filter(Boolean);
+
+        if (codes.length === 0) {
+          setRows([]);
+          return;
+        }
+
+        const results = await Promise.all(
+          codes.map(async (code) => {
+            try {
+              const data = await apiGet(
+                `/customers/${encodeURIComponent(code)}/statement`
+              );
+              const list = Array.isArray(data) ? data : [];
+              return list.map((row) => ({
+                ...row,
+                customer_code: code,
+              }));
+            } catch {
+              return [];
+            }
+          })
+        );
+
+        setRows(sortRowsByDate(results.flat()));
+      } else {
+        const codes = vendors.map((v) => v.vendor_code).filter(Boolean);
+
+        if (codes.length === 0) {
+          setRows([]);
+          return;
+        }
+
+        const results = await Promise.all(
+          codes.map(async (code) => {
+            try {
+              const data = await apiGet(
+                `/vendors/${encodeURIComponent(code)}/statement`
+              );
+              const list = Array.isArray(data) ? data : [];
+              return list.map((row) => ({
+                ...row,
+                vendor_code: code,
+              }));
+            } catch {
+              return [];
+            }
+          })
+        );
+
+        setRows(sortRowsByDate(results.flat()));
+      }
+    } catch (e) {
+      setErr(String(e.message || e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadStatement(type, code) {
     if (!code) {
-      setRows([]);
+      await loadAllStatements(type);
       return;
     }
 
@@ -62,7 +131,8 @@ export default function Statement() {
           : `/vendors/${encodeURIComponent(code)}/statement`;
 
       const data = await apiGet(url);
-      setRows(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setRows(sortRowsByDate(list));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -76,13 +146,24 @@ export default function Statement() {
   }, []);
 
   useEffect(() => {
+    if (mode === "CUSTOMER" && customers.length > 0 && !customerCode) {
+      loadAllStatements("CUSTOMER");
+    }
+    if (mode === "VENDOR" && vendors.length > 0 && !vendorCode) {
+      loadAllStatements("VENDOR");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, customers, vendors]);
+
+  useEffect(() => {
     if (mode === "CUSTOMER" && customerCode) {
       loadStatement("CUSTOMER", customerCode);
     }
     if (mode === "VENDOR" && vendorCode) {
       loadStatement("VENDOR", vendorCode);
     }
-  }, [mode, customerCode, vendorCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerCode, vendorCode]);
 
   const filteredCustomers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -128,11 +209,21 @@ export default function Statement() {
     return vendors.find((v) => v.vendor_code === vendorCode) || null;
   }, [vendors, vendorCode]);
 
-  const pageTitle = mode === "CUSTOMER" ? "Customer Statement" : "Vendor Statement";
+  const pageTitle =
+    mode === "CUSTOMER" ? "Customer Statement" : "Vendor Statement";
+
   const pageDesc =
     mode === "CUSTOMER"
       ? "View invoice and receipt movement with running balance."
       : "View purchase bill and vendor payment movement with running balance.";
+
+  async function handleRefresh() {
+    if (mode === "CUSTOMER") {
+      await loadStatement("CUSTOMER", customerCode);
+    } else {
+      await loadStatement("VENDOR", vendorCode);
+    }
+  }
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
@@ -142,10 +233,22 @@ export default function Statement() {
       {err && <div style={msgErr}>{err}</div>}
 
       <div style={topTabs}>
-        <button onClick={() => setMode("CUSTOMER")} style={tabBtn(mode === "CUSTOMER")}>
+        <button
+          onClick={() => {
+            setMode("CUSTOMER");
+            setSearch("");
+          }}
+          style={tabBtn(mode === "CUSTOMER")}
+        >
           Customer Statement
         </button>
-        <button onClick={() => setMode("VENDOR")} style={tabBtn(mode === "VENDOR")}>
+        <button
+          onClick={() => {
+            setMode("VENDOR");
+            setSearch("");
+          }}
+          style={tabBtn(mode === "VENDOR")}
+        >
           Vendor Statement
         </button>
       </div>
@@ -176,7 +279,7 @@ export default function Statement() {
                   onChange={(e) => setCustomerCode(e.target.value)}
                   style={inp}
                 >
-                  <option value="">Select customer</option>
+                  <option value="">ALL CUSTOMERS</option>
                   {filteredCustomers.map((c) => (
                     <option key={c.customer_code} value={c.customer_code}>
                       {c.customer_code} - {c.customer_name}
@@ -189,7 +292,7 @@ export default function Statement() {
                   onChange={(e) => setVendorCode(e.target.value)}
                   style={inp}
                 >
-                  <option value="">Select vendor</option>
+                  <option value="">ALL VENDORS</option>
                   {filteredVendors.map((v) => (
                     <option key={v.vendor_code} value={v.vendor_code}>
                       {v.vendor_code} - {v.vendor_name}
@@ -200,13 +303,7 @@ export default function Statement() {
             </div>
           </div>
 
-          <button
-            onClick={() =>
-              loadStatement(mode, mode === "CUSTOMER" ? customerCode : vendorCode)
-            }
-            style={btnGhost}
-            disabled={loading || (mode === "CUSTOMER" ? !customerCode : !vendorCode)}
-          >
+          <button onClick={handleRefresh} style={btnGhost} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
@@ -221,10 +318,13 @@ export default function Statement() {
                 value={
                   selectedCustomer
                     ? `${selectedCustomer.customer_code} - ${selectedCustomer.customer_name}`
-                    : "-"
+                    : "ALL CUSTOMERS"
                 }
               />
-              <InfoMini title="Address" value={selectedCustomer?.address_line1 || "-"} />
+              <InfoMini
+                title="Address"
+                value={selectedCustomer?.address_line1 || "-"}
+              />
             </>
           ) : (
             <>
@@ -233,10 +333,13 @@ export default function Statement() {
                 value={
                   selectedVendor
                     ? `${selectedVendor.vendor_code} - ${selectedVendor.vendor_name}`
-                    : "-"
+                    : "ALL VENDORS"
                 }
               />
-              <InfoMini title="Address" value={selectedVendor?.address_line1 || "-"} />
+              <InfoMini
+                title="Address"
+                value={selectedVendor?.address_line1 || "-"}
+              />
             </>
           )}
         </div>
@@ -252,7 +355,11 @@ export default function Statement() {
         <div style={{ height: 12 }} />
 
         <div style={{ overflowX: "auto" }}>
-          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 900 }}>
+          <table
+            width="100%"
+            cellPadding="10"
+            style={{ borderCollapse: "collapse", minWidth: 900 }}
+          >
             <thead>
               <tr style={{ background: "#f6f7f9" }}>
                 <th align="left">Date</th>
@@ -265,7 +372,10 @@ export default function Statement() {
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={`${r.doc_no}-${r.type}-${i}`} style={{ borderTop: "1px solid #eee" }}>
+                <tr
+                  key={`${r.doc_no}-${r.type}-${i}`}
+                  style={{ borderTop: "1px solid #eee" }}
+                >
                   <td style={{ color: "#111" }}>{String(r.date || "")}</td>
                   <td style={{ color: "#111", fontWeight: 900 }}>{r.doc_no}</td>
                   <td style={{ color: "#111" }}>{r.type}</td>
