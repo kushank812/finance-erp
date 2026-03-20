@@ -90,6 +90,49 @@ function actionBadgeStyle(action) {
   }
 }
 
+function parseUserAgent(ua) {
+  if (!ua) {
+    return {
+      browser: "—",
+      os: "—",
+      device: "—",
+      summary: "—",
+      raw: "—",
+    };
+  }
+
+  const text = String(ua);
+
+  let browser = "Unknown Browser";
+  let os = "Unknown OS";
+  let device = "Desktop";
+
+  if (/Edg\//i.test(text)) browser = "Microsoft Edge";
+  else if (/OPR\//i.test(text) || /Opera/i.test(text)) browser = "Opera";
+  else if (/Chrome\//i.test(text) && !/Edg\//i.test(text)) browser = "Chrome";
+  else if (/Firefox\//i.test(text)) browser = "Firefox";
+  else if (/Safari\//i.test(text) && !/Chrome\//i.test(text)) browser = "Safari";
+
+  if (/Windows NT 10\.0/i.test(text)) os = "Windows 10/11";
+  else if (/Windows/i.test(text)) os = "Windows";
+  else if (/Android/i.test(text)) os = "Android";
+  else if (/iPhone|iPad|iPod/i.test(text)) os = "iOS";
+  else if (/Mac OS X/i.test(text)) os = "macOS";
+  else if (/Linux/i.test(text)) os = "Linux";
+
+  if (/Mobile/i.test(text)) device = "Mobile";
+  else if (/Tablet|iPad/i.test(text)) device = "Tablet";
+  else device = "Desktop";
+
+  return {
+    browser,
+    os,
+    device,
+    summary: `${browser} • ${os} • ${device}`,
+    raw: text,
+  };
+}
+
 const fallbackModuleOptions = [
   "USER",
   "CUSTOMER",
@@ -238,6 +281,8 @@ export default function AuditLogs() {
     if (loading) return "…";
     return String(rows.length);
   }, [loading, rows.length]);
+
+  const parsedAgent = useMemo(() => parseUserAgent(selected?.user_agent), [selected]);
 
   return (
     <div style={pageWrap}>
@@ -439,14 +484,33 @@ export default function AuditLogs() {
 
             <Detail label="Log ID" value={selected.id} />
             <Detail label="Created At" value={fmtDateTime(selected.created_at)} />
-            <Detail label="User ID" value={selected.user_id} />
+            <Detail label="User ID" value={selected.user_id} scrollable />
             <Detail label="Module" value={prettifyEnum(selected.module)} />
             <Detail label="Action" value={prettifyEnum(selected.action)} />
-            <Detail label="Record ID" value={selected.record_id} />
-            <Detail label="Record Name" value={selected.record_name} />
-            <Detail label="Details" value={selected.details} />
-            <Detail label="IP Address" value={selected.ip_address} />
-            <Detail label="User Agent" value={selected.user_agent} />
+            <Detail label="Record ID" value={selected.record_id} scrollable />
+            <Detail label="Record Name" value={selected.record_name} scrollable />
+            <Detail label="Details" value={selected.details} scrollable />
+
+            <div style={infoPanel}>
+              <div style={infoPanelTitle}>Device & Session</div>
+
+              <div style={infoGrid}>
+                <MiniInfoCard label="Browser" value={parsedAgent.browser} />
+                <MiniInfoCard label="Operating System" value={parsedAgent.os} />
+                <MiniInfoCard label="Device" value={parsedAgent.device} />
+                <MiniInfoCard label="IP Address" value={selected.ip_address || "—"} scrollable />
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <div style={detailLabel}>User Agent Summary</div>
+                <div style={agentSummaryBox}>{parsedAgent.summary}</div>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <div style={detailLabel}>Raw User Agent</div>
+                <div style={scrollValueBox}>{parsedAgent.raw}</div>
+              </div>
+            </div>
 
             <div style={{ marginTop: 18 }}>
               <div style={subHeading}>Old Values</div>
@@ -473,11 +537,20 @@ function Field({ label, children }) {
   );
 }
 
-function Detail({ label, value }) {
+function Detail({ label, value, scrollable = false }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={detailLabel}>{label}</div>
-      <div style={detailValue}>{value || "—"}</div>
+      <div style={scrollable ? scrollValueBox : detailValue}>{value || "—"}</div>
+    </div>
+  );
+}
+
+function MiniInfoCard({ label, value, scrollable = false }) {
+  return (
+    <div style={miniInfoCard}>
+      <div style={miniInfoLabel}>{label}</div>
+      <div style={scrollable ? miniInfoValueScroll : miniInfoValue}>{value || "—"}</div>
     </div>
   );
 }
@@ -883,6 +956,89 @@ const detailValue = {
   fontSize: 14,
   lineHeight: 1.5,
   wordBreak: "break-word",
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
+};
+
+const scrollValueBox = {
+  color: "#ffffff",
+  fontSize: 14,
+  lineHeight: 1.5,
+  padding: "10px 12px",
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  overflowX: "auto",
+  overflowY: "hidden",
+  whiteSpace: "nowrap",
+  maxWidth: "100%",
+};
+
+const infoPanel = {
+  marginTop: 16,
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(255,255,255,0.07)",
+};
+
+const infoPanelTitle = {
+  color: "#ffffff",
+  fontSize: 14,
+  fontWeight: 900,
+  marginBottom: 12,
+};
+
+const infoGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 10,
+};
+
+const miniInfoCard = {
+  padding: 12,
+  borderRadius: 14,
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  minWidth: 0,
+};
+
+const miniInfoLabel = {
+  color: "#8ea6d6",
+  fontSize: 10,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: 0.8,
+  marginBottom: 6,
+};
+
+const miniInfoValue = {
+  color: "#ffffff",
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1.4,
+  wordBreak: "break-word",
+};
+
+const miniInfoValueScroll = {
+  color: "#ffffff",
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1.4,
+  overflowX: "auto",
+  overflowY: "hidden",
+  whiteSpace: "nowrap",
+};
+
+const agentSummaryBox = {
+  padding: "10px 12px",
+  borderRadius: 12,
+  background: "rgba(43,108,255,0.10)",
+  border: "1px solid rgba(75,130,255,0.20)",
+  color: "#dce7ff",
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1.5,
 };
 
 const subHeading = {
