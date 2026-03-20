@@ -1,6 +1,5 @@
-from sqlalchemy.orm import Session
 from sqlalchemy import select
-from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 from app.models.number_sequence import NumberSequence
 
@@ -19,7 +18,6 @@ def get_next_number(db: Session, key_name: str) -> str:
         raise ValueError(f"Sequence '{key_name}' not found")
 
     seq.last_value += 1
+    db.flush()
 
-    next_number = f"{seq.prefix}{str(seq.last_value).zfill(seq.padding)}"
-
-    return next_number
+    return f"{seq.prefix}{str(seq.last_value).zfill(seq.padding)}"
