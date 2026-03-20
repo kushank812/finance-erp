@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../api/client";
 
 function fmtDateTime(value) {
@@ -270,35 +270,35 @@ export default function AuditLogs() {
           </Field>
 
           <Field label="Module">
-            <select
+            <InlineDropdown
               value={filters.module}
-              onChange={(e) => setFilter("module", e.target.value)}
-              style={inputStyle}
+              onChange={(value) => setFilter("module", value)}
+              options={[
+                { value: "", label: "ALL MODULES" },
+                ...moduleOptions.map((opt) => ({
+                  value: opt,
+                  label: prettifyEnum(opt),
+                })),
+              ]}
+              placeholder="ALL MODULES"
               disabled={metaLoading}
-            >
-              <option value="">ALL MODULES</option>
-              {moduleOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {prettifyEnum(opt)}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
 
           <Field label="Action">
-            <select
+            <InlineDropdown
               value={filters.action}
-              onChange={(e) => setFilter("action", e.target.value)}
-              style={inputStyle}
+              onChange={(value) => setFilter("action", value)}
+              options={[
+                { value: "", label: "ALL ACTIONS" },
+                ...actionOptions.map((opt) => ({
+                  value: opt,
+                  label: prettifyEnum(opt),
+                })),
+              ]}
+              placeholder="ALL ACTIONS"
               disabled={metaLoading}
-            >
-              <option value="">ALL ACTIONS</option>
-              {actionOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {prettifyEnum(opt)}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
 
           <Field label="Record ID">
@@ -329,16 +329,17 @@ export default function AuditLogs() {
           </Field>
 
           <Field label="Limit">
-            <select
+            <InlineDropdown
               value={filters.limit}
-              onChange={(e) => setFilter("limit", e.target.value)}
-              style={inputStyle}
-            >
-              <option value="50">50</option>
-              <option value="100">100</option>
-              <option value="200">200</option>
-              <option value="500">500</option>
-            </select>
+              onChange={(value) => setFilter("limit", value)}
+              options={[
+                { value: "50", label: "50" },
+                { value: "100", label: "100" },
+                { value: "200", label: "200" },
+                { value: "500", label: "500" },
+              ]}
+              placeholder="100"
+            />
           </Field>
         </div>
 
@@ -481,6 +482,80 @@ function Detail({ label, value }) {
   );
 }
 
+function InlineDropdown({
+  value,
+  onChange,
+  options = [],
+  placeholder = "Select",
+  disabled = false,
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    function handleOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+
+    function handleEsc(e) {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleEsc);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, []);
+
+  const selectedOption = options.find((opt) => opt.value === value);
+  const visibleLabel = selectedOption?.label || placeholder;
+
+  return (
+    <div ref={wrapRef} style={dropdownWrap}>
+      <button
+        type="button"
+        onClick={() => {
+          if (!disabled) setOpen((prev) => !prev);
+        }}
+        disabled={disabled}
+        style={dropdownTrigger(open, disabled)}
+      >
+        <span style={dropdownValue}>{visibleLabel}</span>
+        <span style={dropdownArrow(open)}>▾</span>
+      </button>
+
+      {open ? (
+        <div style={dropdownMenu}>
+          {options.map((opt) => {
+            const isSelected = opt.value === value;
+
+            return (
+              <button
+                key={`${opt.value}-${opt.label}`}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+                style={dropdownItem(isSelected)}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const pageWrap = {
   display: "grid",
   gap: 18,
@@ -545,6 +620,7 @@ const filterCard = {
   borderRadius: 22,
   padding: 18,
   boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+  overflow: "visible",
 };
 
 const sectionTitle = {
@@ -558,6 +634,7 @@ const filterGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 14,
+  overflow: "visible",
 };
 
 const labelStyle = {
@@ -580,7 +657,80 @@ const inputStyle = {
   outline: "none",
   boxSizing: "border-box",
   fontSize: 14,
+  minHeight: 46,
 };
+
+const dropdownWrap = {
+  position: "relative",
+  width: "100%",
+};
+
+const dropdownTrigger = (open, disabled) => ({
+  width: "100%",
+  padding: "11px 12px",
+  borderRadius: 12,
+  border: open
+    ? "1px solid rgba(75,130,255,0.55)"
+    : "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  color: "#ffffff",
+  outline: "none",
+  boxSizing: "border-box",
+  fontSize: 14,
+  minHeight: 46,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  cursor: disabled ? "not-allowed" : "pointer",
+  boxShadow: open ? "0 0 0 2px rgba(52, 108, 255, 0.12)" : "none",
+  opacity: disabled ? 0.65 : 1,
+});
+
+const dropdownValue = {
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  textOverflow: "ellipsis",
+  textAlign: "left",
+  flex: 1,
+};
+
+const dropdownArrow = (open) => ({
+  color: "#cfdcff",
+  fontSize: 12,
+  lineHeight: 1,
+  transform: open ? "rotate(180deg)" : "rotate(0deg)",
+  transition: "transform 0.18s ease",
+  flexShrink: 0,
+});
+
+const dropdownMenu = {
+  position: "absolute",
+  top: "calc(100% + 6px)",
+  left: 0,
+  right: 0,
+  background: "rgba(16,24,43,0.99)",
+  border: "1px solid rgba(75,130,255,0.35)",
+  borderRadius: 12,
+  boxShadow: "0 16px 36px rgba(0,0,0,0.35)",
+  zIndex: 1000,
+  overflow: "hidden",
+  maxHeight: 280,
+  overflowY: "auto",
+  backdropFilter: "blur(6px)",
+};
+
+const dropdownItem = (selected) => ({
+  width: "100%",
+  border: "none",
+  background: selected ? "rgba(50,110,255,0.22)" : "transparent",
+  color: selected ? "#ffffff" : "#d9e5ff",
+  padding: "12px 12px",
+  textAlign: "left",
+  fontSize: 14,
+  cursor: "pointer",
+  borderBottom: "1px solid rgba(255,255,255,0.04)",
+});
 
 const buttonRow = {
   display: "flex",
