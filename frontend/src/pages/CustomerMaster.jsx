@@ -57,14 +57,27 @@ const empty = {
 };
 
 function Label({ text }) {
-  return <div style={{ fontSize: 13, color: "#111", fontWeight: 800, marginBottom: 6 }}>{text}</div>;
+  return (
+    <div style={{ fontSize: 13, color: "#111", fontWeight: 800, marginBottom: 6 }}>
+      {text}
+    </div>
+  );
 }
 
 function Hint({ text }) {
   return <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>{text}</div>;
 }
 
-function Field({ label, value, onChange, placeholder, type = "text", hint, disabled }) {
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  hint,
+  disabled,
+  readOnly = false,
+}) {
   return (
     <div>
       <Label text={label} />
@@ -74,10 +87,11 @@ function Field({ label, value, onChange, placeholder, type = "text", hint, disab
         placeholder={placeholder}
         type={type}
         disabled={disabled}
+        readOnly={readOnly}
         style={{
           ...inp,
-          background: disabled ? "#f4f4f4" : "#fff",
-          cursor: disabled ? "not-allowed" : "text",
+          background: disabled || readOnly ? "#f4f4f4" : "#fff",
+          cursor: disabled || readOnly ? "not-allowed" : "text",
         }}
       />
       {hint ? <Hint text={hint} /> : null}
@@ -85,11 +99,28 @@ function Field({ label, value, onChange, placeholder, type = "text", hint, disab
   );
 }
 
-function SelectField({ label, value, onChange, options, placeholder, hint }) {
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  hint,
+  disabled = false,
+}) {
   return (
     <div>
       <Label text={label} />
-      <select value={value ?? ""} onChange={onChange} style={inp}>
+      <select
+        value={value ?? ""}
+        onChange={onChange}
+        disabled={disabled}
+        style={{
+          ...inp,
+          background: disabled ? "#f4f4f4" : "#fff",
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
         <option value="">{placeholder || "-- Select --"}</option>
         {options.map((opt) => (
           <option key={opt} value={opt}>
@@ -107,13 +138,21 @@ export default function CustomerMaster() {
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
-  const [mode, setMode] = useState("create"); // "create" | "edit"
+  const [mode, setMode] = useState("create"); // "create" | "edit" | "view"
   const [editingCode, setEditingCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
 
   const isEditing = mode === "edit";
-  const saveLabel = useMemo(() => (isEditing ? "Update Customer" : "Save Customer"), [isEditing]);
+  const isViewing = mode === "view";
+  const isViewer = currentUser?.role === "VIEWER";
+  const canWrite = currentUser?.role === "ADMIN" || currentUser?.role === "OPERATOR";
+
+  const saveLabel = useMemo(
+    () => (isEditing ? "Update Customer" : "Save Customer"),
+    [isEditing]
+  );
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -141,17 +180,28 @@ export default function CustomerMaster() {
     }
   }
 
+  async function loadCurrentUser() {
+    try {
+      const me = await apiGet("/auth/me");
+      setCurrentUser(me || null);
+    } catch {
+      setCurrentUser(null);
+    }
+  }
+
   useEffect(() => {
+    loadCurrentUser();
     load();
   }, []);
 
   function update(key, val) {
+    if (!canWrite) return;
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
   function resetForm() {
     setForm({ ...empty });
-    setMode("create");
+    setMode(isViewer ? "view" : "create");
     setEditingCode("");
     setErr("");
     setOk("");
@@ -190,10 +240,18 @@ export default function CustomerMaster() {
   }
 
   async function save() {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+
     setErr("");
     setOk("");
 
-    if (!form.customer_name?.trim()) return setErr("Customer Name is required.");
+    if (!form.customer_name?.trim()) {
+      setErr("Customer Name is required.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -216,10 +274,10 @@ export default function CustomerMaster() {
     }
   }
 
-  function startEdit(row) {
+  function loadIntoForm(row, nextMode = "view") {
     setErr("");
     setOk("");
-    setMode("edit");
+    setMode(nextMode);
     setEditingCode(row.customer_code);
 
     setForm({
@@ -231,7 +289,24 @@ export default function CustomerMaster() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function startEdit(row) {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+    loadIntoForm(row, "edit");
+  }
+
+  function startView(row) {
+    loadIntoForm(row, "view");
+  }
+
   async function del(code) {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+
     setErr("");
     setOk("");
     const yes = window.confirm(`Delete customer "${code}"?`);
@@ -243,7 +318,9 @@ export default function CustomerMaster() {
       setOk(`✅ Customer "${code}" deleted.`);
       await load();
 
-      if (isEditing && editingCode === code) resetForm();
+      if ((isEditing || isViewing) && editingCode === code) {
+        resetForm();
+      }
     } catch (e) {
       setErr(String(e?.message || e));
     } finally {
@@ -255,16 +332,33 @@ export default function CustomerMaster() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
       <h2 style={{ margin: 0, color: "#fff" }}>Customer Master</h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Create, edit, delete and view customers.
+        {isViewer
+          ? "View customer list and details in read-only mode."
+          : "Create, edit, delete and view customers."}
       </p>
 
       {err && <div style={msgErr}>{err}</div>}
       {ok && <div style={msgOk}>{ok}</div>}
 
       <div style={card}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <h3 style={{ margin: 0, color: "#111" }}>
-            {isEditing ? `Edit Customer (${editingCode})` : "Create Customer"}
+            {isViewer
+              ? editingCode
+                ? `View Customer (${editingCode})`
+                : "Customer Details"
+              : isEditing
+              ? `Edit Customer (${editingCode})`
+              : isViewing
+              ? `View Customer (${editingCode})`
+              : "Create Customer"}
           </h3>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -272,9 +366,9 @@ export default function CustomerMaster() {
               Refresh
             </button>
 
-            {isEditing && (
+            {(isEditing || isViewing) && (
               <button onClick={resetForm} style={btnGhost} disabled={saving}>
-                Cancel Edit
+                {isViewer ? "Clear View" : isEditing ? "Cancel Edit" : "Clear View"}
               </button>
             )}
           </div>
@@ -282,9 +376,18 @@ export default function CustomerMaster() {
 
         <div style={{ height: 12 }} />
 
+        {isViewer && (
+          <div style={readOnlyBanner}>
+            VIEWER MODE: You can view customer details, but you cannot create, edit, or
+            delete customers.
+          </div>
+        )}
+
+        <div style={{ height: 12 }} />
+
         <div style={sectionTitle}>Customer Details</div>
         <div style={grid2}>
-          {isEditing ? (
+          {isEditing || isViewing ? (
             <Field
               label="Customer Code"
               value={form.customer_code}
@@ -296,8 +399,16 @@ export default function CustomerMaster() {
           ) : (
             <div>
               <Label text="Customer Code" />
-              <div style={autoCodeBox}>Auto-generated on save</div>
-              <Hint text="The system will generate the next customer code automatically." />
+              <div style={autoCodeBox}>
+                {isViewer ? "Visible after selecting a customer" : "Auto-generated on save"}
+              </div>
+              <Hint
+                text={
+                  isViewer
+                    ? "Select a customer from the list to view the customer code."
+                    : "The system will generate the next customer code automatically."
+                }
+              />
             </div>
           )}
 
@@ -306,6 +417,7 @@ export default function CustomerMaster() {
             value={form.customer_name}
             onChange={(e) => update("customer_name", e.target.value)}
             placeholder="Customer Name"
+            readOnly={!canWrite}
           />
         </div>
 
@@ -317,16 +429,19 @@ export default function CustomerMaster() {
             label="Address Line 1"
             value={form.customer_address_line1}
             onChange={(e) => update("customer_address_line1", e.target.value)}
+            readOnly={!canWrite}
           />
           <Field
             label="Address Line 2"
             value={form.customer_address_line2}
             onChange={(e) => update("customer_address_line2", e.target.value)}
+            readOnly={!canWrite}
           />
           <Field
             label="Address Line 3"
             value={form.customer_address_line3}
             onChange={(e) => update("customer_address_line3", e.target.value)}
+            readOnly={!canWrite}
           />
         </div>
 
@@ -334,19 +449,26 @@ export default function CustomerMaster() {
 
         <div style={sectionTitle}>Location Details</div>
         <div style={grid3}>
-          <Field label="City" value={form.city} onChange={(e) => update("city", e.target.value)} />
+          <Field
+            label="City"
+            value={form.city}
+            onChange={(e) => update("city", e.target.value)}
+            readOnly={!canWrite}
+          />
           <SelectField
             label="State"
             value={form.state}
             onChange={(e) => update("state", e.target.value)}
             options={INDIAN_STATES}
             placeholder="-- Select State --"
+            disabled={!canWrite}
           />
           <Field
             label="PinCode"
             value={form.pincode}
             onChange={(e) => update("pincode", e.target.value)}
             placeholder="560001"
+            readOnly={!canWrite}
           />
         </div>
 
@@ -359,12 +481,14 @@ export default function CustomerMaster() {
             value={form.mobile_no}
             onChange={(e) => update("mobile_no", e.target.value)}
             placeholder="9999999999"
+            readOnly={!canWrite}
           />
           <Field
             label="Phone No"
             value={form.ph_no}
             onChange={(e) => update("ph_no", e.target.value)}
             placeholder="080-xxxxxxx"
+            readOnly={!canWrite}
           />
           <Field
             label="Email ID"
@@ -372,30 +496,41 @@ export default function CustomerMaster() {
             onChange={(e) => update("email_id", e.target.value)}
             placeholder="name@email.com"
             type="email"
+            readOnly={!canWrite}
           />
           <Field
             label="GST No"
             value={form.gst_no}
             onChange={(e) => update("gst_no", e.target.value)}
             placeholder="29ABCDE1234F1Z5"
+            readOnly={!canWrite}
           />
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <button onClick={save} style={btnPrimary} disabled={saving}>
-            {saving ? "Saving..." : saveLabel}
-          </button>
+        {canWrite && (
+          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+            <button onClick={save} style={btnPrimary} disabled={saving}>
+              {saving ? "Saving..." : saveLabel}
+            </button>
 
-          <button onClick={resetForm} style={btnGhost} disabled={saving}>
-            Clear
-          </button>
-        </div>
+            <button onClick={resetForm} style={btnGhost} disabled={saving}>
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ height: 14 }} />
 
       <div style={card}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <h3 style={{ margin: 0, color: "#111" }}>Customers List</h3>
           <button onClick={load} style={btnGhost} disabled={saving}>
             Refresh
@@ -414,7 +549,11 @@ export default function CustomerMaster() {
         <div style={{ height: 10 }} />
 
         <div style={{ overflowX: "auto" }}>
-          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 820 }}>
+          <table
+            width="100%"
+            cellPadding="10"
+            style={{ borderCollapse: "collapse", minWidth: 820 }}
+          >
             <thead>
               <tr style={{ background: "#f6f7f9" }}>
                 <th align="left">Code</th>
@@ -435,13 +574,36 @@ export default function CustomerMaster() {
                   <td style={{ color: "#111" }}>{r.mobile_no || ""}</td>
                   <td style={{ color: "#111" }}>{r.gst_no || ""}</td>
                   <td align="center">
-                    <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                      <button onClick={() => startEdit(r)} style={btnMini} disabled={saving}>
-                        Edit
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        justifyContent: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button onClick={() => startView(r)} style={btnViewMini} disabled={saving}>
+                        View
                       </button>
-                      <button onClick={() => del(r.customer_code)} style={btnDangerMini} disabled={saving}>
-                        Delete
-                      </button>
+
+                      {canWrite && (
+                        <>
+                          <button
+                            onClick={() => startEdit(r)}
+                            style={btnMini}
+                            disabled={saving}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => del(r.customer_code)}
+                            style={btnDangerMini}
+                            disabled={saving}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -459,7 +621,16 @@ export default function CustomerMaster() {
         </div>
 
         <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-          Tip: Tap <b>Edit</b> to load a customer into the form, then press <b>Update Customer</b>.
+          {canWrite ? (
+            <>
+              Tip: Tap <b>Edit</b> to load a customer into the form, then press{" "}
+              <b>Update Customer</b>.
+            </>
+          ) : (
+            <>
+              Tip: Tap <b>View</b> to load customer details in read-only mode.
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -468,7 +639,12 @@ export default function CustomerMaster() {
 
 /* ---- Styles ---- */
 
-const card = { background: "white", border: "1px solid #e6e6e6", borderRadius: 16, padding: 16 };
+const card = {
+  background: "white",
+  border: "1px solid #e6e6e6",
+  borderRadius: 16,
+  padding: 16,
+};
 
 const sectionTitle = {
   fontSize: 13,
@@ -503,6 +679,7 @@ const inp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+  boxSizing: "border-box",
 };
 
 const autoCodeBox = {
@@ -525,6 +702,7 @@ const searchInp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+  boxSizing: "border-box",
 };
 
 const btnPrimary = {
@@ -557,6 +735,16 @@ const btnMini = {
   fontWeight: 900,
 };
 
+const btnViewMini = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #4b5563",
+  background: "#4b5563",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
 const btnDangerMini = {
   padding: "8px 12px",
   borderRadius: 10,
@@ -583,4 +771,14 @@ const msgOk = {
   borderRadius: 12,
   color: "#0a6a0a",
   marginBottom: 12,
+};
+
+const readOnlyBanner = {
+  background: "#f4f7ff",
+  border: "1px solid #cdd9ff",
+  padding: 10,
+  borderRadius: 12,
+  color: "#1d3f91",
+  fontWeight: 700,
+  marginBottom: 4,
 };

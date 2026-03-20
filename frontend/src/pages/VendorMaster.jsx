@@ -56,7 +56,16 @@ const empty = {
   gst_no: "",
 };
 
-function Field({ label, value, onChange, placeholder, type = "text", hint, disabled = false }) {
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  hint,
+  disabled = false,
+  readOnly = false,
+}) {
   return (
     <div>
       <div style={lbl}>{label}</div>
@@ -66,10 +75,11 @@ function Field({ label, value, onChange, placeholder, type = "text", hint, disab
         placeholder={placeholder}
         type={type}
         disabled={disabled}
+        readOnly={readOnly}
         style={{
           ...inp,
-          background: disabled ? "#f4f4f4" : "#fff",
-          cursor: disabled ? "not-allowed" : "text",
+          background: disabled || readOnly ? "#f4f4f4" : "#fff",
+          cursor: disabled || readOnly ? "not-allowed" : "text",
         }}
       />
       {hint ? <div style={hintTxt}>{hint}</div> : null}
@@ -77,11 +87,28 @@ function Field({ label, value, onChange, placeholder, type = "text", hint, disab
   );
 }
 
-function SelectField({ label, value, onChange, options, placeholder, hint }) {
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  hint,
+  disabled = false,
+}) {
   return (
     <div>
       <div style={lbl}>{label}</div>
-      <select value={value ?? ""} onChange={onChange} style={inp}>
+      <select
+        value={value ?? ""}
+        onChange={onChange}
+        disabled={disabled}
+        style={{
+          ...inp,
+          background: disabled ? "#f4f4f4" : "#fff",
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
         <option value="">{placeholder || "-- Select --"}</option>
         {options.map((opt) => (
           <option key={opt} value={opt}>
@@ -100,13 +127,21 @@ export default function VendorMaster() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
-  const [mode, setMode] = useState("create"); // "create" | "edit"
+  const [mode, setMode] = useState("create"); // "create" | "edit" | "view"
   const [editingCode, setEditingCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
 
   const isEditing = mode === "edit";
-  const saveLabel = useMemo(() => (isEditing ? "Update Vendor" : "Save Vendor"), [isEditing]);
+  const isViewing = mode === "view";
+  const isViewer = currentUser?.role === "VIEWER";
+  const canWrite = currentUser?.role === "ADMIN" || currentUser?.role === "OPERATOR";
+
+  const saveLabel = useMemo(
+    () => (isEditing ? "Update Vendor" : "Save Vendor"),
+    [isEditing]
+  );
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -134,17 +169,28 @@ export default function VendorMaster() {
     }
   }
 
+  async function loadCurrentUser() {
+    try {
+      const me = await apiGet("/auth/me");
+      setCurrentUser(me || null);
+    } catch {
+      setCurrentUser(null);
+    }
+  }
+
   useEffect(() => {
+    loadCurrentUser();
     load();
   }, []);
 
   function update(key, val) {
+    if (!canWrite) return;
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
   function resetForm() {
     setForm({ ...empty });
-    setMode("create");
+    setMode(isViewer ? "view" : "create");
     setEditingCode("");
     setErr("");
     setOk("");
@@ -183,10 +229,18 @@ export default function VendorMaster() {
   }
 
   async function save() {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+
     setErr("");
     setOk("");
 
-    if (!form.vendor_name?.trim()) return setErr("Vendor Name is required.");
+    if (!form.vendor_name?.trim()) {
+      setErr("Vendor Name is required.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -209,10 +263,10 @@ export default function VendorMaster() {
     }
   }
 
-  function startEdit(row) {
+  function loadIntoForm(row, nextMode = "view") {
     setErr("");
     setOk("");
-    setMode("edit");
+    setMode(nextMode);
     setEditingCode(row.vendor_code);
 
     setForm({
@@ -224,7 +278,24 @@ export default function VendorMaster() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function startEdit(row) {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+    loadIntoForm(row, "edit");
+  }
+
+  function startView(row) {
+    loadIntoForm(row, "view");
+  }
+
   async function del(code) {
+    if (!canWrite) {
+      setErr("Viewer access is read-only.");
+      return;
+    }
+
     setErr("");
     setOk("");
 
@@ -237,7 +308,9 @@ export default function VendorMaster() {
       await load();
       setOk(`✅ Vendor "${code}" deleted.`);
 
-      if (isEditing && editingCode === code) resetForm();
+      if ((isEditing || isViewing) && editingCode === code) {
+        resetForm();
+      }
     } catch (e) {
       setErr(String(e?.message || e));
     } finally {
@@ -249,7 +322,9 @@ export default function VendorMaster() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
       <h2 style={{ margin: 0, color: "#fff" }}>Vendor Master</h2>
       <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Create, edit, delete and view vendors.
+        {isViewer
+          ? "View vendor list and details in read-only mode."
+          : "Create, edit, delete and view vendors."}
       </p>
 
       {err && <div style={msgErr}>{err}</div>}
@@ -258,7 +333,15 @@ export default function VendorMaster() {
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0, color: "#111" }}>
-            {isEditing ? `Edit Vendor (${editingCode})` : "Create Vendor"}
+            {isViewer
+              ? editingCode
+                ? `View Vendor (${editingCode})`
+                : "Vendor Details"
+              : isEditing
+              ? `Edit Vendor (${editingCode})`
+              : isViewing
+              ? `View Vendor (${editingCode})`
+              : "Create Vendor"}
           </h3>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -266,9 +349,9 @@ export default function VendorMaster() {
               Refresh
             </button>
 
-            {isEditing && (
+            {(isEditing || isViewing) && (
               <button onClick={resetForm} style={btnGhost} disabled={saving}>
-                Cancel Edit
+                {isViewer ? "Clear View" : isEditing ? "Cancel Edit" : "Clear View"}
               </button>
             )}
           </div>
@@ -276,9 +359,18 @@ export default function VendorMaster() {
 
         <div style={{ height: 12 }} />
 
+        {isViewer && (
+          <div style={readOnlyBanner}>
+            VIEWER MODE: You can view vendor details, but you cannot create, edit, or
+            delete vendors.
+          </div>
+        )}
+
+        <div style={{ height: 12 }} />
+
         <div style={sectionTitle}>Vendor Details</div>
         <div style={grid2}>
-          {isEditing ? (
+          {isEditing || isViewing ? (
             <Field
               label="Vendor Code"
               value={form.vendor_code}
@@ -290,8 +382,14 @@ export default function VendorMaster() {
           ) : (
             <div>
               <div style={lbl}>Vendor Code</div>
-              <div style={autoCodeBox}>Auto-generated on save</div>
-              <div style={hintTxt}>The system will generate the next vendor code automatically.</div>
+              <div style={autoCodeBox}>
+                {isViewer ? "Visible after selecting a vendor" : "Auto-generated on save"}
+              </div>
+              <div style={hintTxt}>
+                {isViewer
+                  ? "Select a vendor from the list to view the vendor code."
+                  : "The system will generate the next vendor code automatically."}
+              </div>
             </div>
           )}
 
@@ -300,6 +398,7 @@ export default function VendorMaster() {
             value={form.vendor_name}
             onChange={(e) => update("vendor_name", e.target.value)}
             placeholder="Vendor Name"
+            readOnly={!canWrite}
           />
         </div>
 
@@ -311,16 +410,19 @@ export default function VendorMaster() {
             label="Address Line 1"
             value={form.vendor_address_line1}
             onChange={(e) => update("vendor_address_line1", e.target.value)}
+            readOnly={!canWrite}
           />
           <Field
             label="Address Line 2"
             value={form.vendor_address_line2}
             onChange={(e) => update("vendor_address_line2", e.target.value)}
+            readOnly={!canWrite}
           />
           <Field
             label="Address Line 3"
             value={form.vendor_address_line3}
             onChange={(e) => update("vendor_address_line3", e.target.value)}
+            readOnly={!canWrite}
           />
         </div>
 
@@ -328,19 +430,26 @@ export default function VendorMaster() {
 
         <div style={sectionTitle}>Location Details</div>
         <div style={grid3}>
-          <Field label="City" value={form.city} onChange={(e) => update("city", e.target.value)} />
+          <Field
+            label="City"
+            value={form.city}
+            onChange={(e) => update("city", e.target.value)}
+            readOnly={!canWrite}
+          />
           <SelectField
             label="State"
             value={form.state}
             onChange={(e) => update("state", e.target.value)}
             options={INDIAN_STATES}
             placeholder="-- Select State --"
+            disabled={!canWrite}
           />
           <Field
             label="PinCode"
             value={form.pincode}
             onChange={(e) => update("pincode", e.target.value)}
             placeholder="560001"
+            readOnly={!canWrite}
           />
         </div>
 
@@ -353,12 +462,14 @@ export default function VendorMaster() {
             value={form.mobile_no}
             onChange={(e) => update("mobile_no", e.target.value)}
             placeholder="10 digit mobile"
+            readOnly={!canWrite}
           />
           <Field
             label="Phone No"
             value={form.ph_no}
             onChange={(e) => update("ph_no", e.target.value)}
             placeholder="Optional"
+            readOnly={!canWrite}
           />
           <Field
             label="Email ID"
@@ -366,24 +477,28 @@ export default function VendorMaster() {
             onChange={(e) => update("email_id", e.target.value)}
             placeholder="name@email.com"
             type="email"
+            readOnly={!canWrite}
           />
           <Field
             label="GST No"
             value={form.gst_no}
             onChange={(e) => update("gst_no", e.target.value)}
             placeholder="Optional"
+            readOnly={!canWrite}
           />
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <button onClick={save} style={btnPrimary} disabled={saving}>
-            {saving ? "Saving..." : saveLabel}
-          </button>
+        {canWrite && (
+          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+            <button onClick={save} style={btnPrimary} disabled={saving}>
+              {saving ? "Saving..." : saveLabel}
+            </button>
 
-          <button onClick={resetForm} style={btnGhost} disabled={saving}>
-            Clear
-          </button>
-        </div>
+            <button onClick={resetForm} style={btnGhost} disabled={saving}>
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ height: 14 }} />
@@ -437,12 +552,24 @@ export default function VendorMaster() {
                   <td style={{ color: "#111" }}>{r.gst_no || ""}</td>
                   <td align="center">
                     <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                      <button onClick={() => startEdit(r)} style={btnMini} disabled={saving}>
-                        Edit
+                      <button onClick={() => startView(r)} style={btnViewMini} disabled={saving}>
+                        View
                       </button>
-                      <button onClick={() => del(r.vendor_code)} style={btnDangerMini} disabled={saving}>
-                        Delete
-                      </button>
+
+                      {canWrite && (
+                        <>
+                          <button onClick={() => startEdit(r)} style={btnMini} disabled={saving}>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => del(r.vendor_code)}
+                            style={btnDangerMini}
+                            disabled={saving}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -460,7 +587,15 @@ export default function VendorMaster() {
         </div>
 
         <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-          Tip: Tap <b>Edit</b> to load a vendor into the form, then press <b>Update Vendor</b>.
+          {canWrite ? (
+            <>
+              Tip: Tap <b>Edit</b> to load a vendor into the form, then press <b>Update Vendor</b>.
+            </>
+          ) : (
+            <>
+              Tip: Tap <b>View</b> to load vendor details in read-only mode.
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -484,6 +619,7 @@ const inp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+  boxSizing: "border-box",
 };
 
 const autoCodeBox = {
@@ -506,6 +642,7 @@ const searchInp = {
   outline: "none",
   background: "#fff",
   color: "#111",
+  boxSizing: "border-box",
 };
 
 const grid1 = {
@@ -556,6 +693,16 @@ const btnMini = {
   fontWeight: 900,
 };
 
+const btnViewMini = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #4b5563",
+  background: "#4b5563",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
 const btnDangerMini = {
   padding: "8px 12px",
   borderRadius: 10,
@@ -582,4 +729,14 @@ const msgOk = {
   borderRadius: 12,
   color: "#0a6a0a",
   marginBottom: 12,
+};
+
+const readOnlyBanner = {
+  background: "#f4f7ff",
+  border: "1px solid #cdd9ff",
+  padding: 10,
+  borderRadius: 12,
+  color: "#1d3f91",
+  fontWeight: 700,
+  marginBottom: 4,
 };
