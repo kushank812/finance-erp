@@ -10,8 +10,37 @@ function sortRowsByDate(list) {
   return [...list].sort((a, b) => {
     const da = new Date(a?.date || 0).getTime();
     const db = new Date(b?.date || 0).getTime();
-    return da - db;
+
+    if (da !== db) return da - db;
+
+    const docA = String(a?.doc_no || "");
+    const docB = String(b?.doc_no || "");
+    if (docA !== docB) return docA.localeCompare(docB);
+
+    return String(a?.type || "").localeCompare(String(b?.type || ""));
   });
+}
+
+function getCustomerAddress(customer) {
+  if (!customer) return "-";
+
+  return (
+    customer.customer_address_line1 ||
+    customer.address_line1 ||
+    customer.customer_address ||
+    "-"
+  );
+}
+
+function getVendorAddress(vendor) {
+  if (!vendor) return "-";
+
+  return (
+    vendor.vendor_address_line1 ||
+    vendor.address_line1 ||
+    vendor.vendor_address ||
+    "-"
+  );
 }
 
 export default function Statement() {
@@ -32,6 +61,7 @@ export default function Statement() {
 
   async function loadMasters() {
     setErr("");
+
     try {
       const [cData, vData] = await Promise.all([
         apiGet("/customers/"),
@@ -44,7 +74,6 @@ export default function Statement() {
       setCustomers(cList);
       setVendors(vList);
 
-      // force blank on initial load
       setCustomerCode("");
       setVendorCode("");
       setMastersLoaded(true);
@@ -72,24 +101,34 @@ export default function Statement() {
           return;
         }
 
-        const results = await Promise.all(
+        const results = await Promise.allSettled(
           codes.map(async (code) => {
-            try {
-              const data = await apiGet(
-                `/customers/${encodeURIComponent(code)}/statement`
-              );
-              const list = Array.isArray(data) ? data : [];
-              return list.map((row) => ({
-                ...row,
-                customer_code: code,
-              }));
-            } catch {
-              return [];
-            }
+            const data = await apiGet(`/customers/${encodeURIComponent(code)}/statement`);
+            const list = Array.isArray(data) ? data : [];
+
+            return list.map((row) => ({
+              ...row,
+              customer_code: code,
+            }));
           })
         );
 
-        setRows(sortRowsByDate(results.flat()));
+        const successRows = results
+          .filter((r) => r.status === "fulfilled")
+          .flatMap((r) => r.value);
+
+        const failures = results.filter((r) => r.status === "rejected");
+
+        setRows(sortRowsByDate(successRows));
+
+        if (failures.length > 0 && successRows.length === 0) {
+          const firstError = failures[0]?.reason;
+          setErr(String(firstError?.message || firstError || "Failed to load customer statements"));
+        } else if (failures.length > 0) {
+          setErr(
+            `Some customer statements could not be loaded (${failures.length} failed, ${results.length - failures.length} loaded).`
+          );
+        }
       } else {
         const codes = vendorList.map((v) => v.vendor_code).filter(Boolean);
 
@@ -98,24 +137,34 @@ export default function Statement() {
           return;
         }
 
-        const results = await Promise.all(
+        const results = await Promise.allSettled(
           codes.map(async (code) => {
-            try {
-              const data = await apiGet(
-                `/vendors/${encodeURIComponent(code)}/statement`
-              );
-              const list = Array.isArray(data) ? data : [];
-              return list.map((row) => ({
-                ...row,
-                vendor_code: code,
-              }));
-            } catch {
-              return [];
-            }
+            const data = await apiGet(`/vendors/${encodeURIComponent(code)}/statement`);
+            const list = Array.isArray(data) ? data : [];
+
+            return list.map((row) => ({
+              ...row,
+              vendor_code: code,
+            }));
           })
         );
 
-        setRows(sortRowsByDate(results.flat()));
+        const successRows = results
+          .filter((r) => r.status === "fulfilled")
+          .flatMap((r) => r.value);
+
+        const failures = results.filter((r) => r.status === "rejected");
+
+        setRows(sortRowsByDate(successRows));
+
+        if (failures.length > 0 && successRows.length === 0) {
+          const firstError = failures[0]?.reason;
+          setErr(String(firstError?.message || firstError || "Failed to load vendor statements"));
+        } else if (failures.length > 0) {
+          setErr(
+            `Some vendor statements could not be loaded (${failures.length} failed, ${results.length - failures.length} loaded).`
+          );
+        }
       }
     } catch (e) {
       setErr(String(e.message || e));
@@ -157,7 +206,6 @@ export default function Statement() {
   useEffect(() => {
     if (!mastersLoaded) return;
 
-    // whenever mode changes, force reset selection
     if (mode === "CUSTOMER") {
       setVendorCode("");
       setCustomerCode("");
@@ -354,7 +402,7 @@ export default function Statement() {
               />
               <InfoMini
                 title="Address"
-                value={selectedCustomer?.address_line1 || "-"}
+                value={getCustomerAddress(selectedCustomer)}
               />
             </>
           ) : (
@@ -369,7 +417,7 @@ export default function Statement() {
               />
               <InfoMini
                 title="Address"
-                value={selectedVendor?.address_line1 || "-"}
+                value={getVendorAddress(selectedVendor)}
               />
             </>
           )}
