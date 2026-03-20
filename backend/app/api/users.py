@@ -78,9 +78,20 @@ def create_user(
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail="User ID already exists")
+        error_text = str(getattr(e, "orig", e)).upper()
+
+        if "USER_ID" in error_text and ("UNIQUE" in error_text or "DUPLICATE" in error_text):
+            raise HTTPException(status_code=409, detail="User ID already exists")
+
+        if "ROLE" in error_text or "CHECK" in error_text or "ENUM" in error_text:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Database rejected role '{role}'. Update database constraint to allow VIEWER.",
+            )
+
+        raise HTTPException(status_code=500, detail=f"Database error: {str(getattr(e, 'orig', e))}")
 
     db.refresh(obj)
     return obj
@@ -103,12 +114,9 @@ def update_user(
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    # Prevent admin from deactivating self
     if obj.user_id == current_user.user_id and payload.is_active is False:
         raise HTTPException(status_code=400, detail="You cannot deactivate yourself")
 
-    # Prevent making the last admin inactive or non-admin is more complex;
-    # for now at least protect self role downgrade.
     if obj.user_id == current_user.user_id and role != "ADMIN":
         raise HTTPException(status_code=400, detail="You cannot change your own role from ADMIN")
 
@@ -148,11 +156,11 @@ def update_user(
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Could not update user due to a conflicting change",
+            detail=f"Could not update user due to database error: {str(getattr(e, 'orig', e))}",
         )
 
     db.refresh(obj)
@@ -187,11 +195,11 @@ def reset_user_password(
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Could not reset password due to a conflicting change",
+            detail=f"Could not reset password due to database error: {str(getattr(e, 'orig', e))}",
         )
 
     return {"ok": True, "message": "Password reset successfully"}

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class UserCreateIn(BaseModel):
@@ -19,6 +19,8 @@ class UserResetPasswordIn(BaseModel):
 
 
 class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: str
     full_name: str
     is_active: bool
