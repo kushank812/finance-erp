@@ -27,6 +27,7 @@ import Aging from "./pages/Aging";
 import Statement from "./pages/Statement";
 
 import PurchaseBillView from "./pages/PurchaseBillView";
+import PurchaseBillPrintView from "./pages/PurchaseBillPrintView";
 import SalesInvoiceDirectView from "./pages/SalesInvoiceDirectView";
 import SalesInvoicePrintView from "./pages/SalesInvoicePrintView";
 import Dashboard from "./pages/Dashboard";
@@ -315,6 +316,10 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
 
                 <NavLink to="/purchase/new" style={({ isActive }) => linkStyle(isActive)}>
                   Purchase Bill
+                </NavLink>
+
+                <NavLink to="/purchase-bills" style={({ isActive }) => linkStyle(isActive)}>
+                  Bills
                 </NavLink>
 
                 <NavLink to="/purchase/pay" style={({ isActive }) => linkStyle(isActive)}>
@@ -637,15 +642,28 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
         />
 
         <Route
-          path="/purchase/pay"
+          path="/purchase/edit/:billNo"
           element={
             <TransactionRoute
               authReady={authReady}
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <VendorPaymentNew />
+              <PurchaseBillNew />
             </TransactionRoute>
+          }
+        />
+
+        <Route
+          path="/purchase-bills"
+          element={
+            <DocumentViewRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <PurchaseBillView />
+            </DocumentViewRoute>
           }
         />
 
@@ -657,8 +675,21 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <PurchaseBillView />
+              <PurchaseBillPrintView />
             </DocumentViewRoute>
+          }
+        />
+
+        <Route
+          path="/purchase/pay"
+          element={
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <VendorPaymentNew />
+            </TransactionRoute>
           }
         />
 
