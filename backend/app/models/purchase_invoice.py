@@ -16,8 +16,15 @@ class PurchaseInvoiceHdr(Base):
         index=True,
     )
 
-    bill_date: Mapped[date] = mapped_column(Date, nullable=False)
-    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    bill_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+    )
+
+    due_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
 
     vendor_code: Mapped[str] = mapped_column(
         String(50),
@@ -26,16 +33,52 @@ class PurchaseInvoiceHdr(Base):
         index=True,
     )
 
-    subtotal: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    tax_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
-    tax_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    grand_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    subtotal: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
 
-    amount_paid: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    tax_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        default=0,
+    )
 
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Pending")
-    remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
+    grand_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
+    amount_paid: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
+    balance: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="Pending",
+    )
+
+    remark: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+    )
 
     lines = relationship(
         "PurchaseInvoiceDtl",
@@ -53,7 +96,11 @@ class PurchaseInvoiceHdr(Base):
 class PurchaseInvoiceDtl(Base):
     __tablename__ = "purchase_invoice_dtl"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
 
     bill_no: Mapped[str] = mapped_column(
         String(50),
@@ -69,8 +116,25 @@ class PurchaseInvoiceDtl(Base):
         index=True,
     )
 
-    qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False, default=1)
-    rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    qty: Mapped[Decimal] = mapped_column(
+        Numeric(14, 3),
+        nullable=False,
+        default=1,
+    )
 
-    hdr = relationship("PurchaseInvoiceHdr", back_populates="lines")
+    rate: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
+    line_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
+    hdr = relationship(
+        "PurchaseInvoiceHdr",
+        back_populates="lines",
+    )
