@@ -15,7 +15,7 @@ function sortRowsByDate(list) {
 }
 
 export default function Statement() {
-  const [mode, setMode] = useState("CUSTOMER"); // CUSTOMER | VENDOR
+  const [mode, setMode] = useState("CUSTOMER");
 
   const [customerCode, setCustomerCode] = useState("");
   const [vendorCode, setVendorCode] = useState("");
@@ -28,6 +28,7 @@ export default function Statement() {
 
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mastersLoaded, setMastersLoaded] = useState(false);
 
   async function loadMasters() {
     setErr("");
@@ -43,20 +44,28 @@ export default function Statement() {
       setCustomers(cList);
       setVendors(vList);
 
-      // DO NOT auto-select first customer/vendor
-      // user must choose manually
+      // force blank on initial load
+      setCustomerCode("");
+      setVendorCode("");
+      setMastersLoaded(true);
     } catch (e) {
       setErr(String(e.message || e));
+      setCustomers([]);
+      setVendors([]);
+      setCustomerCode("");
+      setVendorCode("");
+      setRows([]);
+      setMastersLoaded(true);
     }
   }
 
-  async function loadAllStatements(type) {
+  async function loadAllStatements(type, customerList = customers, vendorList = vendors) {
     setErr("");
     setLoading(true);
 
     try {
       if (type === "CUSTOMER") {
-        const codes = customers.map((c) => c.customer_code).filter(Boolean);
+        const codes = customerList.map((c) => c.customer_code).filter(Boolean);
 
         if (codes.length === 0) {
           setRows([]);
@@ -82,7 +91,7 @@ export default function Statement() {
 
         setRows(sortRowsByDate(results.flat()));
       } else {
-        const codes = vendors.map((v) => v.vendor_code).filter(Boolean);
+        const codes = vendorList.map((v) => v.vendor_code).filter(Boolean);
 
         if (codes.length === 0) {
           setRows([]);
@@ -124,6 +133,7 @@ export default function Statement() {
 
     setErr("");
     setLoading(true);
+
     try {
       const url =
         type === "CUSTOMER"
@@ -131,8 +141,7 @@ export default function Statement() {
           : `/vendors/${encodeURIComponent(code)}/statement`;
 
       const data = await apiGet(url);
-      const list = Array.isArray(data) ? data : [];
-      setRows(sortRowsByDate(list));
+      setRows(sortRowsByDate(Array.isArray(data) ? data : []));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -146,24 +155,46 @@ export default function Statement() {
   }, []);
 
   useEffect(() => {
-    if (mode === "CUSTOMER" && customers.length > 0 && !customerCode) {
+    if (!mastersLoaded) return;
+
+    // whenever mode changes, force reset selection
+    if (mode === "CUSTOMER") {
+      setVendorCode("");
+      setCustomerCode("");
       loadAllStatements("CUSTOMER");
-    }
-    if (mode === "VENDOR" && vendors.length > 0 && !vendorCode) {
+    } else {
+      setCustomerCode("");
+      setVendorCode("");
       loadAllStatements("VENDOR");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, customers, vendors]);
+  }, [mode, mastersLoaded]);
 
   useEffect(() => {
-    if (mode === "CUSTOMER" && customerCode) {
-      loadStatement("CUSTOMER", customerCode);
+    if (!mastersLoaded) return;
+    if (mode !== "CUSTOMER") return;
+
+    if (!customerCode) {
+      loadAllStatements("CUSTOMER");
+      return;
     }
-    if (mode === "VENDOR" && vendorCode) {
-      loadStatement("VENDOR", vendorCode);
-    }
+
+    loadStatement("CUSTOMER", customerCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerCode, vendorCode]);
+  }, [customerCode]);
+
+  useEffect(() => {
+    if (!mastersLoaded) return;
+    if (mode !== "VENDOR") return;
+
+    if (!vendorCode) {
+      loadAllStatements("VENDOR");
+      return;
+    }
+
+    loadStatement("VENDOR", vendorCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorCode]);
 
   const filteredCustomers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -235,8 +266,8 @@ export default function Statement() {
       <div style={topTabs}>
         <button
           onClick={() => {
-            setMode("CUSTOMER");
             setSearch("");
+            setMode("CUSTOMER");
           }}
           style={tabBtn(mode === "CUSTOMER")}
         >
@@ -244,8 +275,8 @@ export default function Statement() {
         </button>
         <button
           onClick={() => {
-            setMode("VENDOR");
             setSearch("");
+            setMode("VENDOR");
           }}
           style={tabBtn(mode === "VENDOR")}
         >
