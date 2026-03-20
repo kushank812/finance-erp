@@ -6,7 +6,7 @@ from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
 from app.models.item import Item
 from app.models.user import User
-from app.schemas.item import ItemCreate, ItemUpdate, ItemOut
+from app.schemas.item import ItemCreate, ItemOut, ItemUpdate
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
 from app.utils.numbering import get_next_number
@@ -65,7 +65,7 @@ def create_item(
         raise HTTPException(status_code=400, detail="Item name is required")
 
     try:
-        item_code = get_next_number(db, "ITEM")
+        item_code = get_next_number(db, "ITEM", "ITEM")
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

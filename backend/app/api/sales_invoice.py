@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
-from app.models.sales_invoice import SalesInvoiceHdr, SalesInvoiceDtl, SalesReceipt
+from app.models.sales_invoice import SalesInvoiceDtl, SalesInvoiceHdr, SalesReceipt
 from app.models.user import User
 from app.schemas.sales_invoice import SalesInvoiceCreate, SalesInvoiceOut
 from app.utils.audit import log_activity
@@ -82,7 +82,7 @@ def create_sales_invoice(
     data = normalize_upper(payload.model_dump())
 
     try:
-        invoice_no = get_next_number(db, "SALES_INVOICE")
+        invoice_no = get_next_number(db, "SALES_INVOICE", "INV")
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -211,7 +211,7 @@ def receive_payment(
     }
 
     try:
-        receipt_no = get_next_number(db, "RECEIPT")
+        receipt_no = get_next_number(db, "RECEIPT", "RCPT")
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

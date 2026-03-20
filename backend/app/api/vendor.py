@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
-from app.models.vendor import Vendor
 from app.models.purchase_invoice import PurchaseInvoiceHdr
 from app.models.user import User
-from app.schemas.vendor import VendorCreate, VendorUpdate, VendorOut
+from app.models.vendor import Vendor
+from app.schemas.vendor import VendorCreate, VendorOut, VendorUpdate
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
 from app.utils.numbering import get_next_number
@@ -120,7 +120,7 @@ def create_vendor(
         raise HTTPException(status_code=400, detail="Vendor name is required")
 
     try:
-        vendor_code = get_next_number(db, "VENDOR")
+        vendor_code = get_next_number(db, "VENDOR", "VEND")
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

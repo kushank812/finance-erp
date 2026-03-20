@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
-from app.models.purchase_invoice import PurchaseInvoiceHdr, PurchaseInvoiceDtl
-from app.models.vendor_payment import VendorPayment
+from app.models.purchase_invoice import PurchaseInvoiceDtl, PurchaseInvoiceHdr
 from app.models.user import User
+from app.models.vendor_payment import VendorPayment
 from app.schemas.purchase_invoice import PurchaseInvoiceCreate, PurchaseInvoiceOut
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
@@ -80,11 +80,10 @@ def create_purchase_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    data = payload.model_dump()
-    data = normalize_upper(data)
+    data = normalize_upper(payload.model_dump())
 
     try:
-        bill_no = get_next_number(db, "PURCHASE_INVOICE", "BILL", 4)
+        bill_no = get_next_number(db, "PURCHASE_BILL", "BILL", 4)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
