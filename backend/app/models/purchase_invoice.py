@@ -80,15 +80,15 @@ class PurchaseInvoiceHdr(Base):
         nullable=True,
     )
 
-    lines = relationship(
+    lines: Mapped[list["PurchaseInvoiceDtl"]] = relationship(
         "PurchaseInvoiceDtl",
         back_populates="hdr",
         cascade="all, delete-orphan",
     )
 
-    payments = relationship(
-        "app.models.vendor_payment.VendorPayment",
-        back_populates="bill",
+    payments: Mapped[list["VendorPayment"]] = relationship(
+        "VendorPayment",
+        back_populates="purchase_invoice",
         cascade="all, delete-orphan",
     )
 
@@ -134,7 +134,7 @@ class PurchaseInvoiceDtl(Base):
         default=0,
     )
 
-    hdr = relationship(
+    hdr: Mapped["PurchaseInvoiceHdr"] = relationship(
         "PurchaseInvoiceHdr",
         back_populates="lines",
     )

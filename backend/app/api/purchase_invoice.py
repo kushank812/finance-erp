@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin
 from app.core.database import get_db
-from app.models.purchase_invoice import PurchaseInvoiceHdr, PurchaseInvoiceDtl, VendorPayment
+from app.models.purchase_invoice import PurchaseInvoiceHdr, PurchaseInvoiceDtl
+from app.models.vendor_payment import VendorPayment
 from app.models.user import User
 from app.schemas.purchase_invoice import PurchaseInvoiceCreate, PurchaseInvoiceOut
 from app.utils.audit import log_activity
@@ -83,7 +84,7 @@ def create_purchase_invoice(
     data = normalize_upper(data)
 
     try:
-        bill_no = get_next_number(db, "PURCHASE_INVOICE")
+        bill_no = get_next_number(db, "PURCHASE_INVOICE", "BILL", 4)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -169,7 +170,10 @@ def create_purchase_invoice(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not create purchase invoice due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail="Could not create purchase invoice due to a conflicting change",
+        )
 
     db.refresh(hdr)
     return hdr
@@ -212,7 +216,7 @@ def pay_bill(
     }
 
     try:
-        payment_no = get_next_number(db, "VENDOR_PAYMENT")
+        payment_no = get_next_number(db, "VENDOR_PAYMENT", "PAY", 4)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -257,7 +261,10 @@ def pay_bill(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not save vendor payment due to a concurrent update. Please try again.")
+        raise HTTPException(
+            status_code=409,
+            detail="Could not save vendor payment due to a concurrent update. Please try again.",
+        )
 
     db.refresh(payment)
 

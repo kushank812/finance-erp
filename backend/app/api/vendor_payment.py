@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin
 from app.core.database import get_db
-from app.models.purchase_invoice import VendorPayment
+from app.models.vendor_payment import VendorPayment
 from app.models.user import User
 
 router = APIRouter(prefix="/vendor-payments", tags=["Vendor Payments"])
@@ -38,7 +38,10 @@ def list_vendor_payments(
         query = query.filter(VendorPayment.bill_no == bill_no.strip().upper())
 
     rows = (
-        query.order_by(VendorPayment.payment_date.desc(), VendorPayment.payment_no.desc())
+        query.order_by(
+            VendorPayment.payment_date.desc(),
+            VendorPayment.payment_no.desc(),
+        )
         .limit(limit)
         .all()
     )
@@ -56,6 +59,8 @@ def get_vendor_payment(
         .filter(VendorPayment.payment_no == payment_no.strip().upper())
         .first()
     )
+
     if not payment:
         raise HTTPException(status_code=404, detail="Vendor payment not found")
+
     return payment

@@ -49,7 +49,7 @@ class VendorPayment(Base):
         default=utc_now,
     )
 
-    bill = relationship(
-        "app.models.purchase_invoice.PurchaseInvoiceHdr",
+    purchase_invoice: Mapped["PurchaseInvoiceHdr"] = relationship(
+        "PurchaseInvoiceHdr",
         back_populates="payments",
     )
