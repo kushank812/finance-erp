@@ -120,8 +120,8 @@ function parseUserAgent(ua) {
   else if (/Mac OS X/i.test(text)) os = "macOS";
   else if (/Linux/i.test(text)) os = "Linux";
 
-  if (/Mobile/i.test(text)) device = "Mobile";
-  else if (/Tablet|iPad/i.test(text)) device = "Tablet";
+  if (/Tablet|iPad/i.test(text)) device = "Tablet";
+  else if (/Mobile/i.test(text)) device = "Mobile";
   else device = "Desktop";
 
   return {
@@ -185,17 +185,8 @@ export default function AuditLogs() {
       const nextModules = normalizeOptions(data?.modules);
       const nextActions = normalizeOptions(data?.actions);
 
-      if (nextModules.length > 0) {
-        setModuleOptions(nextModules);
-      } else {
-        setModuleOptions(fallbackModuleOptions);
-      }
-
-      if (nextActions.length > 0) {
-        setActionOptions(nextActions);
-      } else {
-        setActionOptions(fallbackActionOptions);
-      }
+      setModuleOptions(nextModules.length > 0 ? nextModules : fallbackModuleOptions);
+      setActionOptions(nextActions.length > 0 ? nextActions : fallbackActionOptions);
     } catch {
       setModuleOptions(fallbackModuleOptions);
       setActionOptions(fallbackActionOptions);
@@ -306,11 +297,12 @@ export default function AuditLogs() {
 
         <div style={filterGrid}>
           <Field label="User ID">
-            <input
+            <textarea
               value={filters.user_id}
               onChange={(e) => setFilter("user_id", e.target.value)}
               placeholder="ADMIN"
-              style={inputStyle}
+              rows={1}
+              style={userIdScrollBox}
             />
           </Field>
 
@@ -498,7 +490,11 @@ export default function AuditLogs() {
                 <MiniInfoCard label="Browser" value={parsedAgent.browser} />
                 <MiniInfoCard label="Operating System" value={parsedAgent.os} />
                 <MiniInfoCard label="Device" value={parsedAgent.device} />
-                <MiniInfoCard label="IP Address" value={selected.ip_address || "—"} scrollable />
+                <MiniInfoCard
+                  label="IP Address"
+                  value={selected.ip_address || "—"}
+                  scrollable
+                />
               </div>
 
               <div style={{ marginTop: 14 }}>
@@ -550,7 +546,9 @@ function MiniInfoCard({ label, value, scrollable = false }) {
   return (
     <div style={miniInfoCard}>
       <div style={miniInfoLabel}>{label}</div>
-      <div style={scrollable ? miniInfoValueScroll : miniInfoValue}>{value || "—"}</div>
+      <div style={scrollable ? miniInfoValueScroll : miniInfoValue}>
+        {value || "—"}
+      </div>
     </div>
   );
 }
@@ -731,6 +729,27 @@ const inputStyle = {
   boxSizing: "border-box",
   fontSize: 14,
   minHeight: 46,
+};
+
+const userIdScrollBox = {
+  width: "100%",
+  padding: "11px 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  color: "#ffffff",
+  outline: "none",
+  boxSizing: "border-box",
+  fontSize: 14,
+  height: 46,
+  minHeight: 46,
+  maxHeight: 46,
+  resize: "none",
+  overflowX: "auto",
+  overflowY: "hidden",
+  whiteSpace: "nowrap",
+  lineHeight: "22px",
+  fontFamily: "inherit",
 };
 
 const dropdownWrap = {
