@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.auth import require_operator_or_admin
+from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
 from app.models.purchase_invoice import PurchaseInvoiceHdr, PurchaseInvoiceDtl
 from app.models.vendor_payment import VendorPayment
@@ -46,7 +46,7 @@ def compute_status(
 @router.get("/", response_model=list[PurchaseInvoiceOut])
 def list_purchase_invoices(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     rows = db.query(PurchaseInvoiceHdr).order_by(
         PurchaseInvoiceHdr.bill_date.desc(),
@@ -63,7 +63,7 @@ def list_purchase_invoices(
 def get_purchase_invoice(
     bill_no: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     obj = db.get(PurchaseInvoiceHdr, bill_no.strip().upper())
     if not obj:

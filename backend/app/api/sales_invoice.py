@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.auth import require_operator_or_admin
+from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
 from app.models.sales_invoice import SalesInvoiceHdr, SalesInvoiceDtl, SalesReceipt
 from app.models.user import User
@@ -45,7 +45,7 @@ def compute_status(
 @router.get("/", response_model=list[SalesInvoiceOut])
 def list_sales_invoices(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     rows = db.query(SalesInvoiceHdr).order_by(
         SalesInvoiceHdr.invoice_date.desc(),
@@ -62,7 +62,7 @@ def list_sales_invoices(
 def get_sales_invoice(
     invoice_no: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     obj = db.get(SalesInvoiceHdr, invoice_no.strip().upper())
     if not obj:

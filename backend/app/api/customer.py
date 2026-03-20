@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.auth import require_operator_or_admin
+from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
 from app.models.customer import Customer
 from app.models.user import User
@@ -35,7 +35,7 @@ def customer_snapshot(obj: Customer) -> dict:
 @router.get("/", response_model=list[CustomerOut])
 def list_customers(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     return db.query(Customer).order_by(Customer.customer_code).all()
 
@@ -44,7 +44,7 @@ def list_customers(
 def get_customer(
     customer_code: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     obj = db.get(Customer, customer_code.strip().upper())
     if not obj:
@@ -114,7 +114,6 @@ def update_customer(
     old_values = customer_snapshot(obj)
     data = normalize_upper(payload.model_dump(exclude_unset=True))
 
-    # never allow customer code change from update payload
     data.pop("customer_code", None)
 
     for k, v in data.items():

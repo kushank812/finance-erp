@@ -79,21 +79,39 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
+def require_viewer_or_above(current_user: User = Depends(get_current_user)) -> User:
+    role = (current_user.role or "").upper()
+
+    if role not in {"ADMIN", "OPERATOR", "VIEWER"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    return current_user
+
+
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "ADMIN":
+    role = (current_user.role or "").upper()
+
+    if role != "ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
+
     return current_user
 
 
 def require_operator_or_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in {"ADMIN", "OPERATOR"}:
+    role = (current_user.role or "").upper()
+
+    if role not in {"ADMIN", "OPERATOR"}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Operator access required",
         )
+
     return current_user
 
 

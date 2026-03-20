@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.auth import require_operator_or_admin
+from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
 from app.models.vendor_payment import VendorPayment
 from app.models.user import User
@@ -30,7 +30,7 @@ def list_vendor_payments(
     bill_no: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     query = db.query(VendorPayment)
 
@@ -52,7 +52,7 @@ def list_vendor_payments(
 def get_vendor_payment(
     payment_no: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_viewer_or_above),
 ):
     payment = (
         db.query(VendorPayment)
