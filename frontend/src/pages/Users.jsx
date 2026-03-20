@@ -24,26 +24,36 @@ export default function Users() {
   const [resetPwdUser, setResetPwdUser] = useState("");
   const [resetPwdValue, setResetPwdValue] = useState("");
 
-  async function load() {
-    setErr("");
-    setOk("");
-    setLoading(true);
+  async function load(showLoader = true) {
+    if (showLoader) setLoading(true);
     try {
       const data = await apiGet("/users/");
       setRows(Array.isArray(data) ? data : []);
+      return true;
     } catch (e) {
       setErr(String(e.message || e));
+      return false;
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }
 
   useEffect(() => {
+    setErr("");
+    setOk("");
     load();
   }, []);
 
   function setFormField(key, value) {
-    setForm((p) => ({ ...p, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setRowField(userId, key, value) {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.user_id === userId ? { ...row, [key]: value } : row
+      )
+    );
   }
 
   async function createUser(e) {
@@ -52,24 +62,45 @@ export default function Users() {
     setOk("");
 
     const payload = {
-      user_id: form.user_id.trim().toUpperCase(),
-      full_name: form.full_name.trim().toUpperCase(),
+      user_id: String(form.user_id || "").trim().toUpperCase(),
+      full_name: String(form.full_name || "").trim().toUpperCase(),
       password: form.password,
-      role: form.role,
+      role: String(form.role || "").trim().toUpperCase(),
     };
 
-    if (!payload.user_id) return setErr("User ID is required.");
-    if (!payload.full_name) return setErr("Full name is required.");
-    if (!payload.password || payload.password.length < 8) {
-      return setErr("Password must be at least 8 characters.");
+    if (!payload.user_id) {
+      setErr("User ID is required.");
+      return;
     }
 
+    if (!payload.full_name) {
+      setErr("Full name is required.");
+      return;
+    }
+
+    if (!payload.password || payload.password.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (!ROLES.includes(payload.role)) {
+      setErr("Invalid role selected.");
+      return;
+    }
+
+    setSaving(true);
     try {
-      setSaving(true);
       await apiPost("/users/", payload);
+
       setOk(`User "${payload.user_id}" created successfully.`);
       setForm(emptyForm);
-      await load();
+
+      const refreshed = await load(false);
+      if (!refreshed) {
+        setErr(
+          `User "${payload.user_id}" was created, but the user list could not be refreshed.`
+        );
+      }
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -81,26 +112,38 @@ export default function Users() {
     setErr("");
     setOk("");
 
+    const payload = {
+      full_name: String(row.full_name || "").trim().toUpperCase(),
+      role: String(row.role || "").trim().toUpperCase(),
+      is_active: !!row.is_active,
+    };
+
+    if (!payload.full_name) {
+      setErr("Full name cannot be empty.");
+      return;
+    }
+
+    if (!ROLES.includes(payload.role)) {
+      setErr("Invalid role selected.");
+      return;
+    }
+
+    setSaving(true);
     try {
-      setSaving(true);
-      await apiPut(`/users/${encodeURIComponent(row.user_id)}`, {
-        full_name: String(row.full_name || "").trim().toUpperCase(),
-        role: row.role,
-        is_active: !!row.is_active,
-      });
+      await apiPut(`/users/${encodeURIComponent(row.user_id)}`, payload);
       setOk(`User "${row.user_id}" updated successfully.`);
-      await load();
+
+      const refreshed = await load(false);
+      if (!refreshed) {
+        setErr(
+          `User "${row.user_id}" was updated, but the user list could not be refreshed.`
+        );
+      }
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
       setSaving(false);
     }
-  }
-
-  function setRowField(userId, key, value) {
-    setRows((prev) =>
-      prev.map((r) => (r.user_id === userId ? { ...r, [key]: value } : r))
-    );
   }
 
   async function resetPassword(userId) {
@@ -109,11 +152,12 @@ export default function Users() {
 
     const pwd = resetPwdUser === userId ? resetPwdValue : "";
     if (!pwd || pwd.length < 8) {
-      return setErr("Reset password must be at least 8 characters.");
+      setErr("Reset password must be at least 8 characters.");
+      return;
     }
 
+    setSaving(true);
     try {
-      setSaving(true);
       await apiPost(`/users/${encodeURIComponent(userId)}/reset-password`, {
         new_password: pwd,
       });
@@ -128,25 +172,40 @@ export default function Users() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
-      <h2 style={{ margin: 0, color: "#fff" }}>User Management</h2>
-      <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Admin-only access. Create users, update roles, activate/deactivate accounts,
-        and reset passwords.
-      </p>
+    <div style={pageWrap}>
+      <div style={pageHeader}>
+        <h2 style={title}>User Management</h2>
+        <p style={subTitle}>
+          Admin-only access. Create users, update roles, activate or deactivate
+          accounts, and reset passwords.
+        </p>
+      </div>
 
       {err ? <div style={msgErr}>{err}</div> : null}
       {ok ? <div style={msgOk}>{ok}</div> : null}
 
       <div style={card}>
         <div style={toolbarBetween}>
-          <h3 style={{ margin: 0, color: "#111" }}>Create User</h3>
-          <button onClick={load} style={btnGhost} disabled={loading || saving}>
+          <div>
+            <h3 style={sectionTitle}>Create User</h3>
+            <p style={sectionSub}>
+              Add new login accounts for administrators, operators, and viewers.
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              setErr("");
+              setOk("");
+              load();
+            }}
+            style={btnGhost}
+            disabled={loading || saving}
+            type="button"
+          >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
-
-        <div style={{ height: 14 }} />
 
         <form onSubmit={createUser}>
           <div style={grid4}>
@@ -157,6 +216,7 @@ export default function Users() {
                 onChange={(e) => setFormField("user_id", e.target.value)}
                 placeholder="e.g. OPERATOR1"
                 style={inp}
+                disabled={saving}
               />
             </div>
 
@@ -167,6 +227,7 @@ export default function Users() {
                 onChange={(e) => setFormField("full_name", e.target.value)}
                 placeholder="e.g. CASHIER 1"
                 style={inp}
+                disabled={saving}
               />
             </div>
 
@@ -178,6 +239,7 @@ export default function Users() {
                 onChange={(e) => setFormField("password", e.target.value)}
                 placeholder="Minimum 8 characters"
                 style={inp}
+                disabled={saving}
               />
             </div>
 
@@ -187,10 +249,11 @@ export default function Users() {
                 value={form.role}
                 onChange={(e) => setFormField("role", e.target.value)}
                 style={inp}
+                disabled={saving}
               >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
+                {ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {role}
                   </option>
                 ))}
               </select>
@@ -208,38 +271,59 @@ export default function Users() {
       <div style={{ height: 16 }} />
 
       <div style={card}>
-        <h3 style={{ marginTop: 0, color: "#111" }}>Existing Users</h3>
+        <div style={toolbarBetween}>
+          <div>
+            <h3 style={sectionTitle}>Existing Users</h3>
+            <p style={sectionSub}>
+              Edit full name, role, active status, and reset passwords.
+            </p>
+          </div>
+          <div style={pillInfo}>
+            {loading ? "Loading users..." : `${rows.length} user(s)`}
+          </div>
+        </div>
 
         <div style={{ overflowX: "auto" }}>
-          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 1050 }}>
+          <table
+            width="100%"
+            cellPadding="10"
+            style={table}
+          >
             <thead>
-              <tr style={{ background: "#f6f7f9" }}>
-                <th align="left">User ID</th>
-                <th align="left">Full Name</th>
-                <th align="left">Role</th>
-                <th align="center">Active</th>
-                <th align="left">Reset Password</th>
-                <th align="center">Actions</th>
+              <tr style={tableHeadRow}>
+                <th align="left" style={thCell}>User ID</th>
+                <th align="left" style={thCell}>Full Name</th>
+                <th align="left" style={thCell}>Role</th>
+                <th align="center" style={thCell}>Active</th>
+                <th align="left" style={thCell}>Reset Password</th>
+                <th align="center" style={thCell}>Actions</th>
               </tr>
             </thead>
+
             <tbody>
               {rows.map((r) => (
-                <tr key={r.user_id} style={{ borderTop: "1px solid #eee" }}>
-                  <td style={{ fontWeight: 900, color: "#111" }}>{r.user_id}</td>
+                <tr key={r.user_id} style={tableRow}>
+                  <td style={userIdCell}>{r.user_id}</td>
 
-                  <td>
+                  <td style={tdCell}>
                     <input
                       value={r.full_name || ""}
-                      onChange={(e) => setRowField(r.user_id, "full_name", e.target.value)}
+                      onChange={(e) =>
+                        setRowField(r.user_id, "full_name", e.target.value)
+                      }
                       style={inp}
+                      disabled={saving}
                     />
                   </td>
 
-                  <td>
+                  <td style={tdCell}>
                     <select
                       value={r.role}
-                      onChange={(e) => setRowField(r.user_id, "role", e.target.value)}
+                      onChange={(e) =>
+                        setRowField(r.user_id, "role", e.target.value)
+                      }
                       style={inp}
+                      disabled={saving}
                     >
                       {ROLES.map((role) => (
                         <option key={role} value={role}>
@@ -249,16 +333,19 @@ export default function Users() {
                     </select>
                   </td>
 
-                  <td align="center">
+                  <td align="center" style={tdCell}>
                     <input
                       type="checkbox"
                       checked={!!r.is_active}
-                      onChange={(e) => setRowField(r.user_id, "is_active", e.target.checked)}
+                      onChange={(e) =>
+                        setRowField(r.user_id, "is_active", e.target.checked)
+                      }
+                      disabled={saving}
                     />
                   </td>
 
-                  <td>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <td style={tdCell}>
+                    <div style={resetWrap}>
                       <input
                         type="password"
                         value={resetPwdUser === r.user_id ? resetPwdValue : ""}
@@ -268,6 +355,7 @@ export default function Users() {
                         }}
                         placeholder="New password"
                         style={{ ...inp, minWidth: 180 }}
+                        disabled={saving}
                       />
                       <button
                         onClick={() => resetPassword(r.user_id)}
@@ -280,7 +368,7 @@ export default function Users() {
                     </div>
                   </td>
 
-                  <td align="center">
+                  <td align="center" style={tdCell}>
                     <button
                       onClick={() => saveRow(r)}
                       style={btnPrimarySmall}
@@ -295,8 +383,16 @@ export default function Users() {
 
               {rows.length === 0 && !loading && (
                 <tr>
-                  <td colSpan="6" style={{ padding: 12, color: "#666" }}>
+                  <td colSpan="6" style={emptyCell}>
                     No users found.
+                  </td>
+                </tr>
+              )}
+
+              {loading && rows.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={emptyCell}>
+                    Loading users...
                   </td>
                 </tr>
               )}
@@ -308,32 +404,71 @@ export default function Users() {
   );
 }
 
-/* ---- styles ---- */
+/* ---------- styles ---------- */
+
+const pageWrap = {
+  maxWidth: 1200,
+  margin: "0 auto",
+  padding: 18,
+};
+
+const pageHeader = {
+  marginBottom: 14,
+};
+
+const title = {
+  margin: 0,
+  color: "#fff",
+  fontSize: 30,
+  fontWeight: 900,
+};
+
+const subTitle = {
+  marginTop: 8,
+  color: "#c8cfdb",
+  fontSize: 15,
+  lineHeight: 1.5,
+};
 
 const card = {
-  background: "white",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 16,
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: 20,
+  padding: 18,
+  boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
+};
+
+const toolbarBetween = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 12,
+  flexWrap: "wrap",
+  marginBottom: 14,
+};
+
+const sectionTitle = {
+  margin: 0,
+  color: "#111827",
+  fontSize: 20,
+  fontWeight: 900,
+};
+
+const sectionSub = {
+  margin: "6px 0 0 0",
+  color: "#6b7280",
+  fontSize: 14,
 };
 
 const grid4 = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-};
-
-const toolbarBetween = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  alignItems: "end",
-  justifyContent: "space-between",
+  gap: 14,
 };
 
 const lbl = {
   fontSize: 13,
-  color: "#111",
+  color: "#111827",
   display: "block",
   marginBottom: 6,
   fontWeight: 800,
@@ -341,76 +476,137 @@ const lbl = {
 
 const inp = {
   width: "100%",
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
+  padding: "11px 12px",
+  border: "1px solid #d1d5db",
+  borderRadius: 12,
   outline: "none",
   background: "#fff",
-  color: "#111",
+  color: "#111827",
   boxSizing: "border-box",
+  fontSize: 14,
 };
 
 const btnRow = {
   display: "flex",
   gap: 10,
   flexWrap: "wrap",
-  marginTop: 14,
+  marginTop: 16,
 };
 
 const btnPrimary = {
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
+  padding: "12px 18px",
+  borderRadius: 14,
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#fff",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 15,
 };
 
 const btnPrimarySmall = {
-  padding: "8px 12px",
+  padding: "9px 14px",
   borderRadius: 10,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#fff",
   cursor: "pointer",
-  fontWeight: 900,
+  fontWeight: 800,
 };
 
 const btnWarn = {
-  padding: "8px 12px",
+  padding: "9px 14px",
   borderRadius: 10,
   border: "1px solid #d97706",
   background: "#f59e0b",
-  color: "white",
+  color: "#fff",
   cursor: "pointer",
-  fontWeight: 900,
+  fontWeight: 800,
 };
 
 const btnGhost = {
-  padding: "10px 14px",
+  padding: "11px 14px",
   borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "white",
-  color: "#111",
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111827",
   cursor: "pointer",
-  fontWeight: 900,
+  fontWeight: 800,
 };
 
 const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  padding: 10,
-  borderRadius: 12,
-  color: "#a40000",
-  marginBottom: 12,
+  background: "#ffe9e9",
+  border: "1px solid #f4b4b4",
+  padding: 12,
+  borderRadius: 14,
+  color: "#b42318",
+  marginBottom: 14,
+  fontWeight: 600,
 };
 
 const msgOk = {
-  background: "#eaffea",
-  border: "1px solid #bde7bd",
-  padding: 10,
-  borderRadius: 12,
-  color: "#0a6a0a",
-  marginBottom: 12,
+  background: "#e9fff0",
+  border: "1px solid #b7ebc6",
+  padding: 12,
+  borderRadius: 14,
+  color: "#067647",
+  marginBottom: 14,
+  fontWeight: 600,
+};
+
+const table = {
+  borderCollapse: "separate",
+  borderSpacing: 0,
+  minWidth: 1050,
+};
+
+const tableHeadRow = {
+  background: "#f8fafc",
+};
+
+const thCell = {
+  color: "#111827",
+  fontWeight: 900,
+  fontSize: 14,
+  borderBottom: "1px solid #e5e7eb",
+};
+
+const tableRow = {
+  borderTop: "1px solid #eef2f7",
+};
+
+const tdCell = {
+  borderTop: "1px solid #eef2f7",
+  verticalAlign: "middle",
+};
+
+const userIdCell = {
+  fontWeight: 900,
+  color: "#111827",
+  borderTop: "1px solid #eef2f7",
+  verticalAlign: "middle",
+  whiteSpace: "nowrap",
+};
+
+const emptyCell = {
+  padding: 18,
+  color: "#6b7280",
+  textAlign: "center",
+};
+
+const resetWrap = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const pillInfo = {
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "#eef2ff",
+  border: "1px solid #c7d2fe",
+  color: "#3730a3",
+  fontWeight: 800,
+  fontSize: 13,
 };
