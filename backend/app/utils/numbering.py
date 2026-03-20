@@ -1,23 +1,34 @@
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.number_sequence import NumberSequence
 
 
-def get_next_number(db: Session, key_name: str) -> str:
-    seq = (
-        db.execute(
-            select(NumberSequence)
-            .where(NumberSequence.key_name == key_name)
-            .with_for_update()
+def get_next_number(
+    db: Session,
+    key_name: str,
+    prefix: str,
+    padding: int = 4,
+) -> str:
+    sequence = db.get(NumberSequence, key_name)
+
+    if not sequence:
+        sequence = NumberSequence(
+            key_name=key_name,
+            prefix=prefix,
+            last_value=0,
+            padding=padding,
         )
-        .scalar_one_or_none()
-    )
+        db.add(sequence)
+        db.flush()
 
-    if not seq:
-        raise ValueError(f"Sequence '{key_name}' not found")
+    sequence.last_value += 1
 
-    seq.last_value += 1
+    if prefix != sequence.prefix:
+        sequence.prefix = prefix
+
+    if padding != sequence.padding:
+        sequence.padding = padding
+
     db.flush()
 
-    return f"{seq.prefix}{str(seq.last_value).zfill(seq.padding)}"
+    return f"{sequence.prefix}{str(sequence.last_value).zfill(sequence.padding)}"
