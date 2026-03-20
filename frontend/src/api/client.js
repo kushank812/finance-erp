@@ -51,6 +51,10 @@ async function request(path, options = {}) {
   }
 }
 
+/* -----------------------------
+   STANDARD METHODS
+----------------------------- */
+
 export function apiGet(path) {
   return request(path, { method: "GET" });
 }
@@ -65,6 +69,13 @@ export function apiPost(path, body) {
 export function apiPut(path, body) {
   return request(path, {
     method: "PUT",
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export function apiPatch(path, body) {
+  return request(path, {
+    method: "PATCH",
     body: JSON.stringify(body ?? {}),
   });
 }

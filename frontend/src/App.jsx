@@ -28,6 +28,7 @@ import Statement from "./pages/Statement";
 
 import PurchaseBillView from "./pages/PurchaseBillView";
 import SalesInvoiceDirectView from "./pages/SalesInvoiceDirectView";
+import SalesInvoicePrintView from "./pages/SalesInvoicePrintView";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
@@ -296,8 +297,12 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
               <>
                 <div style={groupLabelStyle()}>AR</div>
 
-                <NavLink to="/billing/new" style={({ isActive }) => linkStyle(isActive)}>
-                  Create Bill
+                <NavLink to="/billing" style={({ isActive }) => linkStyle(isActive)}>
+                  Create Invoice
+                </NavLink>
+
+                <NavLink to="/sales-invoices" style={({ isActive }) => linkStyle(isActive)}>
+                  Invoices
                 </NavLink>
 
                 <NavLink to="/receipt/new" style={({ isActive }) => linkStyle(isActive)}>
@@ -541,7 +546,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
         />
 
         <Route
-          path="/billing/new"
+          path="/billing"
           element={
             <TransactionRoute
               authReady={authReady}
@@ -550,6 +555,45 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
             >
               <BillingNew />
             </TransactionRoute>
+          }
+        />
+
+        <Route
+          path="/billing/edit/:invoiceNo"
+          element={
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <BillingNew />
+            </TransactionRoute>
+          }
+        />
+
+        <Route
+          path="/sales-invoices"
+          element={
+            <DocumentViewRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <SalesInvoiceDirectView />
+            </DocumentViewRoute>
+          }
+        />
+
+        <Route
+          path="/sales-invoice-view/:invoiceNo"
+          element={
+            <DocumentViewRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <SalesInvoicePrintView />
+            </DocumentViewRoute>
           }
         />
 
@@ -563,19 +607,6 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
             >
               <ReceiptNew />
             </TransactionRoute>
-          }
-        />
-
-        <Route
-          path="/billing/view/:invoiceNo"
-          element={
-            <DocumentViewRoute
-              authReady={authReady}
-              authenticated={authenticated}
-              currentUser={currentUser}
-            >
-              <SalesInvoiceDirectView />
-            </DocumentViewRoute>
           }
         />
 

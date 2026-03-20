@@ -26,15 +26,43 @@ class SalesInvoiceHdr(Base):
         index=True,
     )
 
-    subtotal: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    tax_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
-    tax_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    grand_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    subtotal: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+    tax_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        default=0,
+    )
+    tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+    grand_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
 
-    amount_received: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    amount_received: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+    balance: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
 
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Pending")
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="PENDING",
+    )
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     lines = relationship(
@@ -69,9 +97,21 @@ class SalesInvoiceDtl(Base):
         index=True,
     )
 
-    qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False, default=1)
-    rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
-    line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    qty: Mapped[Decimal] = mapped_column(
+        Numeric(14, 3),
+        nullable=False,
+        default=1,
+    )
+    rate: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+    line_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
 
     hdr = relationship("SalesInvoiceHdr", back_populates="lines")
 
@@ -89,7 +129,11 @@ class SalesReceipt(Base):
     )
 
     receipt_date: Mapped[date] = mapped_column(Date, nullable=False)
-    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
