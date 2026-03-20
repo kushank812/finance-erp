@@ -256,10 +256,6 @@ export default function ItemMaster() {
           : "Create, edit, delete and view items (responsive for phone + laptop)."}
       </p>
 
-      <div style={debugBox}>
-        ROLE: {role || "NO ROLE"} | CAN WRITE: {canWrite ? "YES" : "NO"}
-      </div>
-
       {err && <div style={msgErr}>{err}</div>}
       {ok && <div style={msgOk}>{ok}</div>}
 
@@ -582,21 +578,21 @@ const btnGhost = {
   fontWeight: 900,
 };
 
-const btnMini = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
 const btnViewMini = {
   padding: "8px 12px",
   borderRadius: 10,
   border: "1px solid #4b5563",
   background: "#4b5563",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const btnMini = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #0b5cff",
+  background: "#0b5cff",
   color: "white",
   cursor: "pointer",
   fontWeight: 900,
@@ -638,14 +634,4 @@ const readOnlyBanner = {
   color: "#1d3f91",
   fontWeight: 700,
   marginBottom: 4,
-};
-
-const debugBox = {
-  background: "#fff7d6",
-  border: "1px solid #e5d37a",
-  padding: 10,
-  borderRadius: 12,
-  color: "#5c4700",
-  marginBottom: 12,
-  fontWeight: 800,
 };
