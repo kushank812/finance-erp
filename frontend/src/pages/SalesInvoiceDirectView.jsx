@@ -35,8 +35,28 @@ function isCancelled(row) {
   return getStatus(row) === "CANCELLED";
 }
 
+function isPaid(row) {
+  return getStatus(row) === "PAID";
+}
+
+function isPartial(row) {
+  return getStatus(row) === "PARTIAL";
+}
+
+function isPending(row) {
+  return getStatus(row) === "PENDING" || getStatus(row) === "OVERDUE";
+}
+
+function canFullEditInvoice(row) {
+  return !isCancelled(row) && !isPaid(row) && !hasReceipt(row);
+}
+
+function canRestrictedEditInvoice(row) {
+  return !isCancelled(row) && isPartial(row);
+}
+
 function canEditInvoice(row) {
-  return !isCancelled(row) && !hasReceipt(row);
+  return canFullEditInvoice(row) || canRestrictedEditInvoice(row);
 }
 
 function canCancelInvoice(row) {
@@ -45,6 +65,12 @@ function canCancelInvoice(row) {
 
 function canDeleteInvoice(row) {
   return !isCancelled(row) && !hasReceipt(row);
+}
+
+function getEditMode(row) {
+  if (canFullEditInvoice(row)) return "FULL";
+  if (canRestrictedEditInvoice(row)) return "RESTRICTED";
+  return "NONE";
 }
 
 function actionDisabledStyle(baseStyle) {
@@ -118,9 +144,24 @@ export default function SalesInvoiceDirectView() {
     await loadInvoices(cleared);
   }
 
+  function onEditInvoice(row) {
+    const invoiceNo = row.invoice_no;
+    const editMode = getEditMode(row);
+
+    if (editMode === "NONE") return;
+
+    nav(`/billing/edit/${encodeURIComponent(invoiceNo)}`, {
+      state: {
+        editMode,
+        invoiceStatus: getStatus(row),
+        hasReceipt: hasReceipt(row),
+      },
+    });
+  }
+
   async function onCancelInvoice(invoiceNo) {
     const ok = window.confirm(
-      `Are you sure you want to cancel invoice ${invoiceNo}?\n\nThis is allowed only if no receipt exists.`
+      `Are you sure you want to cancel invoice ${invoiceNo}?\n\nThis is allowed only if no receipt exists.\nThe invoice will remain in the system with CANCELLED status.`
     );
     if (!ok) return;
 
@@ -143,7 +184,7 @@ export default function SalesInvoiceDirectView() {
 
   async function onDeleteInvoice(invoiceNo) {
     const ok = window.confirm(
-      `Are you sure you want to delete invoice ${invoiceNo}?\n\nDelete is allowed only when no receipt exists.\nThis action cannot be undone.`
+      `Are you sure you want to delete invoice ${invoiceNo}?\n\nDelete is allowed only when no receipt exists.\nUse delete only for wrong entry / mistaken invoice.\nThis action cannot be undone.`
     );
     if (!ok) return;
 
@@ -268,6 +309,15 @@ export default function SalesInvoiceDirectView() {
         <SummaryCard title="Outstanding Balance" value={summary.balanceTotal} />
       </div>
 
+      <div style={infoCard}>
+        <div style={infoTitle}>Real-life action rules</div>
+        <div style={infoText}>
+          PENDING / OVERDUE invoices can be fully edited. PARTIAL invoices can be edited
+          in restricted mode only. PAID and CANCELLED invoices are view-only. Cancel and
+          Delete are allowed only when no receipt exists.
+        </div>
+      </div>
+
       <div style={tableCard}>
         <div style={tableHeader}>
           <div>
@@ -312,16 +362,25 @@ export default function SalesInvoiceDirectView() {
               ) : (
                 rows.map((row) => {
                   const invoiceNo = row.invoice_no;
+                  const status = getStatus(row);
                   const cancelled = isCancelled(row);
                   const receiptExists = hasReceipt(row);
                   const editAllowed = canEditInvoice(row);
                   const cancelAllowed = canCancelInvoice(row);
                   const deleteAllowed = canDeleteInvoice(row);
                   const busy = busyInvoiceNo === invoiceNo;
+                  const editMode = getEditMode(row);
 
                   let editTitle = "Edit invoice";
-                  if (cancelled) editTitle = "Cancelled invoice cannot be edited";
-                  else if (receiptExists) editTitle = "Invoice with receipt cannot be edited";
+                  if (editMode === "RESTRICTED") {
+                    editTitle = "Restricted edit only: non-financial fields only";
+                  } else if (cancelled) {
+                    editTitle = "Cancelled invoice cannot be edited";
+                  } else if (isPaid(row)) {
+                    editTitle = "Paid invoice cannot be edited";
+                  } else {
+                    editTitle = "Full edit allowed";
+                  }
 
                   let cancelTitle = "Cancel invoice";
                   if (cancelled) cancelTitle = "Already cancelled";
@@ -341,11 +400,12 @@ export default function SalesInvoiceDirectView() {
                       <td style={tdRight}>{money(row.amount_received)}</td>
                       <td style={tdRight}>{money(row.balance)}</td>
                       <td style={td}>
-                        <span style={statusBadge(getStatus(row))}>{getStatus(row)}</span>
+                        <span style={statusBadge(status)}>{status}</span>
                       </td>
                       <td style={td}>
                         <div style={rowActionWrap}>
                           <button
+                            type="button"
                             style={miniBtn}
                             onClick={() =>
                               nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)
@@ -355,17 +415,17 @@ export default function SalesInvoiceDirectView() {
                           </button>
 
                           <button
+                            type="button"
                             style={editAllowed ? miniBtnBlue : actionDisabledStyle(miniBtnBlue)}
                             disabled={!editAllowed || busy}
                             title={editTitle}
-                            onClick={() =>
-                              nav(`/billing/edit/${encodeURIComponent(invoiceNo)}`)
-                            }
+                            onClick={() => onEditInvoice(row)}
                           >
-                            Edit
+                            {editMode === "RESTRICTED" ? "Edit*" : "Edit"}
                           </button>
 
                           <button
+                            type="button"
                             style={
                               cancelAllowed
                                 ? miniBtnWarning
@@ -379,6 +439,7 @@ export default function SalesInvoiceDirectView() {
                           </button>
 
                           <button
+                            type="button"
                             style={
                               deleteAllowed
                                 ? miniBtnDanger
@@ -398,6 +459,11 @@ export default function SalesInvoiceDirectView() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div style={footNote}>
+          * Edit on PARTIAL invoice means restricted edit only. Do not allow item lines,
+          quantities, rates, tax, customer, or grand total changes on the edit form.
         </div>
       </div>
     </div>
@@ -493,6 +559,27 @@ const summaryValue = {
   fontSize: 22,
   fontWeight: 900,
   color: "#111",
+};
+
+const infoCard = {
+  background: "#f8fbff",
+  border: "1px solid #dbe8ff",
+  borderRadius: 16,
+  padding: 14,
+  marginBottom: 14,
+};
+
+const infoTitle = {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#0b3d91",
+  marginBottom: 6,
+};
+
+const infoText = {
+  fontSize: 13,
+  color: "#28456b",
+  lineHeight: 1.5,
 };
 
 const tableCard = {
@@ -637,6 +724,12 @@ const msgOk = {
   borderRadius: 12,
   color: "#116b2f",
   marginBottom: 12,
+};
+
+const footNote = {
+  marginTop: 12,
+  fontSize: 12,
+  color: "#666",
 };
 
 function statusBadge(status) {

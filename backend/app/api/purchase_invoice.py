@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -36,12 +36,45 @@ class PurchaseInvoiceLineUpdateIn(BaseModel):
 
 
 class PurchaseInvoiceUpdateIn(BaseModel):
-    bill_date: date
+    # Full-edit fields
+    bill_date: date | None = None
     due_date: date | None = None
-    vendor_code: str
-    tax_percent: float = 0
+    vendor_code: str | None = None
+    tax_percent: float | None = None
     remark: str | None = None
-    lines: list[PurchaseInvoiceLineUpdateIn]
+    lines: list[PurchaseInvoiceLineUpdateIn] | None = None
+
+    @model_validator(mode="after")
+    def validate_update_payload(self):
+        # Restricted update allowed with only due_date / remark
+        restricted_only = (
+            self.bill_date is None
+            and self.vendor_code is None
+            and self.tax_percent is None
+            and self.lines is None
+        )
+        if restricted_only:
+            if self.due_date is None and self.remark is None:
+                raise ValueError("Provide at least one allowed field to update")
+            return self
+
+        # Otherwise full update requires all important fields
+        missing = []
+        if self.bill_date is None:
+            missing.append("bill_date")
+        if self.vendor_code is None:
+            missing.append("vendor_code")
+        if self.tax_percent is None:
+            missing.append("tax_percent")
+        if self.lines is None:
+            missing.append("lines")
+
+        if missing:
+            raise ValueError(
+                f"Full purchase bill update requires: {', '.join(missing)}"
+            )
+
+        return self
 
 
 class CancelBillIn(BaseModel):
@@ -308,20 +341,16 @@ def update_purchase_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
-    if str(obj.status or "").upper() == STATUS_CANCELLED:
-        raise HTTPException(status_code=400, detail="Cancelled bill cannot be updated")
+    current_status = str(obj.status or "").upper()
 
-    if has_any_payment(db, bill_no) or to_decimal(obj.amount_paid) > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Bill with payment cannot be updated",
-        )
+    if current_status == STATUS_CANCELLED:
+      raise HTTPException(status_code=400, detail="Cancelled bill cannot be updated")
 
-    data = normalize_upper(payload.model_dump())
+    if current_status == STATUS_PAID:
+        raise HTTPException(status_code=400, detail="Paid bill cannot be updated")
 
-    lines = data.get("lines", [])
-    if not lines:
-        raise HTTPException(status_code=400, detail="At least one line is required")
+    payment_exists = has_any_payment(db, bill_no)
+    amount_paid = to_decimal(obj.amount_paid)
 
     old_values = {
         "bill_date": str(obj.bill_date),
@@ -337,6 +366,82 @@ def update_purchase_invoice(
         "remark": obj.remark,
         "line_count": len(obj.lines or []),
     }
+
+    raw_data = payload.model_dump(exclude_unset=True)
+    data = normalize_upper(raw_data)
+
+    restricted_only = (
+        "bill_date" not in data
+        and "vendor_code" not in data
+        and "tax_percent" not in data
+        and "lines" not in data
+    )
+
+    # -----------------------------
+    # RESTRICTED EDIT
+    # Only due_date and remark
+    # -----------------------------
+    if restricted_only:
+        obj.due_date = data.get("due_date", obj.due_date)
+        obj.remark = data.get("remark", obj.remark)
+
+        if current_status == STATUS_CANCELLED:
+            obj.status = STATUS_CANCELLED
+        else:
+            obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+
+        log_activity(
+            db=db,
+            request=request,
+            user_id=current_user.user_id,
+            action=AuditAction.UPDATE,
+            module=AuditModule.PURCHASE_INVOICE,
+            record_id=obj.bill_no,
+            record_name=obj.bill_no,
+            details=f"Purchase invoice restricted update: {obj.bill_no}",
+            old_values=old_values,
+            new_values={
+                "bill_date": str(obj.bill_date),
+                "due_date": str(obj.due_date) if obj.due_date else None,
+                "vendor_code": obj.vendor_code,
+                "subtotal": float(obj.subtotal),
+                "tax_percent": float(obj.tax_percent),
+                "tax_amount": float(obj.tax_amount),
+                "grand_total": float(obj.grand_total),
+                "amount_paid": float(obj.amount_paid),
+                "balance": float(obj.balance),
+                "status": obj.status,
+                "remark": obj.remark,
+                "line_count": len(obj.lines),
+            },
+        )
+
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=str(e.orig) if getattr(e, "orig", None) else "Could not update purchase invoice due to a conflicting change",
+            )
+
+        db.refresh(obj)
+        normalize_bill_status(obj)
+        return obj
+
+    # -----------------------------
+    # FULL EDIT
+    # Allowed only when no payment exists
+    # -----------------------------
+    if payment_exists or amount_paid > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Bill with payment allows restricted edit only. Change due date or remark only.",
+        )
+
+    lines = data.get("lines", [])
+    if not lines:
+        raise HTTPException(status_code=400, detail="At least one line is required")
 
     subtotal = Decimal("0.00")
     new_lines: list[PurchaseInvoiceDtl] = []
@@ -369,10 +474,9 @@ def update_purchase_invoice(
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
 
-    amount_paid = to_decimal(obj.amount_paid)
-    balance = grand_total - amount_paid
+    new_balance = grand_total - amount_paid
 
-    if balance < 0:
+    if new_balance < 0:
         raise HTTPException(
             status_code=400,
             detail="Grand total cannot be less than amount already paid",
@@ -385,7 +489,7 @@ def update_purchase_invoice(
     obj.tax_amount = tax_amount
     obj.subtotal = subtotal
     obj.grand_total = grand_total
-    obj.balance = balance
+    obj.balance = new_balance
     obj.remark = data.get("remark")
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
 

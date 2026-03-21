@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiPost, apiPut } from "../api/client";
 
 function money(n) {
@@ -17,6 +17,14 @@ function todayISO() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function round2(n) {
+  return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+}
+
+function getStatusValue(bill) {
+  return String(bill?.status || "").toUpperCase();
 }
 
 const emptyHdr = {
@@ -38,6 +46,8 @@ function normalizeBillToForm(bill) {
       tax_percent: Number(bill?.tax_percent || 0),
       remark: bill?.remark || "",
     },
+    status: getStatusValue(bill),
+    amountPaid: Number(bill?.amount_paid || 0),
     lines:
       Array.isArray(bill?.lines) && bill.lines.length > 0
         ? bill.lines.map((ln) => ({
@@ -53,8 +63,105 @@ function normalizeBillToForm(bill) {
   };
 }
 
+function isPaidStatus(status) {
+  return String(status || "").toUpperCase() === "PAID";
+}
+
+function isCancelledStatus(status) {
+  return String(status || "").toUpperCase() === "CANCELLED";
+}
+
+function isPartialStatus(status) {
+  return String(status || "").toUpperCase() === "PARTIAL";
+}
+
+function isPendingLikeStatus(status) {
+  const s = String(status || "").toUpperCase();
+  return s === "PENDING" || s === "OVERDUE";
+}
+
+function computeEditAccess({ isEditMode, billStatus, amountPaid }) {
+  if (!isEditMode) {
+    return {
+      pageMode: "NEW",
+      readOnly: false,
+      restricted: false,
+      fullEdit: true,
+      saveBlocked: false,
+      reason: "",
+    };
+  }
+
+  const hasPayment = Number(amountPaid || 0) > 0;
+
+  if (isCancelledStatus(billStatus)) {
+    return {
+      pageMode: "VIEW_ONLY",
+      readOnly: true,
+      restricted: false,
+      fullEdit: false,
+      saveBlocked: true,
+      reason: "Cancelled purchase bill cannot be edited.",
+    };
+  }
+
+  if (isPaidStatus(billStatus)) {
+    return {
+      pageMode: "VIEW_ONLY",
+      readOnly: true,
+      restricted: false,
+      fullEdit: false,
+      saveBlocked: true,
+      reason: "Paid purchase bill cannot be edited.",
+    };
+  }
+
+  if (isPartialStatus(billStatus)) {
+    return {
+      pageMode: "RESTRICTED",
+      readOnly: false,
+      restricted: true,
+      fullEdit: false,
+      saveBlocked: false,
+      reason: "Partial purchase bill allows restricted edit only. Only due date and remark can be changed.",
+    };
+  }
+
+  if (isPendingLikeStatus(billStatus) && !hasPayment) {
+    return {
+      pageMode: "FULL",
+      readOnly: false,
+      restricted: false,
+      fullEdit: true,
+      saveBlocked: false,
+      reason: "Full edit allowed.",
+    };
+  }
+
+  if (isPendingLikeStatus(billStatus) && hasPayment) {
+    return {
+      pageMode: "RESTRICTED",
+      readOnly: false,
+      restricted: true,
+      fullEdit: false,
+      saveBlocked: false,
+      reason: "Purchase bill has payment entries. Only due date and remark can be changed.",
+    };
+  }
+
+  return {
+    pageMode: "VIEW_ONLY",
+    readOnly: true,
+    restricted: false,
+    fullEdit: false,
+    saveBlocked: true,
+    reason: "This purchase bill cannot be edited.",
+  };
+}
+
 export default function PurchaseBillNew() {
   const nav = useNavigate();
+  const location = useLocation();
   const { billNo } = useParams();
   const isEditMode = Boolean(billNo);
 
@@ -67,11 +174,18 @@ export default function PurchaseBillNew() {
   const [vendorSearch, setVendorSearch] = useState("");
   const [itemSearches, setItemSearches] = useState([""]);
 
+  const [billStatus, setBillStatus] = useState("");
+  const [amountPaid, setAmountPaid] = useState(0);
+
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingMasters, setLoadingMasters] = useState(false);
   const [loadingBill, setLoadingBill] = useState(false);
+
+  const routeEditMode = location.state?.editMode || "";
+  const routeBillStatus = location.state?.billStatus || "";
+  const routeHasPayment = Boolean(location.state?.hasPayment);
 
   useEffect(() => {
     loadMasters();
@@ -91,6 +205,8 @@ export default function PurchaseBillNew() {
         setHdr(data.hdr);
         setLines(data.lines);
         setItemSearches(data.itemSearches);
+        setBillStatus(data.status);
+        setAmountPaid(data.amountPaid);
       } catch (e) {
         setErr(String(e.message || e));
       } finally {
@@ -113,6 +229,59 @@ export default function PurchaseBillNew() {
       setLoadingMasters(false);
     }
   }
+
+  const effectiveStatus = billStatus || routeBillStatus || "";
+  const effectiveAmountPaid =
+    Number.isFinite(Number(amountPaid)) && Number(amountPaid) > 0
+      ? Number(amountPaid)
+      : routeHasPayment
+      ? 1
+      : 0;
+
+  const access = useMemo(() => {
+    const computed = computeEditAccess({
+      isEditMode,
+      billStatus: effectiveStatus,
+      amountPaid: effectiveAmountPaid,
+    });
+
+    if (!isEditMode) return computed;
+
+    if (routeEditMode === "FULL") {
+      return computed.pageMode === "VIEW_ONLY"
+        ? computed
+        : {
+            ...computed,
+            pageMode: "FULL",
+            restricted: false,
+            fullEdit: true,
+            readOnly: false,
+            saveBlocked: false,
+          };
+    }
+
+    if (routeEditMode === "RESTRICTED") {
+      return computed.pageMode === "VIEW_ONLY"
+        ? computed
+        : {
+            ...computed,
+            pageMode: "RESTRICTED",
+            restricted: true,
+            fullEdit: false,
+            readOnly: false,
+            saveBlocked: false,
+          };
+    }
+
+    return computed;
+  }, [isEditMode, effectiveStatus, effectiveAmountPaid, routeEditMode]);
+
+  const pageLoading = loadingMasters || loadingBill;
+  const disableRestrictedFields = saving || pageLoading || access.readOnly;
+  const disableFullEditFields = saving || pageLoading || access.readOnly || access.restricted;
+  const canChangeDueDateRemark = !disableRestrictedFields;
+  const canEditLines = !disableFullEditFields;
+  const canSave = !saving && !pageLoading && !access.saveBlocked;
 
   const filteredVendors = useMemo(() => {
     const q = vendorSearch.trim().toLowerCase();
@@ -168,16 +337,20 @@ export default function PurchaseBillNew() {
   }
 
   function addLine() {
+    if (!canEditLines) return;
     setLines((p) => [...p, { ...emptyLine }]);
     setItemSearches((p) => [...p, ""]);
   }
 
   function removeLine(idx) {
+    if (!canEditLines) return;
     setLines((p) => (p.length === 1 ? p : p.filter((_, i) => i !== idx)));
     setItemSearches((p) => (p.length === 1 ? p : p.filter((_, i) => i !== idx)));
   }
 
   function onSelectItem(idx, item_code) {
+    if (!canEditLines) return;
+
     setErr("");
 
     const it = items.find((x) => x.item_code === item_code);
@@ -213,11 +386,13 @@ export default function PurchaseBillNew() {
     setLines([{ ...emptyLine }]);
     setVendorSearch("");
     setItemSearches([""]);
+    setBillStatus("");
+    setAmountPaid(0);
     setErr("");
     setOk("");
   }
 
-  function validateAndBuildPayload() {
+  function validateFullPayload() {
     if (!hdr.vendor_code) {
       setErr("Vendor is required.");
       return null;
@@ -263,11 +438,30 @@ export default function PurchaseBillNew() {
     };
   }
 
+  function validateRestrictedPayload() {
+    return {
+      due_date: hdr.due_date || null,
+      remark: hdr.remark?.trim() || null,
+    };
+  }
+
   async function save() {
     setErr("");
     setOk("");
 
-    const payload = validateAndBuildPayload();
+    if (!canSave) {
+      setErr(access.reason || "This purchase bill cannot be edited.");
+      return;
+    }
+
+    let payload = null;
+
+    if (!isEditMode || access.fullEdit) {
+      payload = validateFullPayload();
+    } else if (access.restricted) {
+      payload = validateRestrictedPayload();
+    }
+
     if (!payload) return;
 
     try {
@@ -276,6 +470,13 @@ export default function PurchaseBillNew() {
       if (isEditMode) {
         const updated = await apiPut(`/purchase-invoices/${encodeURIComponent(billNo)}`, payload);
         setOk(`✅ Purchase Bill "${updated?.bill_no || billNo}" updated successfully.`);
+
+        if (updated?.status) {
+          setBillStatus(String(updated.status).toUpperCase());
+        }
+        if (updated?.amount_paid != null) {
+          setAmountPaid(Number(updated.amount_paid || 0));
+        }
       } else {
         const created = await apiPost("/purchase-invoices/", payload);
         setOk(`✅ Purchase Bill "${created?.bill_no || ""}" saved. Payables updated.`);
@@ -288,24 +489,47 @@ export default function PurchaseBillNew() {
     }
   }
 
-  const pageLoading = loadingMasters || loadingBill;
+  function getPageTitle() {
+    if (!isEditMode) return "Create Purchase Bill";
+    if (access.readOnly) return "View Purchase Bill (Locked)";
+    if (access.restricted) return "Edit Purchase Bill (Restricted)";
+    return "Edit Purchase Bill";
+  }
+
+  function getPageSubtitle() {
+    if (!isEditMode) return "Select vendor + items from masters and save purchase bill.";
+    if (access.readOnly) return `Bill ${billNo} is locked for editing. ${access.reason}`;
+    if (access.restricted) return `Restricted edit for bill ${billNo}. Only due date and remark can be changed.`;
+    return `Update purchase bill ${billNo}.`;
+  }
+
+  function getModeBadge() {
+    if (!isEditMode) {
+      return <div style={modeBadgeBlue}>NEW BILL</div>;
+    }
+
+    if (access.readOnly) {
+      return <div style={modeBadgeLocked}>VIEW ONLY</div>;
+    }
+
+    if (access.restricted) {
+      return <div style={modeBadgeWarning}>RESTRICTED EDIT</div>;
+    }
+
+    return <div style={modeBadge}>FULL EDIT</div>;
+  }
 
   return (
     <div style={page}>
       <div style={headerWrap}>
         <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>
-            {isEditMode ? "Edit Purchase Bill" : "Create Purchase Bill"}
-          </h2>
-          <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            {isEditMode
-              ? `Update purchase bill ${billNo}.`
-              : "Select vendor + items from masters and save purchase bill."}
-          </p>
+          <h2 style={{ margin: 0, color: "#fff" }}>{getPageTitle()}</h2>
+          <p style={{ marginTop: 6, color: "#b8b8b8" }}>{getPageSubtitle()}</p>
         </div>
 
         <div style={headerActions}>
           <button
+            type="button"
             onClick={() => nav("/purchase-bills")}
             style={btnGhost}
             disabled={saving || pageLoading}
@@ -315,6 +539,7 @@ export default function PurchaseBillNew() {
 
           {isEditMode ? (
             <button
+              type="button"
               onClick={() => nav(`/purchase/view/${encodeURIComponent(billNo)}`)}
               style={btnGhost}
               disabled={saving || pageLoading}
@@ -328,16 +553,12 @@ export default function PurchaseBillNew() {
       {err && <div style={msgErr}>{err}</div>}
       {ok && <div style={msgOk}>{ok}</div>}
       {pageLoading && <div style={msgInfo}>Loading data...</div>}
+      {isEditMode && access.reason ? <div style={msgWarn}>{access.reason}</div> : null}
 
       <div style={card}>
         <div style={sectionHeader}>
           <h3 style={{ marginTop: 0, marginBottom: 0, color: "#111" }}>Bill Header</h3>
-
-          {isEditMode ? (
-            <div style={modeBadge}>EDIT MODE</div>
-          ) : (
-            <div style={modeBadgeBlue}>NEW BILL</div>
-          )}
+          {getModeBadge()}
         </div>
 
         <div style={formGrid}>
@@ -357,7 +578,7 @@ export default function PurchaseBillNew() {
             vendorCode={hdr.vendor_code}
             setVendorCode={(value) => setHdrField("vendor_code", value)}
             vendors={filteredVendors}
-            disabled={saving || pageLoading}
+            disabled={disableFullEditFields}
           />
 
           <Field
@@ -365,7 +586,7 @@ export default function PurchaseBillNew() {
             type="date"
             value={hdr.bill_date}
             onChange={(e) => setHdrField("bill_date", e.target.value)}
-            disabled={saving || pageLoading}
+            disabled={disableFullEditFields}
           />
 
           <Field
@@ -373,7 +594,7 @@ export default function PurchaseBillNew() {
             type="date"
             value={hdr.due_date}
             onChange={(e) => setHdrField("due_date", e.target.value)}
-            disabled={saving || pageLoading}
+            disabled={!canChangeDueDateRemark}
           />
 
           <Field
@@ -382,7 +603,7 @@ export default function PurchaseBillNew() {
             value={hdr.tax_percent}
             onChange={(e) => setHdrField("tax_percent", e.target.value)}
             placeholder="0"
-            disabled={saving || pageLoading}
+            disabled={disableFullEditFields}
           />
 
           <Field
@@ -390,7 +611,7 @@ export default function PurchaseBillNew() {
             value={hdr.remark}
             onChange={(e) => setHdrField("remark", e.target.value)}
             placeholder="Optional note..."
-            disabled={saving || pageLoading}
+            disabled={!canChangeDueDateRemark}
           />
         </div>
 
@@ -414,7 +635,12 @@ export default function PurchaseBillNew() {
       <div style={card}>
         <div style={toolbarWrap}>
           <h3 style={{ margin: 0, color: "#111" }}>Line Items</h3>
-          <button onClick={addLine} style={btnPrimary} disabled={saving || pageLoading}>
+          <button
+            type="button"
+            onClick={addLine}
+            style={canEditLines ? btnPrimary : disabledBtn(btnPrimary)}
+            disabled={!canEditLines}
+          >
             + Add Row
           </button>
         </div>
@@ -444,8 +670,8 @@ export default function PurchaseBillNew() {
                         value={itemSearches[idx] || ""}
                         onChange={(e) => setItemSearch(idx, e.target.value)}
                         placeholder="Search item by code, name, units..."
-                        style={input}
-                        disabled={saving || pageLoading}
+                        style={!canEditLines ? disabledInput : input}
+                        disabled={!canEditLines}
                       />
 
                       <div style={{ height: 6 }} />
@@ -453,8 +679,8 @@ export default function PurchaseBillNew() {
                       <select
                         value={ln.item_code}
                         onChange={(e) => onSelectItem(idx, e.target.value)}
-                        style={input}
-                        disabled={saving || pageLoading}
+                        style={!canEditLines ? disabledInput : input}
+                        disabled={!canEditLines}
                       >
                         <option value="">-- Select Item --</option>
                         {filteredItemsForRow(idx).map((it) => (
@@ -470,8 +696,8 @@ export default function PurchaseBillNew() {
                         type="number"
                         value={ln.qty}
                         onChange={(e) => setLine(idx, "qty", e.target.value)}
-                        style={input}
-                        disabled={saving || pageLoading}
+                        style={!canEditLines ? disabledInput : input}
+                        disabled={!canEditLines}
                       />
                     </td>
 
@@ -480,8 +706,8 @@ export default function PurchaseBillNew() {
                         type="number"
                         value={ln.rate}
                         onChange={(e) => setLine(idx, "rate", e.target.value)}
-                        style={input}
-                        disabled={saving || pageLoading}
+                        style={!canEditLines ? disabledInput : input}
+                        disabled={!canEditLines}
                       />
                     </td>
 
@@ -489,9 +715,10 @@ export default function PurchaseBillNew() {
 
                     <td>
                       <button
+                        type="button"
                         onClick={() => removeLine(idx)}
-                        style={btnDanger}
-                        disabled={saving || pageLoading}
+                        style={canEditLines ? btnDanger : disabledBtn(btnDanger)}
+                        disabled={!canEditLines}
                       >
                         Remove
                       </button>
@@ -525,25 +752,36 @@ export default function PurchaseBillNew() {
 
         <div style={toolbarWrap}>
           <div style={{ color: "#666", fontSize: 13 }}>
-            {isEditMode
-              ? "Update the purchase bill carefully. Existing totals will be recalculated."
-              : "Save to generate bill number automatically."}
+            {!isEditMode
+              ? "Save to generate bill number automatically."
+              : access.readOnly
+              ? "This purchase bill is locked. Editing is not allowed."
+              : access.restricted
+              ? "Restricted edit mode: only due date and remark can be updated."
+              : "Update the purchase bill carefully. Existing totals will be recalculated."}
           </div>
 
           <div style={saveActions}>
             {!isEditMode ? (
-              <button onClick={clearAll} style={btnGhost} disabled={saving || pageLoading}>
+              <button type="button" onClick={clearAll} style={btnGhost} disabled={saving || pageLoading}>
                 Clear
               </button>
             ) : null}
 
-            <button onClick={save} style={btnPrimary} disabled={saving || pageLoading}>
+            <button
+              type="button"
+              onClick={save}
+              style={canSave ? btnPrimary : disabledBtn(btnPrimary)}
+              disabled={!canSave}
+            >
               {saving
                 ? isEditMode
                   ? "Updating..."
                   : "Saving..."
                 : isEditMode
-                ? "Update Purchase Bill"
+                ? access.restricted
+                  ? "Update Allowed Fields"
+                  : "Update Purchase Bill"
                 : "Save Purchase Bill"}
             </button>
           </div>
@@ -562,7 +800,7 @@ function Field({ label, value, onChange, type = "text", placeholder, disabled = 
         value={value ?? ""}
         onChange={onChange}
         placeholder={placeholder}
-        style={input}
+        style={disabled ? disabledInput : input}
         disabled={disabled}
       />
     </div>
@@ -596,14 +834,14 @@ function VendorSelect({
         value={vendorSearch}
         onChange={(e) => setVendorSearch(e.target.value)}
         placeholder="Search vendor by code, name, city..."
-        style={input}
+        style={disabled ? disabledInput : input}
         disabled={disabled}
       />
 
       <select
         value={vendorCode}
         onChange={(e) => setVendorCode(e.target.value)}
-        style={input}
+        style={disabled ? disabledInput : input}
         disabled={disabled}
       >
         <option value="">-- Select Vendor --</option>
@@ -642,8 +880,12 @@ function InfoMini({ label, value }) {
   );
 }
 
-function round2(n) {
-  return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+function disabledBtn(base) {
+  return {
+    ...base,
+    opacity: 0.5,
+    cursor: "not-allowed",
+  };
 }
 
 /* ---- styles ---- */
@@ -709,6 +951,13 @@ const input = {
   width: "100%",
   outline: "none",
   boxSizing: "border-box",
+};
+
+const disabledInput = {
+  ...input,
+  background: "#f5f5f5",
+  color: "#666",
+  cursor: "not-allowed",
 };
 
 const autoBox = {
@@ -804,15 +1053,24 @@ const msgInfo = {
   marginBottom: 12,
 };
 
+const msgWarn = {
+  background: "#fff8e8",
+  border: "1px solid #edd28a",
+  padding: 10,
+  borderRadius: 12,
+  color: "#8a5a00",
+  marginBottom: 12,
+};
+
 const modeBadge = {
   display: "inline-block",
   padding: "6px 10px",
   borderRadius: 999,
   fontSize: 12,
   fontWeight: 900,
-  background: "#fff2f2",
-  color: "#c40000",
-  border: "1px solid #efb0b0",
+  background: "#eef4ff",
+  color: "#0b5cff",
+  border: "1px solid #b7cbff",
 };
 
 const modeBadgeBlue = {
@@ -824,6 +1082,28 @@ const modeBadgeBlue = {
   background: "#eef4ff",
   color: "#0b5cff",
   border: "1px solid #b7cbff",
+};
+
+const modeBadgeWarning = {
+  display: "inline-block",
+  padding: "6px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#fff8e8",
+  color: "#8a5a00",
+  border: "1px solid #edd28a",
+};
+
+const modeBadgeLocked = {
+  display: "inline-block",
+  padding: "6px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#f0f0f0",
+  color: "#555",
+  border: "1px solid #d5d5d5",
 };
 
 const vendorInfoCard = {

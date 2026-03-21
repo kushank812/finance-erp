@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -44,12 +44,47 @@ class SalesInvoiceLineUpdateIn(BaseModel):
 
 
 class SalesInvoiceUpdateIn(BaseModel):
-    invoice_date: date
+    # Full-edit fields
+    invoice_date: date | None = None
     due_date: date | None = None
-    customer_code: str
-    tax_percent: float = 0
+    customer_code: str | None = None
+    tax_percent: float | None = None
     remark: str | None = None
-    lines: list[SalesInvoiceLineUpdateIn]
+    lines: list[SalesInvoiceLineUpdateIn] | None = None
+
+    @model_validator(mode="after")
+    def validate_update_payload(self):
+        # Restricted update is allowed with only due_date / remark
+        restricted_only = (
+            self.invoice_date is None
+            and self.customer_code is None
+            and self.tax_percent is None
+            and self.lines is None
+        )
+        if restricted_only:
+            if self.due_date is None and self.remark is None:
+                raise ValueError(
+                    "Provide at least one allowed field to update"
+                )
+            return self
+
+        # Otherwise treat as full update and require all core fields
+        missing = []
+        if self.invoice_date is None:
+            missing.append("invoice_date")
+        if self.customer_code is None:
+            missing.append("customer_code")
+        if self.tax_percent is None:
+            missing.append("tax_percent")
+        if self.lines is None:
+            missing.append("lines")
+
+        if missing:
+            raise ValueError(
+                f"Full invoice update requires: {', '.join(missing)}"
+            )
+
+        return self
 
 
 class CancelInvoiceIn(BaseModel):
@@ -102,6 +137,20 @@ def has_any_receipt(db: Session, invoice_no: str) -> bool:
         .first()
     )
     return receipt is not None
+
+
+def can_only_do_restricted_edit(obj: SalesInvoiceHdr) -> bool:
+    if str(obj.status or "").upper() in {STATUS_PARTIAL}:
+        return True
+
+    if to_decimal(obj.amount_received) > 0:
+        return True
+
+    if has_any_receipt is not None:
+        # actual receipt rows are a stronger source of truth
+        return False
+
+    return False
 
 
 # -----------------------------
@@ -313,20 +362,16 @@ def update_sales_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
-    if str(obj.status or "").upper() == STATUS_CANCELLED:
+    current_status = str(obj.status or "").upper()
+
+    if current_status == STATUS_CANCELLED:
         raise HTTPException(status_code=400, detail="Cancelled invoice cannot be updated")
 
-    if to_decimal(obj.amount_received) > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Invoice with received payment cannot be updated",
-        )
+    if current_status == STATUS_PAID:
+        raise HTTPException(status_code=400, detail="Paid invoice cannot be updated")
 
-    data = normalize_upper(payload.model_dump())
-
-    lines = data.get("lines", [])
-    if not lines:
-        raise HTTPException(status_code=400, detail="At least one line is required")
+    receipt_exists = has_any_receipt(db, invoice_no)
+    amount_received = to_decimal(obj.amount_received)
 
     old_values = {
         "invoice_date": str(obj.invoice_date),
@@ -342,6 +387,79 @@ def update_sales_invoice(
         "remark": obj.remark,
         "line_count": len(obj.lines or []),
     }
+
+    raw_data = payload.model_dump(exclude_unset=True)
+    data = normalize_upper(raw_data)
+
+    restricted_only = (
+        "invoice_date" not in data
+        and "customer_code" not in data
+        and "tax_percent" not in data
+        and "lines" not in data
+    )
+
+    # -----------------------------
+    # RESTRICTED EDIT
+    # Only due_date and remark
+    # -----------------------------
+    if restricted_only:
+        obj.due_date = data.get("due_date", obj.due_date)
+        obj.remark = data.get("remark", obj.remark)
+
+        if current_status == STATUS_CANCELLED:
+            obj.status = STATUS_CANCELLED
+        else:
+            obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+
+        log_activity(
+            db=db,
+            request=request,
+            user_id=current_user.user_id,
+            action=AuditAction.UPDATE,
+            module=AuditModule.SALES_INVOICE,
+            record_id=obj.invoice_no,
+            record_name=obj.invoice_no,
+            details=f"Sales invoice restricted update: {obj.invoice_no}",
+            old_values=old_values,
+            new_values={
+                "invoice_date": str(obj.invoice_date),
+                "due_date": str(obj.due_date) if obj.due_date else None,
+                "customer_code": obj.customer_code,
+                "subtotal": float(obj.subtotal),
+                "tax_percent": float(obj.tax_percent),
+                "tax_amount": float(obj.tax_amount),
+                "grand_total": float(obj.grand_total),
+                "amount_received": float(obj.amount_received),
+                "balance": float(obj.balance),
+                "status": obj.status,
+                "remark": obj.remark,
+                "line_count": len(obj.lines),
+            },
+        )
+
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            raise HTTPException(status_code=409, detail=str(e.orig))
+
+        db.refresh(obj)
+        normalize_invoice_status(obj)
+        return obj
+
+    # -----------------------------
+    # FULL EDIT
+    # Allowed only when no receipt/payment exists
+    # -----------------------------
+    if receipt_exists or amount_received > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invoice with receipt/payment allows restricted edit only. Change due date or remark only.",
+        )
+
+    lines = data.get("lines", [])
+    if not lines:
+        raise HTTPException(status_code=400, detail="At least one line is required")
 
     subtotal = Decimal("0.00")
     new_lines: list[SalesInvoiceDtl] = []
@@ -374,10 +492,9 @@ def update_sales_invoice(
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
 
-    amount_received = to_decimal(obj.amount_received)
-    balance = grand_total - amount_received
+    new_balance = grand_total - amount_received
 
-    if balance < 0:
+    if new_balance < 0:
         raise HTTPException(
             status_code=400,
             detail="Grand total cannot be less than amount already received",
@@ -390,7 +507,7 @@ def update_sales_invoice(
     obj.tax_amount = tax_amount
     obj.subtotal = subtotal
     obj.grand_total = grand_total
-    obj.balance = balance
+    obj.balance = new_balance
     obj.remark = data.get("remark")
     obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
 
@@ -555,7 +672,6 @@ def delete_sales_invoice(
         "line_count": len(obj.lines or []),
     }
 
-    # delete detail lines first for safety
     db.query(SalesInvoiceDtl).filter(
         SalesInvoiceDtl.invoice_no == obj.invoice_no
     ).delete(synchronize_session=False)

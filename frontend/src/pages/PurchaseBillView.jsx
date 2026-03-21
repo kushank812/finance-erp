@@ -35,8 +35,29 @@ function isCancelled(row) {
   return getStatus(row) === "CANCELLED";
 }
 
+function isPaid(row) {
+  return getStatus(row) === "PAID";
+}
+
+function isPartial(row) {
+  return getStatus(row) === "PARTIAL";
+}
+
+function isPendingLike(row) {
+  const s = getStatus(row);
+  return s === "PENDING" || s === "OVERDUE";
+}
+
+function canFullEditBill(row) {
+  return isPendingLike(row) && !hasPayment(row) && !isCancelled(row);
+}
+
+function canRestrictedEditBill(row) {
+  return isPartial(row) && !isCancelled(row);
+}
+
 function canEditBill(row) {
-  return !isCancelled(row) && !hasPayment(row);
+  return canFullEditBill(row) || canRestrictedEditBill(row);
 }
 
 function canCancelBill(row) {
@@ -45,6 +66,12 @@ function canCancelBill(row) {
 
 function canDeleteBill(row) {
   return !isCancelled(row) && !hasPayment(row);
+}
+
+function getEditMode(row) {
+  if (canFullEditBill(row)) return "FULL";
+  if (canRestrictedEditBill(row)) return "RESTRICTED";
+  return "NONE";
 }
 
 function actionDisabledStyle(baseStyle) {
@@ -118,9 +145,24 @@ export default function PurchaseBillView() {
     await loadBills(cleared);
   }
 
+  function onEditBill(row) {
+    const billNo = row.bill_no;
+    const editMode = getEditMode(row);
+
+    if (editMode === "NONE") return;
+
+    nav(`/purchase/edit/${encodeURIComponent(billNo)}`, {
+      state: {
+        editMode,
+        billStatus: getStatus(row),
+        hasPayment: hasPayment(row),
+      },
+    });
+  }
+
   async function onCancelBill(billNo) {
     const ok = window.confirm(
-      `Are you sure you want to cancel bill ${billNo}?\n\nThis is allowed only if no payment exists.`
+      `Are you sure you want to cancel bill ${billNo}?\n\nThis is allowed only if no payment exists.\nThe bill will remain in the system with CANCELLED status.`
     );
     if (!ok) return;
 
@@ -143,7 +185,7 @@ export default function PurchaseBillView() {
 
   async function onDeleteBill(billNo) {
     const ok = window.confirm(
-      `Are you sure you want to delete bill ${billNo}?\n\nDelete is allowed only when no payment exists.\nThis action cannot be undone.`
+      `Are you sure you want to delete bill ${billNo}?\n\nDelete is allowed only when no payment exists.\nUse delete only for wrong entry / mistaken bill.\nThis action cannot be undone.`
     );
     if (!ok) return;
 
@@ -268,6 +310,15 @@ export default function PurchaseBillView() {
         <SummaryCard title="Outstanding Balance" value={summary.balanceTotal} />
       </div>
 
+      <div style={infoCard}>
+        <div style={infoTitle}>Real-life action rules</div>
+        <div style={infoText}>
+          PENDING / OVERDUE bills can be fully edited. PARTIAL bills can be edited
+          in restricted mode only. PAID and CANCELLED bills are view-only. Cancel and
+          Delete are allowed only when no payment exists.
+        </div>
+      </div>
+
       <div style={tableCard}>
         <div style={tableHeader}>
           <div>
@@ -312,24 +363,40 @@ export default function PurchaseBillView() {
               ) : (
                 rows.map((row) => {
                   const billNo = row.bill_no;
-                  const cancelled = isCancelled(row);
+                  const status = getStatus(row);
                   const paymentExists = hasPayment(row);
                   const editAllowed = canEditBill(row);
                   const cancelAllowed = canCancelBill(row);
                   const deleteAllowed = canDeleteBill(row);
+                  const editMode = getEditMode(row);
                   const busy = busyBillNo === billNo;
 
                   let editTitle = "Edit bill";
-                  if (cancelled) editTitle = "Cancelled bill cannot be edited";
-                  else if (paymentExists) editTitle = "Bill with payment cannot be edited";
+                  if (editMode === "RESTRICTED") {
+                    editTitle = "Restricted edit only: non-financial fields only";
+                  } else if (isCancelled(row)) {
+                    editTitle = "Cancelled bill cannot be edited";
+                  } else if (isPaid(row)) {
+                    editTitle = "Paid bill cannot be edited";
+                  } else if (paymentExists && !isPartial(row)) {
+                    editTitle = "Bill with payment cannot be fully edited";
+                  } else {
+                    editTitle = "Full edit allowed";
+                  }
 
                   let cancelTitle = "Cancel bill";
-                  if (cancelled) cancelTitle = "Already cancelled";
-                  else if (paymentExists) cancelTitle = "Reverse payment(s) first before cancelling";
+                  if (isCancelled(row)) {
+                    cancelTitle = "Already cancelled";
+                  } else if (paymentExists) {
+                    cancelTitle = "Reverse payment(s) first before cancelling";
+                  }
 
                   let deleteTitle = "Delete bill";
-                  if (cancelled) deleteTitle = "Cancelled bill cannot be deleted";
-                  else if (paymentExists) deleteTitle = "Reverse payment(s) first before deleting";
+                  if (isCancelled(row)) {
+                    deleteTitle = "Cancelled bill cannot be deleted";
+                  } else if (paymentExists) {
+                    deleteTitle = "Reverse payment(s) first before deleting";
+                  }
 
                   return (
                     <tr key={billNo} style={tr}>
@@ -341,11 +408,12 @@ export default function PurchaseBillView() {
                       <td style={tdRight}>{money(row.amount_paid)}</td>
                       <td style={tdRight}>{money(row.balance)}</td>
                       <td style={td}>
-                        <span style={statusBadge(getStatus(row))}>{getStatus(row)}</span>
+                        <span style={statusBadge(status)}>{status}</span>
                       </td>
                       <td style={td}>
                         <div style={rowActionWrap}>
                           <button
+                            type="button"
                             style={miniBtn}
                             onClick={() =>
                               nav(`/purchase/view/${encodeURIComponent(billNo)}`)
@@ -355,17 +423,17 @@ export default function PurchaseBillView() {
                           </button>
 
                           <button
+                            type="button"
                             style={editAllowed ? miniBtnBlue : actionDisabledStyle(miniBtnBlue)}
                             disabled={!editAllowed || busy}
                             title={editTitle}
-                            onClick={() =>
-                              nav(`/purchase/edit/${encodeURIComponent(billNo)}`)
-                            }
+                            onClick={() => onEditBill(row)}
                           >
-                            Edit
+                            {editMode === "RESTRICTED" ? "Edit*" : "Edit"}
                           </button>
 
                           <button
+                            type="button"
                             style={
                               cancelAllowed
                                 ? miniBtnWarning
@@ -379,6 +447,7 @@ export default function PurchaseBillView() {
                           </button>
 
                           <button
+                            type="button"
                             style={
                               deleteAllowed
                                 ? miniBtnDanger
@@ -398,6 +467,11 @@ export default function PurchaseBillView() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div style={footNote}>
+          * Edit on PARTIAL bill means restricted edit only. Do not allow item lines,
+          quantities, rates, tax, vendor, or grand total changes on the edit form.
         </div>
       </div>
     </div>
@@ -493,6 +567,27 @@ const summaryValue = {
   fontSize: 22,
   fontWeight: 900,
   color: "#111",
+};
+
+const infoCard = {
+  background: "#f8fbff",
+  border: "1px solid #dbe8ff",
+  borderRadius: 16,
+  padding: 14,
+  marginBottom: 14,
+};
+
+const infoTitle = {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#0b3d91",
+  marginBottom: 6,
+};
+
+const infoText = {
+  fontSize: 13,
+  color: "#28456b",
+  lineHeight: 1.5,
 };
 
 const tableCard = {
@@ -637,6 +732,12 @@ const msgOk = {
   borderRadius: 12,
   color: "#116b2f",
   marginBottom: 12,
+};
+
+const footNote = {
+  marginTop: 12,
+  fontSize: 12,
+  color: "#666",
 };
 
 function statusBadge(status) {

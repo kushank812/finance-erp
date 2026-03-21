@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiPost, apiPut } from "../api/client";
 
 const emptyLine = { item_code: "", qty: 1, rate: 0 };
@@ -12,6 +12,10 @@ function round2(n) {
   return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
 }
 
+function getStatusValue(inv) {
+  return String(inv?.status || "").toUpperCase();
+}
+
 function normalizeInvoiceToForm(inv) {
   return {
     customerCode: inv?.customer_code || "",
@@ -20,6 +24,8 @@ function normalizeInvoiceToForm(inv) {
     dueDate: inv?.due_date ? String(inv.due_date) : "",
     taxPercent: Number(inv?.tax_percent || 0),
     remark: inv?.remark || "",
+    status: getStatusValue(inv),
+    amountReceived: Number(inv?.amount_received || 0),
     lines:
       Array.isArray(inv?.lines) && inv.lines.length > 0
         ? inv.lines.map((ln) => ({
@@ -31,8 +37,105 @@ function normalizeInvoiceToForm(inv) {
   };
 }
 
+function isPaidStatus(status) {
+  return String(status || "").toUpperCase() === "PAID";
+}
+
+function isCancelledStatus(status) {
+  return String(status || "").toUpperCase() === "CANCELLED";
+}
+
+function isPartialStatus(status) {
+  return String(status || "").toUpperCase() === "PARTIAL";
+}
+
+function isPendingLikeStatus(status) {
+  const s = String(status || "").toUpperCase();
+  return s === "PENDING" || s === "OVERDUE";
+}
+
+function computeEditAccess({ isEditMode, invoiceStatus, amountReceived }) {
+  if (!isEditMode) {
+    return {
+      pageMode: "NEW",
+      readOnly: false,
+      restricted: false,
+      fullEdit: true,
+      saveBlocked: false,
+      reason: "",
+    };
+  }
+
+  const hasReceipt = Number(amountReceived || 0) > 0;
+
+  if (isCancelledStatus(invoiceStatus)) {
+    return {
+      pageMode: "VIEW_ONLY",
+      readOnly: true,
+      restricted: false,
+      fullEdit: false,
+      saveBlocked: true,
+      reason: "Cancelled invoice cannot be edited.",
+    };
+  }
+
+  if (isPaidStatus(invoiceStatus)) {
+    return {
+      pageMode: "VIEW_ONLY",
+      readOnly: true,
+      restricted: false,
+      fullEdit: false,
+      saveBlocked: true,
+      reason: "Paid invoice cannot be edited.",
+    };
+  }
+
+  if (isPartialStatus(invoiceStatus)) {
+    return {
+      pageMode: "RESTRICTED",
+      readOnly: false,
+      restricted: true,
+      fullEdit: false,
+      saveBlocked: false,
+      reason: "Partial invoice allows restricted edit only. Only due date and remark can be changed.",
+    };
+  }
+
+  if (isPendingLikeStatus(invoiceStatus) && !hasReceipt) {
+    return {
+      pageMode: "FULL",
+      readOnly: false,
+      restricted: false,
+      fullEdit: true,
+      saveBlocked: false,
+      reason: "Full edit allowed.",
+    };
+  }
+
+  if (isPendingLikeStatus(invoiceStatus) && hasReceipt) {
+    return {
+      pageMode: "RESTRICTED",
+      readOnly: false,
+      restricted: true,
+      fullEdit: false,
+      saveBlocked: false,
+      reason: "Invoice has receipt entries. Only due date and remark can be changed.",
+    };
+  }
+
+  return {
+    pageMode: "VIEW_ONLY",
+    readOnly: true,
+    restricted: false,
+    fullEdit: false,
+    saveBlocked: true,
+    reason: "This invoice cannot be edited.",
+  };
+}
+
 export default function BillingNew() {
   const nav = useNavigate();
+  const location = useLocation();
   const { invoiceNo } = useParams();
 
   const isEditMode = Boolean(invoiceNo);
@@ -46,14 +149,20 @@ export default function BillingNew() {
   const [dueDate, setDueDate] = useState("");
   const [taxPercent, setTaxPercent] = useState(0);
   const [remark, setRemark] = useState("");
-
   const [lines, setLines] = useState([{ ...emptyLine }]);
+
+  const [invoiceStatus, setInvoiceStatus] = useState("");
+  const [amountReceived, setAmountReceived] = useState(0);
 
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingMasters, setLoadingMasters] = useState(false);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
+
+  const routeEditMode = location.state?.editMode || "";
+  const routeInvoiceStatus = location.state?.invoiceStatus || "";
+  const routeHasReceipt = Boolean(location.state?.hasReceipt);
 
   useEffect(() => {
     (async () => {
@@ -91,6 +200,8 @@ export default function BillingNew() {
         setTaxPercent(data.taxPercent);
         setRemark(data.remark);
         setLines(data.lines);
+        setInvoiceStatus(data.status);
+        setAmountReceived(data.amountReceived);
       } catch (e) {
         setErr(String(e.message || e));
       } finally {
@@ -98,6 +209,47 @@ export default function BillingNew() {
       }
     })();
   }, [invoiceNo, isEditMode]);
+
+  const effectiveStatus = invoiceStatus || routeInvoiceStatus || "";
+  const effectiveAmountReceived =
+    Number.isFinite(Number(amountReceived)) && Number(amountReceived) > 0
+      ? Number(amountReceived)
+      : routeHasReceipt
+      ? 1
+      : 0;
+
+  const access = useMemo(() => {
+    const computed = computeEditAccess({
+      isEditMode,
+      invoiceStatus: effectiveStatus,
+      amountReceived: effectiveAmountReceived,
+    });
+
+    if (!isEditMode) return computed;
+
+    if (routeEditMode === "FULL") {
+      return computed.pageMode === "VIEW_ONLY"
+        ? computed
+        : { ...computed, pageMode: "FULL", restricted: false, fullEdit: true, readOnly: false, saveBlocked: false };
+    }
+
+    if (routeEditMode === "RESTRICTED") {
+      return computed.pageMode === "VIEW_ONLY"
+        ? computed
+        : { ...computed, pageMode: "RESTRICTED", restricted: true, fullEdit: false, readOnly: false, saveBlocked: false };
+    }
+
+    return computed;
+  }, [isEditMode, effectiveStatus, effectiveAmountReceived, routeEditMode]);
+
+  const pageLoading = loadingMasters || loadingInvoice;
+  const disableAll = saving || pageLoading || access.readOnly;
+  const disableRestrictedFields = saving || pageLoading || access.readOnly;
+  const disableFullEditFields = saving || pageLoading || access.readOnly || access.restricted;
+  const canChangeHeaderCore = !disableFullEditFields;
+  const canChangeDueDateRemark = !disableRestrictedFields;
+  const canEditLines = !disableFullEditFields;
+  const canSave = !saving && !pageLoading && !access.saveBlocked;
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
@@ -133,10 +285,12 @@ export default function BillingNew() {
   }
 
   function addRow() {
+    if (!canEditLines) return;
     setLines((prev) => [...prev, { ...emptyLine }]);
   }
 
   function removeRow(i) {
+    if (!canEditLines) return;
     setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)));
   }
 
@@ -165,10 +319,12 @@ export default function BillingNew() {
     setTaxPercent(0);
     setRemark("");
     setLines([{ ...emptyLine }]);
+    setInvoiceStatus("");
+    setAmountReceived(0);
     setErr("");
   }
 
-  function validate() {
+  function validateNewOrFull() {
     if (!customerCode) {
       setErr("Please select a Customer.");
       return null;
@@ -211,11 +367,30 @@ export default function BillingNew() {
     };
   }
 
+  function validateRestricted() {
+    return {
+      due_date: dueDate || null,
+      remark: remark || null,
+    };
+  }
+
   async function save() {
     setErr("");
     setOkMsg("");
 
-    const payload = validate();
+    if (!canSave) {
+      setErr(access.reason || "This invoice cannot be edited.");
+      return;
+    }
+
+    let payload = null;
+
+    if (!isEditMode || access.fullEdit) {
+      payload = validateNewOrFull();
+    } else if (access.restricted) {
+      payload = validateRestricted();
+    }
+
     if (!payload) return;
 
     try {
@@ -224,6 +399,13 @@ export default function BillingNew() {
       if (isEditMode) {
         const updated = await apiPut(`/sales-invoices/${encodeURIComponent(invoiceNo)}`, payload);
         setOkMsg(`✅ Invoice "${updated?.invoice_no || invoiceNo}" updated successfully.`);
+
+        if (updated?.status) {
+          setInvoiceStatus(String(updated.status).toUpperCase());
+        }
+        if (updated?.amount_received != null) {
+          setAmountReceived(Number(updated.amount_received || 0));
+        }
       } else {
         const created = await apiPost("/sales-invoices/", payload);
         setOkMsg(`✅ Invoice "${created?.invoice_no || ""}" saved successfully.`);
@@ -236,24 +418,47 @@ export default function BillingNew() {
     }
   }
 
-  const pageLoading = loadingMasters || loadingInvoice;
+  function getPageTitle() {
+    if (!isEditMode) return "Create New Bill (Sales Invoice)";
+    if (access.readOnly) return "View Sales Invoice (Locked)";
+    if (access.restricted) return "Edit Sales Invoice (Restricted)";
+    return "Edit Sales Invoice";
+  }
+
+  function getPageSubtitle() {
+    if (!isEditMode) return "Select customer + items from masters and save invoice.";
+    if (access.readOnly) return `Invoice ${invoiceNo} is locked for editing. ${access.reason}`;
+    if (access.restricted) return `Restricted edit for invoice ${invoiceNo}. Only due date and remark can be changed.`;
+    return `Update invoice ${invoiceNo}.`;
+  }
+
+  function getModeBadge() {
+    if (!isEditMode) {
+      return <div style={modeBadgeBlue}>NEW INVOICE</div>;
+    }
+
+    if (access.readOnly) {
+      return <div style={modeBadgeLocked}>VIEW ONLY</div>;
+    }
+
+    if (access.restricted) {
+      return <div style={modeBadgeWarning}>RESTRICTED EDIT</div>;
+    }
+
+    return <div style={modeBadge}>FULL EDIT</div>;
+  }
 
   return (
     <div style={page}>
       <div style={headerWrap}>
         <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>
-            {isEditMode ? "Edit Sales Invoice" : "Create New Bill (Sales Invoice)"}
-          </h2>
-          <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            {isEditMode
-              ? `Update invoice ${invoiceNo}.`
-              : "Select customer + items from masters and save invoice."}
-          </p>
+          <h2 style={{ margin: 0, color: "#fff" }}>{getPageTitle()}</h2>
+          <p style={{ marginTop: 6, color: "#b8b8b8" }}>{getPageSubtitle()}</p>
         </div>
 
         <div style={headerActions}>
           <button
+            type="button"
             onClick={() => nav("/sales-invoices")}
             style={btnGhost}
             disabled={saving || pageLoading}
@@ -263,6 +468,7 @@ export default function BillingNew() {
 
           {isEditMode ? (
             <button
+              type="button"
               onClick={() => nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)}
               style={btnGhost}
               disabled={saving || pageLoading}
@@ -276,15 +482,12 @@ export default function BillingNew() {
       {err && box(err, "#ffecec", "#a40000")}
       {okMsg && box(okMsg, "#eaffea", "#0a6a0a")}
       {pageLoading && box("Loading data...", "#eef4ff", "#0b5cff")}
+      {isEditMode && access.reason ? box(access.reason, "#fff8e8", "#8a5a00") : null}
 
       <div style={card}>
         <div style={sectionHeader}>
           <h3 style={{ marginTop: 0, marginBottom: 0, color: "#111" }}>Invoice Header</h3>
-          {isEditMode ? (
-            <div style={modeBadge}>EDIT MODE</div>
-          ) : (
-            <div style={modeBadgeBlue}>NEW INVOICE</div>
-          )}
+          {getModeBadge()}
         </div>
 
         <div style={formGrid}>
@@ -304,7 +507,7 @@ export default function BillingNew() {
             customerCode={customerCode}
             setCustomerCode={setCustomerCode}
             customers={filteredCustomers}
-            disabled={saving || pageLoading}
+            disabled={disableFullEditFields}
           />
 
           <Field
@@ -312,7 +515,7 @@ export default function BillingNew() {
             type="date"
             value={invoiceDate}
             onChange={(e) => setInvoiceDate(e.target.value)}
-            disabled={saving || pageLoading}
+            disabled={disableFullEditFields}
           />
 
           <Field
@@ -320,7 +523,7 @@ export default function BillingNew() {
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            disabled={saving || pageLoading}
+            disabled={!canChangeDueDateRemark}
           />
 
           <Field
@@ -329,7 +532,7 @@ export default function BillingNew() {
             value={taxPercent}
             onChange={(e) => setTaxPercent(e.target.value)}
             placeholder="0"
-            disabled={saving || pageLoading}
+            disabled={disableFullEditFields}
           />
 
           <Field
@@ -337,7 +540,7 @@ export default function BillingNew() {
             value={remark}
             onChange={(e) => setRemark(e.target.value)}
             placeholder="Optional note..."
-            disabled={saving || pageLoading}
+            disabled={!canChangeDueDateRemark}
           />
         </div>
 
@@ -361,7 +564,12 @@ export default function BillingNew() {
       <div style={card}>
         <div style={toolbarWrap}>
           <h3 style={{ margin: 0, color: "#111" }}>Line Items</h3>
-          <button onClick={addRow} style={btnPrimary} disabled={saving || pageLoading}>
+          <button
+            type="button"
+            onClick={addRow}
+            style={canEditLines ? btnPrimary : disabledBtn(btnPrimary)}
+            disabled={!canEditLines}
+          >
             + Add Row
           </button>
         </div>
@@ -397,7 +605,7 @@ export default function BillingNew() {
                           });
                         }}
                         style={input}
-                        disabled={saving || pageLoading}
+                        disabled={!canEditLines}
                       >
                         <option value="">-- Select Item --</option>
                         {items.map((it) => (
@@ -414,7 +622,7 @@ export default function BillingNew() {
                         value={ln.qty}
                         onChange={(e) => setLine(i, { qty: e.target.value })}
                         style={input}
-                        disabled={saving || pageLoading}
+                        disabled={!canEditLines}
                       />
                     </td>
 
@@ -424,7 +632,7 @@ export default function BillingNew() {
                         value={ln.rate}
                         onChange={(e) => setLine(i, { rate: e.target.value })}
                         style={input}
-                        disabled={saving || pageLoading}
+                        disabled={!canEditLines}
                       />
                     </td>
 
@@ -432,9 +640,10 @@ export default function BillingNew() {
 
                     <td>
                       <button
+                        type="button"
                         onClick={() => removeRow(i)}
-                        style={btnDanger}
-                        disabled={saving || pageLoading}
+                        style={canEditLines ? btnDanger : disabledBtn(btnDanger)}
+                        disabled={!canEditLines}
                       >
                         Remove
                       </button>
@@ -468,14 +677,19 @@ export default function BillingNew() {
 
         <div style={toolbarWrap}>
           <div style={{ color: "#666", fontSize: 13 }}>
-            {isEditMode
-              ? "Update the invoice carefully. Existing totals will be recalculated."
-              : "Save to generate invoice number automatically."}
+            {!isEditMode
+              ? "Save to generate invoice number automatically."
+              : access.readOnly
+              ? "This invoice is locked. Editing is not allowed."
+              : access.restricted
+              ? "Restricted edit mode: only due date and remark can be updated."
+              : "Update the invoice carefully. Existing totals will be recalculated."}
           </div>
 
           <div style={saveActions}>
             {!isEditMode ? (
               <button
+                type="button"
                 onClick={clearForm}
                 style={btnGhost}
                 disabled={saving || pageLoading}
@@ -484,13 +698,20 @@ export default function BillingNew() {
               </button>
             ) : null}
 
-            <button onClick={save} style={btnPrimary} disabled={saving || pageLoading}>
+            <button
+              type="button"
+              onClick={save}
+              style={canSave ? btnPrimary : disabledBtn(btnPrimary)}
+              disabled={!canSave}
+            >
               {saving
                 ? isEditMode
                   ? "Updating..."
                   : "Saving..."
                 : isEditMode
-                ? "Update Invoice"
+                ? access.restricted
+                  ? "Update Allowed Fields"
+                  : "Update Invoice"
                 : "Save Invoice"}
             </button>
           </div>
@@ -509,7 +730,7 @@ function Field({ label, value, onChange, type = "text", placeholder, disabled = 
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        style={input}
+        style={disabled ? disabledInput : input}
         disabled={disabled}
       />
     </div>
@@ -543,14 +764,14 @@ function CustomerSelect({
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
         placeholder="Search customer by code, name, city, mobile..."
-        style={input}
+        style={disabled ? disabledInput : input}
         disabled={disabled}
       />
 
       <select
         value={customerCode}
         onChange={(e) => setCustomerCode(e.target.value)}
-        style={input}
+        style={disabled ? disabledInput : input}
         disabled={disabled}
       >
         <option value="">-- Select Customer --</option>
@@ -604,6 +825,14 @@ function box(msg, bg, color) {
       {msg}
     </div>
   );
+}
+
+function disabledBtn(base) {
+  return {
+    ...base,
+    opacity: 0.5,
+    cursor: "not-allowed",
+  };
 }
 
 /* ---- styles ---- */
@@ -669,6 +898,13 @@ const input = {
   width: "100%",
   outline: "none",
   boxSizing: "border-box",
+};
+
+const disabledInput = {
+  ...input,
+  background: "#f5f5f5",
+  color: "#666",
+  cursor: "not-allowed",
 };
 
 const autoBox = {
@@ -743,9 +979,9 @@ const modeBadge = {
   borderRadius: 999,
   fontSize: 12,
   fontWeight: 900,
-  background: "#fff2f2",
-  color: "#c40000",
-  border: "1px solid #efb0b0",
+  background: "#eef4ff",
+  color: "#0b5cff",
+  border: "1px solid #b7cbff",
 };
 
 const modeBadgeBlue = {
@@ -757,6 +993,28 @@ const modeBadgeBlue = {
   background: "#eef4ff",
   color: "#0b5cff",
   border: "1px solid #b7cbff",
+};
+
+const modeBadgeWarning = {
+  display: "inline-block",
+  padding: "6px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#fff8e8",
+  color: "#8a5a00",
+  border: "1px solid #edd28a",
+};
+
+const modeBadgeLocked = {
+  display: "inline-block",
+  padding: "6px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#f0f0f0",
+  color: "#555",
+  border: "1px solid #d5d5d5",
 };
 
 const customerInfoCard = {
