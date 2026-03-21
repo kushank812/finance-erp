@@ -29,6 +29,14 @@ class PayBillIn(BaseModel):
     remark: str | None = None
 
 
+class ReversePaymentOut(BaseModel):
+    ok: bool
+    payment_no: str
+    bill_no: str
+    reversed_amount: float
+    message: str
+
+
 class PurchaseInvoiceLineUpdateIn(BaseModel):
     item_code: str
     qty: float = Field(gt=0)
@@ -36,7 +44,6 @@ class PurchaseInvoiceLineUpdateIn(BaseModel):
 
 
 class PurchaseInvoiceUpdateIn(BaseModel):
-    # Full-edit fields
     bill_date: date | None = None
     due_date: date | None = None
     vendor_code: str | None = None
@@ -46,19 +53,18 @@ class PurchaseInvoiceUpdateIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_update_payload(self):
-        # Restricted update allowed with only due_date / remark
         restricted_only = (
             self.bill_date is None
             and self.vendor_code is None
             and self.tax_percent is None
             and self.lines is None
         )
+
         if restricted_only:
             if self.due_date is None and self.remark is None:
                 raise ValueError("Provide at least one allowed field to update")
             return self
 
-        # Otherwise full update requires all important fields
         missing = []
         if self.bill_date is None:
             missing.append("bill_date")
@@ -344,7 +350,7 @@ def update_purchase_invoice(
     current_status = str(obj.status or "").upper()
 
     if current_status == STATUS_CANCELLED:
-      raise HTTPException(status_code=400, detail="Cancelled bill cannot be updated")
+        raise HTTPException(status_code=400, detail="Cancelled bill cannot be updated")
 
     if current_status == STATUS_PAID:
         raise HTTPException(status_code=400, detail="Paid bill cannot be updated")
@@ -803,3 +809,119 @@ def pay_bill(
         "amount": float(payment.amount),
         "remark": payment.remark,
     }
+
+
+# -----------------------------
+# REVERSE VENDOR PAYMENT
+# -----------------------------
+@router.delete("/payments/{payment_no}", response_model=ReversePaymentOut)
+def reverse_vendor_payment(
+    payment_no: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
+    payment_no = payment_no.strip().upper()
+
+    payment = (
+        db.execute(
+            select(VendorPayment)
+            .where(VendorPayment.payment_no == payment_no)
+            .with_for_update()
+        )
+        .scalar_one_or_none()
+    )
+
+    if not payment:
+        raise HTTPException(status_code=404, detail="Vendor payment not found")
+
+    bill = (
+        db.execute(
+            select(PurchaseInvoiceHdr)
+            .where(PurchaseInvoiceHdr.bill_no == payment.bill_no)
+            .with_for_update()
+        )
+        .scalar_one_or_none()
+    )
+
+    if not bill:
+        raise HTTPException(
+            status_code=404,
+            detail="Linked purchase bill not found for this payment",
+        )
+
+    reverse_amount = to_decimal(payment.amount)
+
+    if reverse_amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid payment amount for reversal")
+
+    current_amount_paid = to_decimal(bill.amount_paid)
+    current_grand_total = to_decimal(bill.grand_total)
+
+    if reverse_amount > current_amount_paid:
+        raise HTTPException(
+            status_code=400,
+            detail="Payment reversal amount cannot exceed amount already paid",
+        )
+
+    old_values = {
+        "payment_no": payment.payment_no,
+        "bill_no": payment.bill_no,
+        "payment_date": str(payment.payment_date),
+        "amount": float(payment.amount or 0),
+        "remark": payment.remark,
+        "bill_amount_paid": float(bill.amount_paid or 0),
+        "bill_balance": float(bill.balance or 0),
+        "bill_status": bill.status,
+    }
+
+    new_amount_paid = current_amount_paid - reverse_amount
+    new_balance = current_grand_total - new_amount_paid
+
+    if new_amount_paid < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Amount paid cannot become negative after reversal",
+        )
+
+    bill.amount_paid = new_amount_paid
+    bill.balance = new_balance
+    bill.status = compute_status(bill.balance, bill.grand_total, bill.due_date)
+
+    db.delete(payment)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.DELETE,
+        module=AuditModule.VENDOR_PAYMENT,
+        record_id=payment_no,
+        record_name=payment_no,
+        details=f"Vendor payment reversed: {payment_no}",
+        old_values=old_values,
+        new_values={
+            "bill_no": bill.bill_no,
+            "reversed_amount": float(reverse_amount),
+            "bill_amount_paid": float(bill.amount_paid),
+            "bill_balance": float(bill.balance),
+            "bill_status": bill.status,
+        },
+    )
+
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=str(e.orig) if getattr(e, "orig", None) else "Could not reverse vendor payment due to a conflicting change",
+        )
+
+    return ReversePaymentOut(
+        ok=True,
+        payment_no=payment_no,
+        bill_no=bill.bill_no,
+        reversed_amount=float(reverse_amount),
+        message=f"Vendor payment {payment_no} reversed successfully",
+    )

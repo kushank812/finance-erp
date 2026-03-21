@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { apiGet } from "../api/client";
+import { apiDelete, apiGet } from "../api/client";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
+}
+
+function fmt(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
 }
 
 export default function VendorPaymentView() {
@@ -13,13 +18,16 @@ export default function VendorPaymentView() {
   const [doc, setDoc] = useState(null);
   const [bill, setBill] = useState(null);
   const [err, setErr] = useState("");
+  const [okMsg, setOkMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [reversing, setReversing] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     async function loadPayment() {
       setErr("");
+      setOkMsg("");
       setDoc(null);
       setBill(null);
 
@@ -52,26 +60,71 @@ export default function VendorPaymentView() {
     };
   }, [paymentNo]);
 
+  async function onReversePayment() {
+    if (!doc?.payment_no) return;
+
+    const ok = window.confirm(
+      `Are you sure you want to reverse vendor payment ${doc.payment_no}?\n\n` +
+        `This will remove the payment entry and recalculate the linked bill balance/status.\n` +
+        `Use this only for wrong or mistaken payment entries.`
+    );
+    if (!ok) return;
+
+    try {
+      setErr("");
+      setOkMsg("");
+      setReversing(true);
+
+      const res = await apiDelete(
+        `/purchase-invoices/payments/${encodeURIComponent(doc.payment_no)}`
+      );
+
+      setOkMsg(
+        res?.message || `Vendor payment ${doc.payment_no} reversed successfully.`
+      );
+
+      setTimeout(() => {
+        nav("/purchase-bills");
+      }, 1200);
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setReversing(false);
+    }
+  }
+
+  const canReverse = !!doc && !loading && !reversing;
+
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: 14 }}>
-      <div style={toolbarBetween}>
+      <div className="no-print" style={toolbarBetween}>
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Vendor Payment Voucher</h2>
           <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            Payment No: <b>{paymentNo}</b>
+            Payment No: <b>{paymentNo || "-"}</b>
           </p>
         </div>
 
         <div style={toolbarWrap}>
-          <button onClick={() => nav(-1)} style={btnGhost}>
+          <button type="button" onClick={() => nav(-1)} style={btnGhost}>
             Back
+          </button>
+
+          <button
+            type="button"
+            onClick={onReversePayment}
+            style={canReverse ? btnDanger : disabledBtn(btnDanger)}
+            disabled={!canReverse}
+            title={!doc ? "Payment not loaded" : "Reverse this vendor payment"}
+          >
+            {reversing ? "Reversing..." : "Reverse Payment"}
           </button>
 
           <button
             type="button"
             onClick={() => window.print()}
             style={btnPrimary}
-            disabled={!doc || loading}
+            disabled={!doc || loading || reversing}
             title={!doc ? "Payment not loaded" : "Print this payment"}
           >
             Print / Save PDF
@@ -79,7 +132,8 @@ export default function VendorPaymentView() {
         </div>
       </div>
 
-      {err && <div style={msgErr}>{err}</div>}
+      {err ? <div className="no-print" style={msgErr}>{err}</div> : null}
+      {okMsg ? <div className="no-print" style={msgOk}>{okMsg}</div> : null}
 
       <div id="print-area" style={paper}>
         {!paymentNo ? (
@@ -93,25 +147,42 @@ export default function VendorPaymentView() {
             <div style={docHeader}>
               <div>
                 <div style={companyName}>Finance AP/AR System</div>
-                <div style={muted}>VENDOR PAYMENT VOUCHER</div>
+                <div style={docTitle}>VENDOR PAYMENT VOUCHER</div>
+                <div style={muted}>Accounts Payable Payment Document</div>
               </div>
 
               <div style={{ textAlign: "right" }}>
-                <div style={bigId}>{doc.payment_no}</div>
-                <div style={muted}>Payment Date: {String(doc.payment_date || "")}</div>
+                <div style={bigId}>{fmt(doc.payment_no)}</div>
+                <div style={muted}>Payment Date: {fmt(doc.payment_date)}</div>
               </div>
             </div>
 
             <div style={hr} />
 
             <div style={metaGrid}>
-              <Info label="Payment No" value={doc.payment_no} />
-              <Info label="Bill No" value={doc.bill_no || "-"} />
-              <Info label="Vendor Code" value={bill?.vendor_code || doc.vendor_code || "-"} />
-              <Info label="Payment Date" value={String(doc.payment_date || "")} />
+              <Info label="Payment No" value={fmt(doc.payment_no)} />
+              <Info label="Bill No" value={fmt(doc.bill_no)} />
+              <Info label="Vendor Code" value={fmt(bill?.vendor_code || doc.vendor_code)} />
+              <Info label="Payment Date" value={fmt(doc.payment_date)} />
               <Info label="Amount Paid" value={money(doc.amount)} />
-              <Info label="Remark" value={doc.remark || "-"} />
+              <Info label="Remark" value={fmt(doc.remark)} />
             </div>
+
+            {bill ? (
+              <>
+                <div style={{ height: 14 }} />
+                <div style={linkedCard}>
+                  <div style={linkedTitle}>Linked Purchase Bill</div>
+                  <div style={linkedGrid}>
+                    <InfoMini label="Bill No" value={fmt(bill.bill_no)} />
+                    <InfoMini label="Status" value={fmt(bill.status)} />
+                    <InfoMini label="Grand Total" value={money(bill.grand_total)} />
+                    <InfoMini label="Amount Paid" value={money(bill.amount_paid)} />
+                    <InfoMini label="Balance" value={money(bill.balance)} />
+                  </div>
+                </div>
+              </>
+            ) : null}
 
             <div style={{ height: 14 }} />
 
@@ -150,6 +221,15 @@ function Info({ label, value }) {
   );
 }
 
+function InfoMini({ label, value }) {
+  return (
+    <div style={infoMini}>
+      <div style={infoMiniLabel}>{label}</div>
+      <div style={infoMiniValue}>{value}</div>
+    </div>
+  );
+}
+
 function TotalRow({ label, value, strong }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -159,12 +239,21 @@ function TotalRow({ label, value, strong }) {
   );
 }
 
+function disabledBtn(base) {
+  return {
+    ...base,
+    opacity: 0.5,
+    cursor: "not-allowed",
+  };
+}
+
 const toolbarBetween = {
   display: "flex",
   flexWrap: "wrap",
   gap: 10,
   alignItems: "end",
   justifyContent: "space-between",
+  marginBottom: 12,
 };
 
 const toolbarWrap = {
@@ -188,10 +277,37 @@ const docHeader = {
   flexWrap: "wrap",
 };
 
-const companyName = { fontSize: 18, fontWeight: 900, color: "#111" };
-const muted = { fontSize: 12, color: "#666", marginTop: 2 };
-const bigId = { fontSize: 18, fontWeight: 900, color: "#111" };
-const hr = { height: 1, background: "#eee", margin: "12px 0" };
+const companyName = {
+  fontSize: 18,
+  fontWeight: 900,
+  color: "#111",
+};
+
+const docTitle = {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#0b5cff",
+  marginTop: 4,
+  letterSpacing: 0.6,
+};
+
+const muted = {
+  fontSize: 12,
+  color: "#666",
+  marginTop: 2,
+};
+
+const bigId = {
+  fontSize: 18,
+  fontWeight: 900,
+  color: "#111",
+};
+
+const hr = {
+  height: 1,
+  background: "#eee",
+  margin: "12px 0",
+};
 
 const metaGrid = {
   display: "grid",
@@ -206,11 +322,56 @@ const infoBox = {
   padding: 12,
 };
 
-const infoLabel = { fontSize: 12, color: "#666" };
+const infoLabel = {
+  fontSize: 12,
+  color: "#666",
+};
+
 const infoValue = {
   fontSize: 14,
   fontWeight: 800,
   color: "#111",
+  marginTop: 4,
+  wordBreak: "break-word",
+};
+
+const linkedCard = {
+  background: "#f8fbff",
+  border: "1px solid #dbe8ff",
+  borderRadius: 14,
+  padding: 12,
+};
+
+const linkedTitle = {
+  fontSize: 13,
+  fontWeight: 900,
+  color: "#0b3d91",
+  marginBottom: 10,
+};
+
+const linkedGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 10,
+};
+
+const infoMini = {
+  background: "#fff",
+  border: "1px solid #e6e6e6",
+  borderRadius: 12,
+  padding: 10,
+};
+
+const infoMiniLabel = {
+  fontSize: 12,
+  color: "#666",
+  fontWeight: 700,
+};
+
+const infoMiniValue = {
+  fontSize: 14,
+  color: "#111",
+  fontWeight: 900,
   marginTop: 4,
 };
 
@@ -267,13 +428,32 @@ const btnGhost = {
   fontWeight: 900,
 };
 
+const btnDanger = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #d33",
+  background: "#fff2f2",
+  color: "#c40000",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
 const msgErr = {
   background: "#ffecec",
   border: "1px solid #ffb3b3",
   padding: 10,
   borderRadius: 12,
   color: "#a40000",
-  marginTop: 12,
+  marginBottom: 12,
+};
+
+const msgOk = {
+  background: "#ecfff1",
+  border: "1px solid #a6e0b8",
+  padding: 10,
+  borderRadius: 12,
+  color: "#116b2f",
+  marginBottom: 12,
 };
 
 const printCss = `
@@ -281,7 +461,7 @@ const printCss = `
   html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
   #root { padding: 0 !important; margin: 0 !important; }
   nav { display: none !important; }
-  button, input, select, textarea { display: none !important; }
+  .no-print { display: none !important; }
 
   #print-area {
     border: none !important;
