@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiPatch } from "../api/client";
+import { apiDelete, apiGet, apiPatch } from "../api/client";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
@@ -23,6 +23,38 @@ function buildQuery(params) {
   return s ? `?${s}` : "";
 }
 
+function getStatus(row) {
+  return String(row?.status || "").toUpperCase();
+}
+
+function hasPayment(row) {
+  return Number(row?.amount_paid || 0) > 0;
+}
+
+function isCancelled(row) {
+  return getStatus(row) === "CANCELLED";
+}
+
+function canEditBill(row) {
+  return !isCancelled(row) && !hasPayment(row);
+}
+
+function canCancelBill(row) {
+  return !isCancelled(row) && !hasPayment(row);
+}
+
+function canDeleteBill(row) {
+  return !isCancelled(row) && !hasPayment(row);
+}
+
+function actionDisabledStyle(baseStyle) {
+  return {
+    ...baseStyle,
+    opacity: 0.5,
+    cursor: "not-allowed",
+  };
+}
+
 export default function PurchaseBillView() {
   const nav = useNavigate();
 
@@ -30,6 +62,7 @@ export default function PurchaseBillView() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [actionMsg, setActionMsg] = useState("");
+  const [busyBillNo, setBusyBillNo] = useState("");
 
   const [filters, setFilters] = useState({
     q: "",
@@ -87,10 +120,11 @@ export default function PurchaseBillView() {
 
   async function onCancelBill(billNo) {
     const ok = window.confirm(
-      `Are you sure you want to cancel bill ${billNo}? This bill cannot be paid after cancellation.`
+      `Are you sure you want to cancel bill ${billNo}?\n\nThis is allowed only if no payment exists.`
     );
     if (!ok) return;
 
+    setBusyBillNo(billNo);
     setErr("");
     setActionMsg("");
 
@@ -102,13 +136,36 @@ export default function PurchaseBillView() {
       await loadBills(appliedFilters);
     } catch (e) {
       setErr(String(e.message || e));
+    } finally {
+      setBusyBillNo("");
+    }
+  }
+
+  async function onDeleteBill(billNo) {
+    const ok = window.confirm(
+      `Are you sure you want to delete bill ${billNo}?\n\nDelete is allowed only when no payment exists.\nThis action cannot be undone.`
+    );
+    if (!ok) return;
+
+    setBusyBillNo(billNo);
+    setErr("");
+    setActionMsg("");
+
+    try {
+      await apiDelete(`/purchase-invoices/${encodeURIComponent(billNo)}`);
+      setActionMsg(`Bill ${billNo} deleted successfully.`);
+      await loadBills(appliedFilters);
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusyBillNo("");
     }
   }
 
   const summary = useMemo(() => {
     const totalCount = rows.length;
-    const activeCount = rows.filter((r) => String(r.status || "").toUpperCase() !== "CANCELLED").length;
-    const cancelledCount = rows.filter((r) => String(r.status || "").toUpperCase() === "CANCELLED").length;
+    const activeCount = rows.filter((r) => getStatus(r) !== "CANCELLED").length;
+    const cancelledCount = rows.filter((r) => getStatus(r) === "CANCELLED").length;
 
     const grandTotal = rows.reduce((sum, r) => sum + Number(r.grand_total || 0), 0);
     const balanceTotal = rows.reduce((sum, r) => sum + Number(r.balance || 0), 0);
@@ -128,7 +185,7 @@ export default function PurchaseBillView() {
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Purchase Bill Management</h2>
           <p style={{ margin: "6px 0 0", color: "#b8b8b8" }}>
-            Search, view, edit, and cancel purchase bills.
+            Search, view, edit, cancel, and delete purchase bills.
           </p>
         </div>
 
@@ -147,7 +204,9 @@ export default function PurchaseBillView() {
               style={input}
               placeholder="Bill No / Vendor Code"
               value={filters.q}
-              onChange={(e) => setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))}
+              onChange={(e) =>
+                setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))
+              }
             />
           </div>
 
@@ -218,7 +277,11 @@ export default function PurchaseBillView() {
             </div>
           </div>
 
-          <button style={btnGhost} onClick={() => loadBills(appliedFilters)} disabled={loading}>
+          <button
+            style={btnGhost}
+            onClick={() => loadBills(appliedFilters)}
+            disabled={loading}
+          >
             Refresh
           </button>
         </div>
@@ -248,13 +311,29 @@ export default function PurchaseBillView() {
                 </tr>
               ) : (
                 rows.map((row) => {
-                  const status = String(row.status || "").toUpperCase();
-                  const isCancelled = status === "CANCELLED";
-                  const isPaid = status === "PAID";
+                  const billNo = row.bill_no;
+                  const cancelled = isCancelled(row);
+                  const paymentExists = hasPayment(row);
+                  const editAllowed = canEditBill(row);
+                  const cancelAllowed = canCancelBill(row);
+                  const deleteAllowed = canDeleteBill(row);
+                  const busy = busyBillNo === billNo;
+
+                  let editTitle = "Edit bill";
+                  if (cancelled) editTitle = "Cancelled bill cannot be edited";
+                  else if (paymentExists) editTitle = "Bill with payment cannot be edited";
+
+                  let cancelTitle = "Cancel bill";
+                  if (cancelled) cancelTitle = "Already cancelled";
+                  else if (paymentExists) cancelTitle = "Reverse payment(s) first before cancelling";
+
+                  let deleteTitle = "Delete bill";
+                  if (cancelled) deleteTitle = "Cancelled bill cannot be deleted";
+                  else if (paymentExists) deleteTitle = "Reverse payment(s) first before deleting";
 
                   return (
-                    <tr key={row.bill_no} style={tr}>
-                      <td style={tdStrong}>{row.bill_no}</td>
+                    <tr key={billNo} style={tr}>
+                      <td style={tdStrong}>{billNo}</td>
                       <td style={td}>{fmtDate(row.bill_date)}</td>
                       <td style={td}>{fmtDate(row.due_date)}</td>
                       <td style={td}>{row.vendor_code}</td>
@@ -262,41 +341,54 @@ export default function PurchaseBillView() {
                       <td style={tdRight}>{money(row.amount_paid)}</td>
                       <td style={tdRight}>{money(row.balance)}</td>
                       <td style={td}>
-                        <span style={statusBadge(status)}>{status}</span>
+                        <span style={statusBadge(getStatus(row))}>{getStatus(row)}</span>
                       </td>
                       <td style={td}>
                         <div style={rowActionWrap}>
                           <button
                             style={miniBtn}
-                            onClick={() => nav(`/purchase/view/${encodeURIComponent(row.bill_no)}`)}
+                            onClick={() =>
+                              nav(`/purchase/view/${encodeURIComponent(billNo)}`)
+                            }
                           >
                             View
                           </button>
 
                           <button
-                            style={miniBtnBlue}
-                            disabled={isCancelled}
-                            title={isCancelled ? "Cancelled bill cannot be edited" : "Edit bill"}
-                            onClick={() => nav(`/purchase/edit/${encodeURIComponent(row.bill_no)}`)}
+                            style={editAllowed ? miniBtnBlue : actionDisabledStyle(miniBtnBlue)}
+                            disabled={!editAllowed || busy}
+                            title={editTitle}
+                            onClick={() =>
+                              nav(`/purchase/edit/${encodeURIComponent(billNo)}`)
+                            }
                           >
                             Edit
                           </button>
 
                           <button
-                            style={miniBtnDanger}
-                            disabled={isCancelled || isPaid || Number(row.amount_paid || 0) > 0}
-                            title={
-                              isCancelled
-                                ? "Already cancelled"
-                                : isPaid
-                                ? "Paid bill cannot be cancelled"
-                                : Number(row.amount_paid || 0) > 0
-                                ? "Bill with paid amount cannot be cancelled"
-                                : "Cancel bill"
+                            style={
+                              cancelAllowed
+                                ? miniBtnWarning
+                                : actionDisabledStyle(miniBtnWarning)
                             }
-                            onClick={() => onCancelBill(row.bill_no)}
+                            disabled={!cancelAllowed || busy}
+                            title={cancelTitle}
+                            onClick={() => onCancelBill(billNo)}
                           >
-                            Cancel
+                            {busy ? "Working..." : "Cancel"}
+                          </button>
+
+                          <button
+                            style={
+                              deleteAllowed
+                                ? miniBtnDanger
+                                : actionDisabledStyle(miniBtnDanger)
+                            }
+                            disabled={!deleteAllowed || busy}
+                            title={deleteTitle}
+                            onClick={() => onDeleteBill(billNo)}
+                          >
+                            {busy ? "Working..." : "Delete"}
                           </button>
                         </div>
                       </td>
@@ -421,7 +513,7 @@ const tableHeader = {
 
 const table = {
   width: "100%",
-  minWidth: 1050,
+  minWidth: 1120,
   borderCollapse: "collapse",
 };
 
@@ -509,6 +601,16 @@ const miniBtnBlue = {
   fontWeight: 800,
 };
 
+const miniBtnWarning = {
+  padding: "7px 10px",
+  borderRadius: 10,
+  border: "1px solid #d9a100",
+  background: "#fff8e1",
+  color: "#8a5a00",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
 const miniBtnDanger = {
   padding: "7px 10px",
   borderRadius: 10,
@@ -538,52 +640,46 @@ const msgOk = {
 };
 
 function statusBadge(status) {
-  if (status === "PAID") {
+  const s = String(status || "").toUpperCase();
+
+  const base = {
+    display: "inline-block",
+    padding: "6px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 900,
+  };
+
+  if (s === "PAID") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#ecfff1",
       color: "#116b2f",
       border: "1px solid #a6e0b8",
     };
   }
 
-  if (status === "PARTIAL") {
+  if (s === "PARTIAL") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#fff8e8",
       color: "#8a5a00",
       border: "1px solid #edd28a",
     };
   }
 
-  if (status === "OVERDUE") {
+  if (s === "OVERDUE") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#fff2f2",
       color: "#c40000",
       border: "1px solid #efb0b0",
     };
   }
 
-  if (status === "CANCELLED") {
+  if (s === "CANCELLED") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#f0f0f0",
       color: "#555",
       border: "1px solid #d5d5d5",
@@ -591,11 +687,7 @@ function statusBadge(status) {
   }
 
   return {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 900,
+    ...base,
     background: "#eef4ff",
     color: "#0b5cff",
     border: "1px solid #b7cbff",

@@ -79,6 +79,23 @@ def to_decimal(value) -> Decimal:
     return Decimal(str(value or 0))
 
 
+def normalize_bill_status(obj: PurchaseInvoiceHdr) -> PurchaseInvoiceHdr:
+    if str(obj.status or "").upper() == STATUS_CANCELLED:
+        obj.status = STATUS_CANCELLED
+    else:
+        obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+    return obj
+
+
+def has_any_payment(db: Session, bill_no: str) -> bool:
+    payment = (
+        db.query(VendorPayment.payment_no)
+        .filter(VendorPayment.bill_no == bill_no)
+        .first()
+    )
+    return payment is not None
+
+
 # -----------------------------
 # LIST PURCHASE INVOICES
 # -----------------------------
@@ -117,10 +134,7 @@ def list_purchase_invoices(
 
     result = []
     for r in rows:
-        if str(r.status or "").upper() == STATUS_CANCELLED:
-            r.status = STATUS_CANCELLED
-        else:
-            r.status = compute_status(r.balance, r.grand_total, r.due_date)
+        normalize_bill_status(r)
 
         if final_status and r.status != final_status:
             continue
@@ -149,11 +163,7 @@ def get_purchase_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
-    if str(obj.status or "").upper() == STATUS_CANCELLED:
-        obj.status = STATUS_CANCELLED
-    else:
-        obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
-
+    normalize_bill_status(obj)
     return obj
 
 
@@ -265,9 +275,13 @@ def create_purchase_invoice(
         db.commit()
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail=str(e.orig) if getattr(e, "orig", None) else "Could not create purchase invoice due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail=str(e.orig) if getattr(e, "orig", None) else "Could not create purchase invoice due to a conflicting change",
+        )
 
     db.refresh(hdr)
+    normalize_bill_status(hdr)
     return hdr
 
 
@@ -296,6 +310,12 @@ def update_purchase_invoice(
 
     if str(obj.status or "").upper() == STATUS_CANCELLED:
         raise HTTPException(status_code=400, detail="Cancelled bill cannot be updated")
+
+    if has_any_payment(db, bill_no) or to_decimal(obj.amount_paid) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Bill with payment cannot be updated",
+        )
 
     data = normalize_upper(payload.model_dump())
 
@@ -403,9 +423,13 @@ def update_purchase_invoice(
         db.commit()
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail=str(e.orig) if getattr(e, "orig", None) else "Could not update purchase invoice due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail=str(e.orig) if getattr(e, "orig", None) else "Could not update purchase invoice due to a conflicting change",
+        )
 
     db.refresh(obj)
+    normalize_bill_status(obj)
     return obj
 
 
@@ -435,10 +459,10 @@ def cancel_purchase_invoice(
     if str(obj.status or "").upper() == STATUS_CANCELLED:
         raise HTTPException(status_code=400, detail="Bill is already cancelled")
 
-    if to_decimal(obj.amount_paid) > 0:
+    if has_any_payment(db, bill_no) or to_decimal(obj.amount_paid) > 0:
         raise HTTPException(
             status_code=400,
-            detail="Bill with paid amount cannot be cancelled",
+            detail="Reverse payment(s) first before cancelling bill",
         )
 
     old_values = {
@@ -451,6 +475,9 @@ def cancel_purchase_invoice(
         cancel_remark = str(payload.remark).strip().upper()
 
     obj.status = STATUS_CANCELLED
+    obj.amount_paid = Decimal("0.00")
+    obj.balance = Decimal("0.00")
+
     if cancel_remark:
         obj.remark = cancel_remark
 
@@ -467,6 +494,8 @@ def cancel_purchase_invoice(
         new_values={
             "status": obj.status,
             "remark": obj.remark,
+            "amount_paid": float(obj.amount_paid or 0),
+            "balance": float(obj.balance or 0),
         },
     )
 
@@ -474,10 +503,91 @@ def cancel_purchase_invoice(
         db.commit()
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail=str(e.orig) if getattr(e, "orig", None) else "Could not cancel purchase invoice due to a conflicting change")
+        raise HTTPException(
+            status_code=409,
+            detail=str(e.orig) if getattr(e, "orig", None) else "Could not cancel purchase invoice due to a conflicting change",
+        )
 
     db.refresh(obj)
     return obj
+
+
+# -----------------------------
+# DELETE PURCHASE INVOICE
+# -----------------------------
+@router.delete("/{bill_no}")
+def delete_purchase_invoice(
+    bill_no: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
+    bill_no = bill_no.strip().upper()
+
+    obj = (
+        db.query(PurchaseInvoiceHdr)
+        .options(joinedload(PurchaseInvoiceHdr.lines))
+        .filter(PurchaseInvoiceHdr.bill_no == bill_no)
+        .first()
+    )
+
+    if not obj:
+        raise HTTPException(status_code=404, detail="Purchase invoice not found")
+
+    if has_any_payment(db, bill_no) or to_decimal(obj.amount_paid) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Bill has payment(s). Reverse payment(s) first before deleting",
+        )
+
+    old_values = {
+        "bill_no": obj.bill_no,
+        "vendor_code": obj.vendor_code,
+        "bill_date": str(obj.bill_date),
+        "due_date": str(obj.due_date) if obj.due_date else None,
+        "subtotal": float(obj.subtotal or 0),
+        "tax_percent": float(obj.tax_percent or 0),
+        "tax_amount": float(obj.tax_amount or 0),
+        "grand_total": float(obj.grand_total or 0),
+        "amount_paid": float(obj.amount_paid or 0),
+        "balance": float(obj.balance or 0),
+        "status": obj.status,
+        "remark": obj.remark,
+        "line_count": len(obj.lines or []),
+    }
+
+    db.query(PurchaseInvoiceDtl).filter(
+        PurchaseInvoiceDtl.bill_no == obj.bill_no
+    ).delete(synchronize_session=False)
+
+    db.delete(obj)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.DELETE,
+        module=AuditModule.PURCHASE_INVOICE,
+        record_id=bill_no,
+        record_name=bill_no,
+        details=f"Purchase invoice deleted: {bill_no}",
+        old_values=old_values,
+        new_values=None,
+    )
+
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=str(e.orig) if getattr(e, "orig", None) else "Could not delete purchase invoice due to a conflicting change",
+        )
+
+    return {
+        "ok": True,
+        "message": f"Purchase invoice {bill_no} deleted successfully",
+    }
 
 
 # -----------------------------

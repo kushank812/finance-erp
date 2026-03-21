@@ -1,8 +1,6 @@
-// src/api/client.js
-
 const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  "https://finance-erp.onrender.com";
+  import.meta.env.VITE_API_BASE ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 
 console.log("API_BASE =", API_BASE);
 
@@ -47,39 +45,44 @@ async function request(path, options = {}) {
 
     return await handle(res);
   } catch (err) {
-    throw new Error(`API request failed for ${url} - ${err.message}`);
+    throw err;
   }
 }
 
-/* -----------------------------
-   STANDARD METHODS
------------------------------ */
-
-export function apiGet(path) {
-  return request(path, { method: "GET" });
+export async function apiGet(path, headers) {
+  return request(path, {
+    method: "GET",
+    headers,
+  });
 }
 
-export function apiPost(path, body) {
+export async function apiPost(path, body, headers) {
   return request(path, {
     method: "POST",
-    body: JSON.stringify(body ?? {}),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers,
   });
 }
 
-export function apiPut(path, body) {
+export async function apiPut(path, body, headers) {
   return request(path, {
     method: "PUT",
-    body: JSON.stringify(body ?? {}),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers,
   });
 }
 
-export function apiPatch(path, body) {
+export async function apiPatch(path, body, headers) {
   return request(path, {
     method: "PATCH",
-    body: JSON.stringify(body ?? {}),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers,
   });
 }
 
-export function apiDelete(path) {
-  return request(path, { method: "DELETE" });
+export async function apiDelete(path, headers) {
+  return request(path, {
+    method: "DELETE",
+    headers,
+  });
 }

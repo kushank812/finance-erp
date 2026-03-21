@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiPut } from "../api/client";
+import { apiDelete, apiGet, apiPatch } from "../api/client";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
@@ -23,6 +23,38 @@ function buildQuery(params) {
   return s ? `?${s}` : "";
 }
 
+function getStatus(row) {
+  return String(row?.status || "").toUpperCase();
+}
+
+function hasReceipt(row) {
+  return Number(row?.amount_received || 0) > 0;
+}
+
+function isCancelled(row) {
+  return getStatus(row) === "CANCELLED";
+}
+
+function canEditInvoice(row) {
+  return !isCancelled(row) && !hasReceipt(row);
+}
+
+function canCancelInvoice(row) {
+  return !isCancelled(row) && !hasReceipt(row);
+}
+
+function canDeleteInvoice(row) {
+  return !isCancelled(row) && !hasReceipt(row);
+}
+
+function actionDisabledStyle(baseStyle) {
+  return {
+    ...baseStyle,
+    opacity: 0.5,
+    cursor: "not-allowed",
+  };
+}
+
 export default function SalesInvoiceDirectView() {
   const nav = useNavigate();
 
@@ -30,6 +62,7 @@ export default function SalesInvoiceDirectView() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [actionMsg, setActionMsg] = useState("");
+  const [busyInvoiceNo, setBusyInvoiceNo] = useState("");
 
   const [filters, setFilters] = useState({
     q: "",
@@ -87,28 +120,52 @@ export default function SalesInvoiceDirectView() {
 
   async function onCancelInvoice(invoiceNo) {
     const ok = window.confirm(
-      `Are you sure you want to cancel invoice ${invoiceNo}? This cannot be used for payment after cancellation.`
+      `Are you sure you want to cancel invoice ${invoiceNo}?\n\nThis is allowed only if no receipt exists.`
     );
     if (!ok) return;
 
+    setBusyInvoiceNo(invoiceNo);
     setErr("");
     setActionMsg("");
 
     try {
-      await apiPut(`/sales-invoices/${encodeURIComponent(invoiceNo)}/cancel`, {
+      await apiPatch(`/sales-invoices/${encodeURIComponent(invoiceNo)}/cancel`, {
         remark: "CANCELLED BY USER",
       });
       setActionMsg(`Invoice ${invoiceNo} cancelled successfully.`);
       await loadInvoices(appliedFilters);
     } catch (e) {
       setErr(String(e.message || e));
+    } finally {
+      setBusyInvoiceNo("");
+    }
+  }
+
+  async function onDeleteInvoice(invoiceNo) {
+    const ok = window.confirm(
+      `Are you sure you want to delete invoice ${invoiceNo}?\n\nDelete is allowed only when no receipt exists.\nThis action cannot be undone.`
+    );
+    if (!ok) return;
+
+    setBusyInvoiceNo(invoiceNo);
+    setErr("");
+    setActionMsg("");
+
+    try {
+      await apiDelete(`/sales-invoices/${encodeURIComponent(invoiceNo)}`);
+      setActionMsg(`Invoice ${invoiceNo} deleted successfully.`);
+      await loadInvoices(appliedFilters);
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusyInvoiceNo("");
     }
   }
 
   const summary = useMemo(() => {
     const totalCount = rows.length;
-    const activeCount = rows.filter((r) => String(r.status || "").toUpperCase() !== "CANCELLED").length;
-    const cancelledCount = rows.filter((r) => String(r.status || "").toUpperCase() === "CANCELLED").length;
+    const activeCount = rows.filter((r) => getStatus(r) !== "CANCELLED").length;
+    const cancelledCount = rows.filter((r) => getStatus(r) === "CANCELLED").length;
 
     const grandTotal = rows.reduce((sum, r) => sum + Number(r.grand_total || 0), 0);
     const balanceTotal = rows.reduce((sum, r) => sum + Number(r.balance || 0), 0);
@@ -128,7 +185,7 @@ export default function SalesInvoiceDirectView() {
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Sales Invoice Management</h2>
           <p style={{ margin: "6px 0 0", color: "#b8b8b8" }}>
-            Search, view, edit, and cancel sales invoices.
+            Search, view, edit, cancel, and delete sales invoices.
           </p>
         </div>
 
@@ -147,7 +204,9 @@ export default function SalesInvoiceDirectView() {
               style={input}
               placeholder="Invoice No / Customer Code"
               value={filters.q}
-              onChange={(e) => setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))}
+              onChange={(e) =>
+                setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))
+              }
             />
           </div>
 
@@ -218,7 +277,11 @@ export default function SalesInvoiceDirectView() {
             </div>
           </div>
 
-          <button style={btnGhost} onClick={() => loadInvoices(appliedFilters)} disabled={loading}>
+          <button
+            style={btnGhost}
+            onClick={() => loadInvoices(appliedFilters)}
+            disabled={loading}
+          >
             Refresh
           </button>
         </div>
@@ -248,12 +311,29 @@ export default function SalesInvoiceDirectView() {
                 </tr>
               ) : (
                 rows.map((row) => {
-                  const isCancelled = String(row.status || "").toUpperCase() === "CANCELLED";
-                  const isPaid = String(row.status || "").toUpperCase() === "PAID";
+                  const invoiceNo = row.invoice_no;
+                  const cancelled = isCancelled(row);
+                  const receiptExists = hasReceipt(row);
+                  const editAllowed = canEditInvoice(row);
+                  const cancelAllowed = canCancelInvoice(row);
+                  const deleteAllowed = canDeleteInvoice(row);
+                  const busy = busyInvoiceNo === invoiceNo;
+
+                  let editTitle = "Edit invoice";
+                  if (cancelled) editTitle = "Cancelled invoice cannot be edited";
+                  else if (receiptExists) editTitle = "Invoice with receipt cannot be edited";
+
+                  let cancelTitle = "Cancel invoice";
+                  if (cancelled) cancelTitle = "Already cancelled";
+                  else if (receiptExists) cancelTitle = "Reverse receipt(s) first before cancelling";
+
+                  let deleteTitle = "Delete invoice";
+                  if (cancelled) deleteTitle = "Cancelled invoice cannot be deleted";
+                  else if (receiptExists) deleteTitle = "Reverse receipt(s) first before deleting";
 
                   return (
-                    <tr key={row.invoice_no} style={tr}>
-                      <td style={tdStrong}>{row.invoice_no}</td>
+                    <tr key={invoiceNo} style={tr}>
+                      <td style={tdStrong}>{invoiceNo}</td>
                       <td style={td}>{fmtDate(row.invoice_date)}</td>
                       <td style={td}>{fmtDate(row.due_date)}</td>
                       <td style={td}>{row.customer_code}</td>
@@ -261,41 +341,54 @@ export default function SalesInvoiceDirectView() {
                       <td style={tdRight}>{money(row.amount_received)}</td>
                       <td style={tdRight}>{money(row.balance)}</td>
                       <td style={td}>
-                        <span style={statusBadge(String(row.status || ""))}>{String(row.status || "")}</span>
+                        <span style={statusBadge(getStatus(row))}>{getStatus(row)}</span>
                       </td>
                       <td style={td}>
                         <div style={rowActionWrap}>
                           <button
                             style={miniBtn}
-                            onClick={() => nav(`/sales-invoice-view/${encodeURIComponent(row.invoice_no)}`)}
+                            onClick={() =>
+                              nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)
+                            }
                           >
                             View
                           </button>
 
                           <button
-                            style={miniBtnBlue}
-                            disabled={isCancelled}
-                            title={isCancelled ? "Cancelled invoice cannot be edited" : "Edit invoice"}
-                            onClick={() => nav(`/billing/edit/${encodeURIComponent(row.invoice_no)}`)}
+                            style={editAllowed ? miniBtnBlue : actionDisabledStyle(miniBtnBlue)}
+                            disabled={!editAllowed || busy}
+                            title={editTitle}
+                            onClick={() =>
+                              nav(`/billing/edit/${encodeURIComponent(invoiceNo)}`)
+                            }
                           >
                             Edit
                           </button>
 
                           <button
-                            style={miniBtnDanger}
-                            disabled={isCancelled || isPaid || Number(row.amount_received || 0) > 0}
-                            title={
-                              isCancelled
-                                ? "Already cancelled"
-                                : isPaid
-                                ? "Paid invoice cannot be cancelled"
-                                : Number(row.amount_received || 0) > 0
-                                ? "Invoice with received amount cannot be cancelled"
-                                : "Cancel invoice"
+                            style={
+                              cancelAllowed
+                                ? miniBtnWarning
+                                : actionDisabledStyle(miniBtnWarning)
                             }
-                            onClick={() => onCancelInvoice(row.invoice_no)}
+                            disabled={!cancelAllowed || busy}
+                            title={cancelTitle}
+                            onClick={() => onCancelInvoice(invoiceNo)}
                           >
-                            Cancel
+                            {busy ? "Working..." : "Cancel"}
+                          </button>
+
+                          <button
+                            style={
+                              deleteAllowed
+                                ? miniBtnDanger
+                                : actionDisabledStyle(miniBtnDanger)
+                            }
+                            disabled={!deleteAllowed || busy}
+                            title={deleteTitle}
+                            onClick={() => onDeleteInvoice(invoiceNo)}
+                          >
+                            {busy ? "Working..." : "Delete"}
                           </button>
                         </div>
                       </td>
@@ -420,7 +513,7 @@ const tableHeader = {
 
 const table = {
   width: "100%",
-  minWidth: 1050,
+  minWidth: 1120,
   borderCollapse: "collapse",
 };
 
@@ -508,6 +601,16 @@ const miniBtnBlue = {
   fontWeight: 800,
 };
 
+const miniBtnWarning = {
+  padding: "7px 10px",
+  borderRadius: 10,
+  border: "1px solid #d9a100",
+  background: "#fff8e1",
+  color: "#8a5a00",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
 const miniBtnDanger = {
   padding: "7px 10px",
   borderRadius: 10,
@@ -539,13 +642,17 @@ const msgOk = {
 function statusBadge(status) {
   const s = String(status || "").toUpperCase();
 
+  const base = {
+    display: "inline-block",
+    padding: "6px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 900,
+  };
+
   if (s === "PAID") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#ecfff1",
       color: "#116b2f",
       border: "1px solid #a6e0b8",
@@ -554,11 +661,7 @@ function statusBadge(status) {
 
   if (s === "PARTIAL") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#fff8e8",
       color: "#8a5a00",
       border: "1px solid #edd28a",
@@ -567,11 +670,7 @@ function statusBadge(status) {
 
   if (s === "OVERDUE") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#fff2f2",
       color: "#c40000",
       border: "1px solid #efb0b0",
@@ -580,11 +679,7 @@ function statusBadge(status) {
 
   if (s === "CANCELLED") {
     return {
-      display: "inline-block",
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
+      ...base,
       background: "#f0f0f0",
       color: "#555",
       border: "1px solid #d5d5d5",
@@ -592,11 +687,7 @@ function statusBadge(status) {
   }
 
   return {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 900,
+    ...base,
     background: "#eef4ff",
     color: "#0b5cff",
     border: "1px solid #b7cbff",

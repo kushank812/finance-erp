@@ -87,6 +87,23 @@ def to_decimal(value) -> Decimal:
     return Decimal(str(value or 0))
 
 
+def normalize_invoice_status(obj: SalesInvoiceHdr) -> SalesInvoiceHdr:
+    if str(obj.status or "").upper() == STATUS_CANCELLED:
+        obj.status = STATUS_CANCELLED
+    else:
+        obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+    return obj
+
+
+def has_any_receipt(db: Session, invoice_no: str) -> bool:
+    receipt = (
+        db.query(SalesReceipt.receipt_no)
+        .filter(SalesReceipt.invoice_no == invoice_no)
+        .first()
+    )
+    return receipt is not None
+
+
 # -----------------------------
 # LIST INVOICES
 # -----------------------------
@@ -125,10 +142,7 @@ def list_sales_invoices(
 
     result = []
     for r in rows:
-        if str(r.status or "").upper() == STATUS_CANCELLED:
-            r.status = STATUS_CANCELLED
-        else:
-            r.status = compute_status(r.balance, r.grand_total, r.due_date)
+        normalize_invoice_status(r)
 
         if final_status and r.status != final_status:
             continue
@@ -157,11 +171,7 @@ def get_sales_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
-    if str(obj.status or "").upper() == STATUS_CANCELLED:
-        obj.status = STATUS_CANCELLED
-    else:
-        obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
-
+    normalize_invoice_status(obj)
     return obj
 
 
@@ -276,6 +286,7 @@ def create_sales_invoice(
         raise HTTPException(status_code=409, detail=str(e.orig))
 
     db.refresh(hdr)
+    normalize_invoice_status(hdr)
     return hdr
 
 
@@ -304,6 +315,12 @@ def update_sales_invoice(
 
     if str(obj.status or "").upper() == STATUS_CANCELLED:
         raise HTTPException(status_code=400, detail="Cancelled invoice cannot be updated")
+
+    if to_decimal(obj.amount_received) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invoice with received payment cannot be updated",
+        )
 
     data = normalize_upper(payload.model_dump())
 
@@ -414,6 +431,7 @@ def update_sales_invoice(
         raise HTTPException(status_code=409, detail=str(e.orig))
 
     db.refresh(obj)
+    normalize_invoice_status(obj)
     return obj
 
 
@@ -443,10 +461,10 @@ def cancel_sales_invoice(
     if str(obj.status or "").upper() == STATUS_CANCELLED:
         raise HTTPException(status_code=400, detail="Invoice is already cancelled")
 
-    if to_decimal(obj.amount_received) > 0:
+    if has_any_receipt(db, invoice_no) or to_decimal(obj.amount_received) > 0:
         raise HTTPException(
             status_code=400,
-            detail="Invoice with received payment cannot be cancelled",
+            detail="Reverse receipt(s) first before cancelling invoice",
         )
 
     old_values = {
@@ -459,6 +477,9 @@ def cancel_sales_invoice(
         cancel_remark = str(payload.remark).strip().upper()
 
     obj.status = STATUS_CANCELLED
+    obj.amount_received = Decimal("0.00")
+    obj.balance = Decimal("0.00")
+
     if cancel_remark:
         obj.remark = cancel_remark
 
@@ -475,6 +496,8 @@ def cancel_sales_invoice(
         new_values={
             "status": obj.status,
             "remark": obj.remark,
+            "amount_received": float(obj.amount_received or 0),
+            "balance": float(obj.balance or 0),
         },
     )
 
@@ -486,6 +509,82 @@ def cancel_sales_invoice(
 
     db.refresh(obj)
     return obj
+
+
+# -----------------------------
+# DELETE INVOICE
+# -----------------------------
+@router.delete("/{invoice_no}")
+def delete_sales_invoice(
+    invoice_no: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_operator_or_admin),
+):
+    invoice_no = invoice_no.strip().upper()
+
+    obj = (
+        db.query(SalesInvoiceHdr)
+        .options(joinedload(SalesInvoiceHdr.lines))
+        .filter(SalesInvoiceHdr.invoice_no == invoice_no)
+        .first()
+    )
+
+    if not obj:
+        raise HTTPException(status_code=404, detail="Sales invoice not found")
+
+    if has_any_receipt(db, invoice_no) or to_decimal(obj.amount_received) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invoice has receipt(s). Reverse receipt(s) first before deleting",
+        )
+
+    old_values = {
+        "invoice_no": obj.invoice_no,
+        "customer_code": obj.customer_code,
+        "invoice_date": str(obj.invoice_date),
+        "due_date": str(obj.due_date) if obj.due_date else None,
+        "subtotal": float(obj.subtotal or 0),
+        "tax_percent": float(obj.tax_percent or 0),
+        "tax_amount": float(obj.tax_amount or 0),
+        "grand_total": float(obj.grand_total or 0),
+        "amount_received": float(obj.amount_received or 0),
+        "balance": float(obj.balance or 0),
+        "status": obj.status,
+        "remark": obj.remark,
+        "line_count": len(obj.lines or []),
+    }
+
+    # delete detail lines first for safety
+    db.query(SalesInvoiceDtl).filter(
+        SalesInvoiceDtl.invoice_no == obj.invoice_no
+    ).delete(synchronize_session=False)
+
+    db.delete(obj)
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.DELETE,
+        module=AuditModule.SALES_INVOICE,
+        record_id=invoice_no,
+        record_name=invoice_no,
+        details=f"Sales invoice deleted: {invoice_no}",
+        old_values=old_values,
+        new_values=None,
+    )
+
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e.orig))
+
+    return {
+        "ok": True,
+        "message": f"Sales invoice {invoice_no} deleted successfully",
+    }
 
 
 # -----------------------------
