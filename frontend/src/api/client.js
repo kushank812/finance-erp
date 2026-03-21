@@ -1,4 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+// src/api/client.js
+
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 
 console.log("API_BASE =", API_BASE);
 
@@ -43,44 +47,35 @@ async function request(path, options = {}) {
 
     return await handle(res);
   } catch (err) {
-    throw err;
+    throw new Error(`API request failed for ${url} - ${err.message}`);
   }
 }
 
-export async function apiGet(path, headers) {
-  return request(path, {
-    method: "GET",
-    headers,
-  });
+export function apiGet(path) {
+  return request(path, { method: "GET" });
 }
 
-export async function apiPost(path, body, headers) {
+export function apiPost(path, body) {
   return request(path, {
     method: "POST",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    headers,
+    body: JSON.stringify(body ?? {}),
   });
 }
 
-export async function apiPut(path, body, headers) {
+export function apiPut(path, body) {
   return request(path, {
     method: "PUT",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    headers,
+    body: JSON.stringify(body ?? {}),
   });
 }
 
-export async function apiPatch(path, body, headers) {
+export function apiPatch(path, body) {
   return request(path, {
     method: "PATCH",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    headers,
+    body: JSON.stringify(body ?? {}),
   });
 }
 
-export async function apiDelete(path, headers) {
-  return request(path, {
-    method: "DELETE",
-    headers,
-  });
+export function apiDelete(path) {
+  return request(path, { method: "DELETE" });
 }

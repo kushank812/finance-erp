@@ -32,6 +32,59 @@ def delete_expired_sessions(db: Session) -> None:
     db.commit()
 
 
+def is_request_https(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto:
+        return forwarded_proto.lower() == "https"
+    return request.url.scheme == "https"
+
+
+def get_cookie_settings(request: Request) -> dict:
+    https = is_request_https(request)
+
+    if https:
+        return {
+            "secure": True,
+            "samesite": "none",
+        }
+
+    return {
+        "secure": False,
+        "samesite": "lax",
+    }
+
+
+def set_session_cookie(
+    response: Response,
+    request: Request,
+    raw_token: str,
+    max_age_seconds: int,
+) -> None:
+    cookie = get_cookie_settings(request)
+
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=raw_token,
+        httponly=True,
+        secure=cookie["secure"],
+        samesite=cookie["samesite"],
+        max_age=max_age_seconds,
+        expires=max_age_seconds,
+        path="/",
+    )
+
+
+def clear_session_cookie(response: Response, request: Request) -> None:
+    cookie = get_cookie_settings(request)
+
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        secure=cookie["secure"],
+        samesite=cookie["samesite"],
+    )
+
+
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     delete_expired_sessions(db)
 
@@ -141,7 +194,6 @@ def login(
     token_hash = hash_session_token(raw_token)
 
     now = utc_now()
-
     expires_at = now + (
         timedelta(days=REMEMBER_DAYS)
         if payload.remember_session
@@ -169,15 +221,12 @@ def login(
 
     db.commit()
 
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=raw_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=int((expires_at - now).total_seconds()),
-        expires=int((expires_at - now).total_seconds()),
-        path="/",
+    max_age_seconds = int((expires_at - now).total_seconds())
+    set_session_cookie(
+        response=response,
+        request=request,
+        raw_token=raw_token,
+        max_age_seconds=max_age_seconds,
     )
 
     return {
@@ -225,10 +274,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
             db.delete(session)
             db.commit()
 
-    response.delete_cookie(
-        key=SESSION_COOKIE_NAME,
-        path="/",
-    )
+    clear_session_cookie(response=response, request=request)
 
     return {"ok": True}
 
