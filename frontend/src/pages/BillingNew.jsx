@@ -1,6 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiPost, apiPut } from "../api/client";
+import AlertBox from "../components/ui/AlertBox";
+import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import { FormField, AutoField } from "../components/ui/FormField";
+import {
+  page,
+  stack,
+  card,
+  cardHeader,
+  cardTitle,
+  cardSubtitle,
+  field,
+  labelStyle,
+  input,
+  disabledInput,
+  hintText,
+  tableWrap,
+  table,
+  th,
+  tr,
+  td,
+  actionBar,
+  saveActions,
+  btnPrimary,
+  btnSecondary,
+  btnGhost,
+  badgeBlue,
+  badgeGray,
+  badgeAmber,
+  badgeGreen,
+  disabledBtn,
+} from "../components/ui/uiStyles";
 
 const emptyLine = { item_code: "", qty: 1, rate: 0 };
 
@@ -97,7 +128,8 @@ function computeEditAccess({ isEditMode, invoiceStatus, amountReceived }) {
       restricted: true,
       fullEdit: false,
       saveBlocked: false,
-      reason: "Partial invoice allows restricted edit only. Only due date and remark can be changed.",
+      reason:
+        "Partial invoice allows restricted edit only. Only due date and remark can be changed.",
     };
   }
 
@@ -119,7 +151,8 @@ function computeEditAccess({ isEditMode, invoiceStatus, amountReceived }) {
       restricted: true,
       fullEdit: false,
       saveBlocked: false,
-      reason: "Invoice has receipt entries. Only due date and remark can be changed.",
+      reason:
+        "Invoice has receipt entries. Only due date and remark can be changed.",
     };
   }
 
@@ -475,37 +508,36 @@ export default function BillingNew() {
 
   return (
     <div style={page}>
-      <div style={pageHeader}>
-        <div>
-          <div style={eyebrow}>BILLING</div>
-          <h1 style={pageTitle}>{getPageTitle()}</h1>
-          <p style={pageSubtitle}>{getPageSubtitle()}</p>
-        </div>
-
-        <div style={headerActions}>
-          <button
-            type="button"
-            onClick={() => nav("/sales-invoices")}
-            style={btnSecondary}
-            disabled={saving || pageLoading}
-          >
-            Back to Invoices
-          </button>
-
-          {isEditMode ? (
+      <PageHeaderBlock
+        eyebrowText="BILLING"
+        title={getPageTitle()}
+        subtitle={getPageSubtitle()}
+        actions={
+          <>
             <button
               type="button"
-              onClick={() =>
-                nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)
-              }
-              style={btnGhost}
+              onClick={() => nav("/sales-invoices")}
+              style={btnSecondary}
               disabled={saving || pageLoading}
             >
-              View Invoice
+              Back to Invoices
             </button>
-          ) : null}
-        </div>
-      </div>
+
+            {isEditMode ? (
+              <button
+                type="button"
+                onClick={() =>
+                  nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)
+                }
+                style={btnGhost}
+                disabled={saving || pageLoading}
+              >
+                View Invoice
+              </button>
+            ) : null}
+          </>
+        }
+      />
 
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
@@ -527,7 +559,7 @@ export default function BillingNew() {
           <div>{getModeBadge()}</div>
         </div>
 
-        <div style={formGrid}>
+        <div style={billingFormGrid}>
           <AutoField
             label="Invoice No"
             text={isEditMode ? invoiceNo : "Auto-generated on save"}
@@ -547,7 +579,7 @@ export default function BillingNew() {
             disabled={disableFullEditFields}
           />
 
-          <Field
+          <FormField
             label="Invoice Date"
             type="date"
             value={invoiceDate}
@@ -555,7 +587,7 @@ export default function BillingNew() {
             disabled={disableFullEditFields}
           />
 
-          <Field
+          <FormField
             label="Due Date"
             type="date"
             value={dueDate}
@@ -563,7 +595,7 @@ export default function BillingNew() {
             disabled={!canChangeDueDateRemark}
           />
 
-          <Field
+          <FormField
             label="Tax %"
             type="number"
             value={taxPercent}
@@ -572,7 +604,7 @@ export default function BillingNew() {
             disabled={disableFullEditFields}
           />
 
-          <Field
+          <FormField
             label="Remark"
             value={remark}
             onChange={(e) => setRemark(e.target.value)}
@@ -589,10 +621,19 @@ export default function BillingNew() {
               </div>
 
               <div style={infoGrid}>
-                <InfoMini label="Code" value={selectedCustomer.customer_code || "-"} />
-                <InfoMini label="Name" value={selectedCustomer.customer_name || "-"} />
+                <InfoMini
+                  label="Code"
+                  value={selectedCustomer.customer_code || "-"}
+                />
+                <InfoMini
+                  label="Name"
+                  value={selectedCustomer.customer_name || "-"}
+                />
                 <InfoMini label="City" value={selectedCustomer.city || "-"} />
-                <InfoMini label="Mobile" value={selectedCustomer.mobile_no || "-"} />
+                <InfoMini
+                  label="Mobile"
+                  value={selectedCustomer.mobile_no || "-"}
+                />
               </div>
             </div>
           </div>
@@ -698,7 +739,7 @@ export default function BillingNew() {
 
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan="5" style={emptyTd}>
+                  <td colSpan="5" style={emptyRowTd}>
                     No line items added.
                   </td>
                 </tr>
@@ -720,9 +761,9 @@ export default function BillingNew() {
 
           <div style={summaryCard}>
             <div style={summaryTitle}>Invoice Summary</div>
-            <Row label="Subtotal" value={calc.subtotal} />
-            <Row label="Tax Amount" value={calc.taxAmt} />
-            <Row label="Grand Total" value={calc.grand} bold />
+            <SummaryRow label="Subtotal" value={calc.subtotal} />
+            <SummaryRow label="Tax Amount" value={calc.taxAmt} />
+            <SummaryRow label="Grand Total" value={calc.grand} bold />
           </div>
         </div>
 
@@ -758,39 +799,6 @@ export default function BillingNew() {
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  disabled = false,
-}) {
-  return (
-    <div style={field}>
-      <label style={labelStyle}>{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        style={disabled ? disabledInput : input}
-        disabled={disabled}
-      />
-    </div>
-  );
-}
-
-function AutoField({ label, text, hint }) {
-  return (
-    <div style={field}>
-      <label style={labelStyle}>{label}</label>
-      <div style={autoBox}>{text}</div>
-      {hint ? <div style={hintText}>{hint}</div> : null}
     </div>
   );
 }
@@ -833,7 +841,7 @@ function CustomerSelect({
   );
 }
 
-function Row({ label, value, bold }) {
+function SummaryRow({ label, value, bold = false }) {
   return (
     <div
       style={{
@@ -863,193 +871,11 @@ function InfoMini({ label, value }) {
   );
 }
 
-function AlertBox({ kind, message }) {
-  const styleMap = {
-    error: {
-      background: "#fff1f2",
-      border: "1px solid #fecdd3",
-      color: "#b42318",
-    },
-    success: {
-      background: "#ecfdf3",
-      border: "1px solid #b7ebc6",
-      color: "#027a48",
-    },
-    warning: {
-      background: "#fffaeb",
-      border: "1px solid #fedf89",
-      color: "#b54708",
-    },
-    info: {
-      background: "#eff8ff",
-      border: "1px solid #b2ddff",
-      color: "#175cd3",
-    },
-  };
-
-  return (
-    <div
-      style={{
-        ...styleMap[kind],
-        padding: "12px 14px",
-        borderRadius: 14,
-        fontWeight: 700,
-      }}
-    >
-      {message}
-    </div>
-  );
-}
-
-function disabledBtn(base) {
-  return {
-    ...base,
-    opacity: 0.55,
-    cursor: "not-allowed",
-    boxShadow: "none",
-  };
-}
-
-/* ------------------ styles ------------------ */
-
-const page = {
-  maxWidth: 1180,
-  margin: "0 auto",
-  padding: "18px 16px 28px",
-  display: "grid",
-  gap: 18,
-};
-
-const pageHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-end",
-  gap: 16,
-  flexWrap: "wrap",
-};
-
-const eyebrow = {
-  fontSize: 12,
-  fontWeight: 900,
-  letterSpacing: 1.2,
-  color: "#94a3b8",
-  marginBottom: 6,
-};
-
-const pageTitle = {
-  margin: 0,
-  fontSize: 30,
-  lineHeight: 1.1,
-  color: "#f8fafc",
-  fontWeight: 900,
-};
-
-const pageSubtitle = {
-  margin: "8px 0 0",
-  color: "#cbd5e1",
-  fontSize: 14,
-  maxWidth: 720,
-};
-
-const headerActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const stack = {
-  display: "grid",
-  gap: 10,
-};
-
-const card = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 22,
-  padding: 20,
-  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-  display: "grid",
-  gap: 18,
-};
-
-const cardHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  flexWrap: "wrap",
-};
-
-const cardTitle = {
-  margin: 0,
-  fontSize: 20,
-  color: "#0f172a",
-  fontWeight: 900,
-};
-
-const cardSubtitle = {
-  margin: "6px 0 0",
-  fontSize: 13,
-  color: "#64748b",
-};
-
-const formGrid = {
+const billingFormGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
   gap: 14,
   alignItems: "end",
-};
-
-const field = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 7,
-};
-
-const labelStyle = {
-  fontSize: 12,
-  color: "#334155",
-  fontWeight: 900,
-  letterSpacing: 0.3,
-};
-
-const input = {
-  width: "100%",
-  minHeight: 44,
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
-  outline: "none",
-  boxSizing: "border-box",
-  fontSize: 14,
-};
-
-const disabledInput = {
-  ...input,
-  background: "#f8fafc",
-  color: "#64748b",
-  cursor: "not-allowed",
-};
-
-const autoBox = {
-  width: "100%",
-  minHeight: 44,
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #dbe2ea",
-  background: "#f8fafc",
-  color: "#475569",
-  fontWeight: 800,
-  boxSizing: "border-box",
-  display: "flex",
-  alignItems: "center",
-};
-
-const hintText = {
-  fontSize: 12,
-  color: "#64748b",
 };
 
 const subSectionCard = {
@@ -1100,59 +926,24 @@ const infoMiniValue = {
   wordBreak: "break-word",
 };
 
-const tableWrap = {
-  overflowX: "auto",
-  border: "1px solid #e2e8f0",
-  borderRadius: 18,
-};
-
-const table = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: 900,
-  background: "#ffffff",
-};
-
-const th = {
-  textAlign: "left",
-  padding: "14px 14px",
-  background: "#f8fafc",
-  color: "#334155",
-  fontSize: 13,
-  fontWeight: 900,
-  borderBottom: "1px solid #e2e8f0",
-};
-
-const tr = {
-  borderBottom: "1px solid #eef2f7",
-};
-
-const td = {
-  padding: 12,
-  verticalAlign: "middle",
-};
-
 const tdSmall = {
-  padding: 12,
-  verticalAlign: "middle",
+  ...td,
   width: 140,
 };
 
 const tdAmount = {
-  padding: 12,
-  verticalAlign: "middle",
+  ...td,
   fontWeight: 900,
   color: "#0f172a",
   minWidth: 120,
 };
 
 const tdAction = {
-  padding: 12,
-  verticalAlign: "middle",
+  ...td,
   minWidth: 120,
 };
 
-const emptyTd = {
+const emptyRowTd = {
   padding: 18,
   textAlign: "center",
   color: "#64748b",
@@ -1193,58 +984,6 @@ const summaryTitle = {
   marginBottom: 4,
 };
 
-const actionBar = {
-  display: "flex",
-  justifyContent: "flex-end",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const saveActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const btnPrimary = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #2563eb",
-  background: "#2563eb",
-  color: "#ffffff",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-  boxShadow: "0 8px 20px rgba(37, 99, 235, 0.22)",
-};
-
-const btnSecondary = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-};
-
-const btnGhost = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #dbe2ea",
-  background: "#f8fafc",
-  color: "#334155",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-};
-
 const btnDanger = {
   minHeight: 38,
   padding: "8px 12px",
@@ -1255,56 +994,4 @@ const btnDanger = {
   cursor: "pointer",
   fontWeight: 800,
   fontSize: 13,
-};
-
-const badgeBlue = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#eff8ff",
-  color: "#175cd3",
-  border: "1px solid #b2ddff",
-};
-
-const badgeGray = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#f2f4f7",
-  color: "#475467",
-  border: "1px solid #d0d5dd",
-};
-
-const badgeAmber = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#fffaeb",
-  color: "#b54708",
-  border: "1px solid #fedf89",
-};
-
-const badgeGreen = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#ecfdf3",
-  color: "#027a48",
-  border: "1px solid #abefc6",
 };

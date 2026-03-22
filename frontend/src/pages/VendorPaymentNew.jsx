@@ -1,6 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "../api/client";
+import AlertBox from "../components/ui/AlertBox";
+import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import { FormField } from "../components/ui/FormField";
+import {
+  page,
+  stack,
+  card,
+  cardHeader,
+  cardTitle,
+  cardSubtitle,
+  field,
+  labelStyle,
+  input,
+  btnPrimary,
+  btnSecondary,
+  btnGhost,
+  actionBar,
+  saveActions,
+  badgeBlue,
+} from "../components/ui/uiStyles";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
@@ -198,35 +218,32 @@ export default function VendorPaymentNew() {
 
   return (
     <div style={page}>
-      <div style={pageHeader}>
-        <div>
-          <div style={eyebrow}>VENDOR PAYMENTS</div>
-          <h1 style={pageTitle}>Create Vendor Payment</h1>
-          <p style={pageSubtitle}>
-            Record a payment against an open purchase bill.
-          </p>
-        </div>
+      <PageHeaderBlock
+        eyebrowText="VENDOR PAYMENTS"
+        title="Create Vendor Payment"
+        subtitle="Record a payment against an open purchase bill."
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => navigate("/vendor-payments")}
+              style={btnSecondary}
+              disabled={loading || saving}
+            >
+              Back to Payments
+            </button>
 
-        <div style={headerActions}>
-          <button
-            type="button"
-            onClick={() => navigate("/vendor-payments")}
-            style={btnSecondary}
-            disabled={loading || saving}
-          >
-            Back to Payments
-          </button>
-
-          <button
-            type="button"
-            onClick={load}
-            style={btnGhost}
-            disabled={loading || saving}
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
+            <button
+              type="button"
+              onClick={load}
+              style={btnGhost}
+              disabled={loading || saving}
+            >
+              Refresh
+            </button>
+          </>
+        }
+      />
 
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
@@ -245,7 +262,7 @@ export default function VendorPaymentNew() {
           <div style={badgeBlue}>NEW</div>
         </div>
 
-        <div style={formGrid}>
+        <div style={paymentGrid}>
           <div style={fieldWide} ref={pickerRef}>
             <label style={labelStyle}>Purchase Bill Search</label>
 
@@ -304,12 +321,12 @@ export default function VendorPaymentNew() {
               </div>
             )}
 
-            <div style={hintText}>
+            <div style={hintLine}>
               Only purchase bills with outstanding balance are shown.
             </div>
           </div>
 
-          <Field
+          <FormField
             label="Amount Paid Now"
             type="number"
             value={amount}
@@ -319,7 +336,7 @@ export default function VendorPaymentNew() {
             hint={selected ? `Maximum payable: ${money(maxPayable)}` : ""}
           />
 
-          <Field
+          <FormField
             label="Remark"
             value={remark}
             onChange={(e) => setRemark(e.target.value)}
@@ -335,8 +352,8 @@ export default function VendorPaymentNew() {
           </div>
 
           <div style={infoGrid}>
-            <Info label="Selected Bill" value={selected?.bill_no || "-"} />
-            <Info
+            <InfoMini label="Selected Bill" value={selected?.bill_no || "-"} />
+            <InfoMini
               label="Vendor"
               value={
                 selected
@@ -344,11 +361,11 @@ export default function VendorPaymentNew() {
                   : "-"
               }
             />
-            <Info
+            <InfoMini
               label="Bill Total"
               value={selected ? money(selected.grand_total) : "-"}
             />
-            <Info
+            <InfoMini
               label="Current Balance"
               value={selected ? money(selected.balance) : "-"}
             />
@@ -391,7 +408,7 @@ export default function VendorPaymentNew() {
             <button
               type="button"
               onClick={save}
-              style={saving || loading ? disabledBtn(btnPrimary) : btnPrimary}
+              style={btnPrimary}
               disabled={saving || loading}
             >
               {saving ? "Saving..." : "Save Payment"}
@@ -399,40 +416,6 @@ export default function VendorPaymentNew() {
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  disabled = false,
-  hint = "",
-}) {
-  return (
-    <div style={field}>
-      <label style={labelStyle}>{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        style={disabled ? disabledInput : input}
-        disabled={disabled}
-      />
-      {hint ? <div style={hintText}>{hint}</div> : null}
-    </div>
-  );
-}
-
-function Info({ label, value }) {
-  return (
-    <div style={infoMini}>
-      <div style={infoMiniLabel}>{label}</div>
-      <div style={infoMiniValue}>{value}</div>
     </div>
   );
 }
@@ -458,186 +441,31 @@ function SummaryRow({ label, value, bold = false }) {
   );
 }
 
-function AlertBox({ kind, message }) {
-  const styleMap = {
-    error: {
-      background: "#fff1f2",
-      border: "1px solid #fecdd3",
-      color: "#b42318",
-    },
-    success: {
-      background: "#ecfdf3",
-      border: "1px solid #b7ebc6",
-      color: "#027a48",
-    },
-    warning: {
-      background: "#fffaeb",
-      border: "1px solid #fedf89",
-      color: "#b54708",
-    },
-    info: {
-      background: "#eff8ff",
-      border: "1px solid #b2ddff",
-      color: "#175cd3",
-    },
-  };
-
+function InfoMini({ label, value }) {
   return (
-    <div
-      style={{
-        ...styleMap[kind],
-        padding: "12px 14px",
-        borderRadius: 14,
-        fontWeight: 700,
-      }}
-    >
-      {message}
+    <div style={infoMini}>
+      <div style={infoMiniLabel}>{label}</div>
+      <div style={infoMiniValue}>{value}</div>
     </div>
   );
 }
 
-function disabledBtn(base) {
-  return {
-    ...base,
-    opacity: 0.55,
-    cursor: "not-allowed",
-    boxShadow: "none",
-  };
-}
-
-/* ------------------ styles ------------------ */
-
-const page = {
-  maxWidth: 1180,
-  margin: "0 auto",
-  padding: "18px 16px 28px",
-  display: "grid",
-  gap: 18,
-};
-
-const pageHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-end",
-  gap: 16,
-  flexWrap: "wrap",
-};
-
-const eyebrow = {
-  fontSize: 12,
-  fontWeight: 900,
-  letterSpacing: 1.2,
-  color: "#94a3b8",
-  marginBottom: 6,
-};
-
-const pageTitle = {
-  margin: 0,
-  fontSize: 30,
-  lineHeight: 1.1,
-  color: "#f8fafc",
-  fontWeight: 900,
-};
-
-const pageSubtitle = {
-  margin: "8px 0 0",
-  color: "#cbd5e1",
-  fontSize: 14,
-  maxWidth: 720,
-};
-
-const headerActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const stack = {
-  display: "grid",
-  gap: 10,
-};
-
-const card = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 22,
-  padding: 20,
-  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-  display: "grid",
-  gap: 18,
-};
-
-const cardHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  flexWrap: "wrap",
-};
-
-const cardTitle = {
-  margin: 0,
-  fontSize: 20,
-  color: "#0f172a",
-  fontWeight: 900,
-};
-
-const cardSubtitle = {
-  margin: "6px 0 0",
-  fontSize: 13,
-  color: "#64748b",
-};
-
-const formGrid = {
+const paymentGrid = {
   display: "grid",
   gridTemplateColumns: "1.5fr 1fr 1fr",
   gap: 14,
   alignItems: "start",
 };
 
-const field = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 7,
-};
-
 const fieldWide = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 7,
+  ...field,
   position: "relative",
 };
 
-const labelStyle = {
-  fontSize: 12,
-  color: "#334155",
-  fontWeight: 900,
-  letterSpacing: 0.3,
-};
-
-const input = {
-  width: "100%",
-  minHeight: 44,
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
-  outline: "none",
-  boxSizing: "border-box",
-  fontSize: 14,
-};
-
-const disabledInput = {
-  ...input,
-  background: "#f8fafc",
-  color: "#64748b",
-  cursor: "not-allowed",
-};
-
-const hintText = {
+const hintLine = {
   fontSize: 12,
   color: "#64748b",
+  marginTop: 6,
 };
 
 const subSectionCard = {
@@ -780,69 +608,4 @@ const summaryTitle = {
   color: "#334155",
   fontWeight: 900,
   marginBottom: 4,
-};
-
-const actionBar = {
-  display: "flex",
-  justifyContent: "flex-end",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const saveActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const btnPrimary = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #2563eb",
-  background: "#2563eb",
-  color: "#ffffff",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-  boxShadow: "0 8px 20px rgba(37, 99, 235, 0.22)",
-};
-
-const btnSecondary = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-};
-
-const btnGhost = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #dbe2ea",
-  background: "#f8fafc",
-  color: "#334155",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-};
-
-const badgeBlue = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#eff8ff",
-  color: "#175cd3",
-  border: "1px solid #b2ddff",
 };
