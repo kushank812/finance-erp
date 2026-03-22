@@ -1,6 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiDelete, apiGet, apiPatch } from "../api/client";
+import AlertBox from "../components/ui/AlertBox";
+import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import {
+  page,
+  stack,
+  card,
+  cardHeader,
+  cardTitle,
+  cardSubtitle,
+  field,
+  labelStyle,
+  input,
+  actionBar,
+  saveActions,
+  tableWrap,
+  table,
+  th,
+  thCenter,
+  thRight,
+  tr,
+  td,
+  tdCode,
+  tdCenter,
+  tdRight,
+  emptyTd,
+  btnPrimary,
+  btnSecondary,
+  btnGhost,
+  btnMini,
+  btnDangerMini,
+  badgeBlue,
+  badgeGray,
+  badgeAmber,
+  badgeGreen,
+  disabledBtn,
+} from "../components/ui/uiStyles";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
@@ -221,26 +257,31 @@ export default function SalesInvoiceDirectView() {
   }, [rows]);
 
   return (
-    <div style={{ maxWidth: 1250, margin: "0 auto", padding: 14 }}>
-      <div style={pageHeader}>
-        <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>Sales Invoice Management</h2>
-          <p style={{ margin: "6px 0 0", color: "#b8b8b8" }}>
-            Search, view, edit, cancel, and delete sales invoices.
-          </p>
-        </div>
-
-        <div style={headerActions}>
-          <button style={btnPrimary} onClick={() => nav("/billing")}>
+    <div style={page}>
+      <PageHeaderBlock
+        eyebrowText="BILLING"
+        title="Sales Invoice Management"
+        subtitle="Search, view, edit, cancel, and delete sales invoices."
+        actions={
+          <button style={btnPrimary} onClick={() => nav("/billing")} type="button">
             + Create Invoice
           </button>
-        </div>
-      </div>
+        }
+      />
 
       <form onSubmit={onSearch} style={filterCard}>
-        <div style={filterGrid}>
+        <div style={cardHeader}>
           <div>
-            <label style={label}>Search</label>
+            <h2 style={cardTitle}>Search Filters</h2>
+            <p style={cardSubtitle}>
+              Filter invoices by search text, date range, and status.
+            </p>
+          </div>
+        </div>
+
+        <div style={filterGrid}>
+          <div style={field}>
+            <label style={labelStyle}>Search</label>
             <input
               style={input}
               placeholder="Invoice No / Customer Code"
@@ -251,8 +292,8 @@ export default function SalesInvoiceDirectView() {
             />
           </div>
 
-          <div>
-            <label style={label}>From Date</label>
+          <div style={field}>
+            <label style={labelStyle}>From Date</label>
             <input
               type="date"
               style={input}
@@ -261,8 +302,8 @@ export default function SalesInvoiceDirectView() {
             />
           </div>
 
-          <div>
-            <label style={label}>To Date</label>
+          <div style={field}>
+            <label style={labelStyle}>To Date</label>
             <input
               type="date"
               style={input}
@@ -271,8 +312,8 @@ export default function SalesInvoiceDirectView() {
             />
           </div>
 
-          <div>
-            <label style={label}>Status</label>
+          <div style={field}>
+            <label style={labelStyle}>Status</label>
             <select
               style={input}
               value={filters.status}
@@ -288,18 +329,22 @@ export default function SalesInvoiceDirectView() {
           </div>
         </div>
 
-        <div style={filterActions}>
-          <button type="submit" style={btnPrimary} disabled={loading}>
-            {loading ? "Loading..." : "Search"}
-          </button>
-          <button type="button" style={btnGhost} onClick={onReset} disabled={loading}>
-            Reset
-          </button>
+        <div style={actionBar}>
+          <div style={saveActions}>
+            <button type="submit" style={btnPrimary} disabled={loading}>
+              {loading ? "Loading..." : "Search"}
+            </button>
+            <button type="button" style={btnSecondary} onClick={onReset} disabled={loading}>
+              Reset
+            </button>
+          </div>
         </div>
       </form>
 
-      {err ? <div style={msgErr}>{err}</div> : null}
-      {actionMsg ? <div style={msgOk}>{actionMsg}</div> : null}
+      <div style={stack}>
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {actionMsg ? <AlertBox kind="success" message={actionMsg} /> : null}
+      </div>
 
       <div style={summaryGrid}>
         <SummaryCard title="Total Invoices" value={summary.totalCount} />
@@ -312,43 +357,44 @@ export default function SalesInvoiceDirectView() {
       <div style={infoCard}>
         <div style={infoTitle}>Real-life action rules</div>
         <div style={infoText}>
-          PENDING / OVERDUE invoices can be fully edited. PARTIAL invoices can be edited
-          in restricted mode only. PAID and CANCELLED invoices are view-only. Cancel and
-          Delete are allowed only when no receipt exists.
+          PENDING / OVERDUE invoices can be fully edited. PARTIAL invoices can be
+          edited in restricted mode only. PAID and CANCELLED invoices are view-only.
+          Cancel and Delete are allowed only when no receipt exists.
         </div>
       </div>
 
-      <div style={tableCard}>
-        <div style={tableHeader}>
+      <section style={card}>
+        <div style={cardHeader}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#111" }}>Invoices</div>
-            <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
+            <h2 style={cardTitle}>Invoices</h2>
+            <p style={cardSubtitle}>
               {loading ? "Loading invoices..." : `${rows.length} record(s) found`}
-            </div>
+            </p>
           </div>
 
           <button
             style={btnGhost}
             onClick={() => loadInvoices(appliedFilters)}
             disabled={loading}
+            type="button"
           >
             Refresh
           </button>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={table}>
+        <div style={tableWrap}>
+          <table style={{ ...table, minWidth: 1120 }}>
             <thead>
               <tr>
                 <th style={th}>Invoice No</th>
                 <th style={th}>Invoice Date</th>
                 <th style={th}>Due Date</th>
                 <th style={th}>Customer</th>
-                <th style={{ ...th, textAlign: "right" }}>Grand Total</th>
-                <th style={{ ...th, textAlign: "right" }}>Received</th>
-                <th style={{ ...th, textAlign: "right" }}>Balance</th>
+                <th style={thRight}>Grand Total</th>
+                <th style={thRight}>Received</th>
+                <th style={thRight}>Balance</th>
                 <th style={th}>Status</th>
-                <th style={{ ...th, textAlign: "center" }}>Actions</th>
+                <th style={thCenter}>Actions</th>
               </tr>
             </thead>
 
@@ -384,15 +430,17 @@ export default function SalesInvoiceDirectView() {
 
                   let cancelTitle = "Cancel invoice";
                   if (cancelled) cancelTitle = "Already cancelled";
-                  else if (receiptExists) cancelTitle = "Reverse receipt(s) first before cancelling";
+                  else if (receiptExists)
+                    cancelTitle = "Reverse receipt(s) first before cancelling";
 
                   let deleteTitle = "Delete invoice";
                   if (cancelled) deleteTitle = "Cancelled invoice cannot be deleted";
-                  else if (receiptExists) deleteTitle = "Reverse receipt(s) first before deleting";
+                  else if (receiptExists)
+                    deleteTitle = "Reverse receipt(s) first before deleting";
 
                   return (
                     <tr key={invoiceNo} style={tr}>
-                      <td style={tdStrong}>{invoiceNo}</td>
+                      <td style={tdCode}>{invoiceNo}</td>
                       <td style={td}>{fmtDate(row.invoice_date)}</td>
                       <td style={td}>{fmtDate(row.due_date)}</td>
                       <td style={td}>{row.customer_code}</td>
@@ -402,11 +450,11 @@ export default function SalesInvoiceDirectView() {
                       <td style={td}>
                         <span style={statusBadge(status)}>{status}</span>
                       </td>
-                      <td style={td}>
+                      <td style={tdCenter}>
                         <div style={rowActionWrap}>
                           <button
                             type="button"
-                            style={miniBtn}
+                            style={btnMini}
                             onClick={() =>
                               nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)
                             }
@@ -442,8 +490,8 @@ export default function SalesInvoiceDirectView() {
                             type="button"
                             style={
                               deleteAllowed
-                                ? miniBtnDanger
-                                : actionDisabledStyle(miniBtnDanger)
+                                ? btnDangerMini
+                                : actionDisabledStyle(btnDangerMini)
                             }
                             disabled={!deleteAllowed || busy}
                             title={deleteTitle}
@@ -462,10 +510,11 @@ export default function SalesInvoiceDirectView() {
         </div>
 
         <div style={footNote}>
-          * Edit on PARTIAL invoice means restricted edit only. Do not allow item lines,
-          quantities, rates, tax, customer, or grand total changes on the edit form.
+          * Edit on PARTIAL invoice means restricted edit only. Do not allow item
+          lines, quantities, rates, tax, customer, or grand total changes on the edit
+          form.
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -478,259 +527,6 @@ function SummaryCard({ title, value }) {
     </div>
   );
 }
-
-const pageHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-end",
-  gap: 12,
-  flexWrap: "wrap",
-  marginBottom: 14,
-};
-
-const headerActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const filterCard = {
-  background: "#fff",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 14,
-  marginBottom: 14,
-};
-
-const filterGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-};
-
-const filterActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  marginTop: 14,
-};
-
-const label = {
-  display: "block",
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#444",
-  marginBottom: 6,
-};
-
-const input = {
-  width: "100%",
-  padding: "11px 12px",
-  borderRadius: 12,
-  border: "1px solid #cfcfcf",
-  background: "#fff",
-  color: "#111",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const summaryGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 12,
-  marginBottom: 14,
-};
-
-const summaryCard = {
-  background: "#fff",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 14,
-};
-
-const summaryTitle = {
-  fontSize: 12,
-  color: "#666",
-  fontWeight: 800,
-};
-
-const summaryValue = {
-  marginTop: 8,
-  fontSize: 22,
-  fontWeight: 900,
-  color: "#111",
-};
-
-const infoCard = {
-  background: "#f8fbff",
-  border: "1px solid #dbe8ff",
-  borderRadius: 16,
-  padding: 14,
-  marginBottom: 14,
-};
-
-const infoTitle = {
-  fontSize: 14,
-  fontWeight: 900,
-  color: "#0b3d91",
-  marginBottom: 6,
-};
-
-const infoText = {
-  fontSize: 13,
-  color: "#28456b",
-  lineHeight: 1.5,
-};
-
-const tableCard = {
-  background: "#fff",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 14,
-};
-
-const tableHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-  marginBottom: 12,
-};
-
-const table = {
-  width: "100%",
-  minWidth: 1120,
-  borderCollapse: "collapse",
-};
-
-const th = {
-  textAlign: "left",
-  padding: "12px 10px",
-  background: "#f7f8fa",
-  color: "#444",
-  fontSize: 13,
-  fontWeight: 900,
-  borderBottom: "1px solid #e6e6e6",
-};
-
-const tr = {
-  borderBottom: "1px solid #efefef",
-};
-
-const td = {
-  padding: "12px 10px",
-  color: "#111",
-  verticalAlign: "middle",
-};
-
-const tdStrong = {
-  ...td,
-  fontWeight: 900,
-};
-
-const tdRight = {
-  ...td,
-  textAlign: "right",
-  fontVariantNumeric: "tabular-nums",
-};
-
-const emptyTd = {
-  padding: 18,
-  textAlign: "center",
-  color: "#666",
-};
-
-const rowActionWrap = {
-  display: "flex",
-  gap: 8,
-  justifyContent: "center",
-  flexWrap: "wrap",
-};
-
-const btnPrimary = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const btnGhost = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "#fff",
-  color: "#111",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const miniBtn = {
-  padding: "7px 10px",
-  borderRadius: 10,
-  border: "1px solid #cfcfcf",
-  background: "#fff",
-  color: "#111",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const miniBtnBlue = {
-  padding: "7px 10px",
-  borderRadius: 10,
-  border: "1px solid #0b5cff",
-  background: "#eef4ff",
-  color: "#0b5cff",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const miniBtnWarning = {
-  padding: "7px 10px",
-  borderRadius: 10,
-  border: "1px solid #d9a100",
-  background: "#fff8e1",
-  color: "#8a5a00",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const miniBtnDanger = {
-  padding: "7px 10px",
-  borderRadius: 10,
-  border: "1px solid #d33",
-  background: "#fff2f2",
-  color: "#c40000",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  padding: 10,
-  borderRadius: 12,
-  color: "#a40000",
-  marginBottom: 12,
-};
-
-const msgOk = {
-  background: "#ecfff1",
-  border: "1px solid #a6e0b8",
-  padding: 10,
-  borderRadius: 12,
-  color: "#116b2f",
-  marginBottom: 12,
-};
-
-const footNote = {
-  marginTop: 12,
-  fontSize: 12,
-  color: "#666",
-};
 
 function statusBadge(status) {
   const s = String(status || "").toUpperCase();
@@ -775,7 +571,7 @@ function statusBadge(status) {
       ...base,
       background: "#f0f0f0",
       color: "#555",
-      border: "1px solid #d5d5d5",
+      border: "1px solid #d5d5dd",
     };
   }
 
@@ -786,3 +582,95 @@ function statusBadge(status) {
     border: "1px solid #b7cbff",
   };
 }
+
+const filterCard = {
+  ...card,
+  gap: 14,
+};
+
+const filterGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+};
+
+const summaryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 12,
+};
+
+const summaryCard = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  padding: 14,
+};
+
+const summaryTitle = {
+  fontSize: 12,
+  color: "#666",
+  fontWeight: 800,
+};
+
+const summaryValue = {
+  marginTop: 8,
+  fontSize: 22,
+  fontWeight: 900,
+  color: "#111",
+};
+
+const infoCard = {
+  background: "#f8fbff",
+  border: "1px solid #dbe8ff",
+  borderRadius: 16,
+  padding: 14,
+};
+
+const infoTitle = {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#0b3d91",
+  marginBottom: 6,
+};
+
+const infoText = {
+  fontSize: 13,
+  color: "#28456b",
+  lineHeight: 1.5,
+};
+
+const rowActionWrap = {
+  display: "flex",
+  gap: 8,
+  justifyContent: "center",
+  flexWrap: "wrap",
+};
+
+const miniBtnBlue = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #0b5cff",
+  background: "#eef4ff",
+  color: "#0b5cff",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 13,
+};
+
+const miniBtnWarning = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #d9a100",
+  background: "#fff8e1",
+  color: "#8a5a00",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 13,
+};
+
+const footNote = {
+  marginTop: 12,
+  fontSize: 12,
+  color: "#666",
+};

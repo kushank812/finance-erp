@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiDelete, apiGet } from "../api/client";
+import AlertBox from "../components/ui/AlertBox";
+import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import {
+  page,
+  stack,
+  card,
+  cardHeader,
+  cardTitle,
+  cardSubtitle,
+  actionBar,
+  saveActions,
+  btnPrimary,
+  btnSecondary,
+  btnDangerMini,
+  disabledBtn,
+} from "../components/ui/uiStyles";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
@@ -124,43 +140,43 @@ export default function ReceiptView() {
   const canReverse = !!receipt && !loading && !reversing;
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: 14 }}>
-      <div className="no-print" style={toolbarBetween}>
-        <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>Receipt Voucher</h2>
-          <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            Receipt No: <b>{titleReceiptNo}</b>
-          </p>
-        </div>
+    <div style={page}>
+      <PageHeaderBlock
+        eyebrowText="RECEIPTS"
+        title="Receipt Voucher"
+        subtitle={`Receipt No: ${titleReceiptNo}`}
+        actions={
+          <div className="no-print" style={toolbarWrap}>
+            <button type="button" onClick={() => nav(-1)} style={btnSecondary}>
+              Back
+            </button>
 
-        <div style={toolbarWrap}>
-          <button type="button" onClick={() => nav(-1)} style={btnGhost}>
-            Back
-          </button>
+            <button
+              type="button"
+              onClick={onReverseReceipt}
+              style={canReverse ? btnDanger : disabledBtn(btnDanger)}
+              disabled={!canReverse}
+              title={!receipt ? "Receipt not loaded" : "Reverse this receipt"}
+            >
+              {reversing ? "Reversing..." : "Reverse Receipt"}
+            </button>
 
-          <button
-            type="button"
-            onClick={onReverseReceipt}
-            style={canReverse ? btnDanger : disabledBtn(btnDanger)}
-            disabled={!canReverse}
-            title={!receipt ? "Receipt not loaded" : "Reverse this receipt"}
-          >
-            {reversing ? "Reversing..." : "Reverse Receipt"}
-          </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              style={btnPrimary}
+              disabled={!receipt || loading || reversing}
+            >
+              Print / Save PDF
+            </button>
+          </div>
+        }
+      />
 
-          <button
-            type="button"
-            onClick={() => window.print()}
-            style={btnPrimary}
-            disabled={!receipt || loading || reversing}
-          >
-            Print / Save PDF
-          </button>
-        </div>
+      <div className="no-print" style={stack}>
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {okMsg ? <AlertBox kind="success" message={okMsg} /> : null}
       </div>
-
-      {err && <div className="no-print" style={msgErr}>{err}</div>}
-      {okMsg && <div className="no-print" style={msgOk}>{okMsg}</div>}
 
       <div id="print-area" style={paper}>
         {!receiptNo ? (
@@ -281,22 +297,6 @@ function TotalRow({ label, value, strong }) {
   );
 }
 
-function disabledBtn(base) {
-  return {
-    ...base,
-    opacity: 0.5,
-    cursor: "not-allowed",
-  };
-}
-
-const toolbarBetween = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  alignItems: "end",
-  justifyContent: "space-between",
-};
-
 const toolbarWrap = {
   display: "flex",
   flexWrap: "wrap",
@@ -309,7 +309,6 @@ const paper = {
   border: "1px solid #e6e6e6",
   borderRadius: 16,
   padding: 16,
-  marginTop: 12,
 };
 
 const docHeader = {
@@ -419,52 +418,10 @@ const signLabel = {
   fontWeight: 700,
 };
 
-const btnPrimary = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const btnGhost = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "white",
-  color: "#111",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
 const btnDanger = {
+  ...btnDangerMini,
+  minHeight: 44,
   padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #d33",
-  background: "#fff2f2",
-  color: "#c40000",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  padding: 10,
-  borderRadius: 12,
-  color: "#a40000",
-  marginTop: 12,
-};
-
-const msgOk = {
-  background: "#ecfff1",
-  border: "1px solid #a6e0b8",
-  padding: 10,
-  borderRadius: 12,
-  color: "#116b2f",
-  marginTop: 12,
 };
 
 const printCss = `
