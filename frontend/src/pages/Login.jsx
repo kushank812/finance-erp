@@ -1,3 +1,4 @@
+// src/pages/Login.jsx
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiPost } from "../api/client";
@@ -6,32 +7,38 @@ export default function Login({ refreshAuth }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [userId, setUserId] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
-  const [remember, setRemember] = useState(true);
+  const [form, setForm] = useState({
+    userId: "",
+    password: "",
+    remember: true,
+  });
 
+  const [showPwd, setShowPwd] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
   const redirectTo = location.state?.from || "/dashboard";
 
+  function update(key, value) {
+    setForm((p) => ({ ...p, [key]: value }));
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     setErr("");
 
-    const uid = userId.trim();
+    const uid = form.userId.trim().toUpperCase();
 
     if (!uid) return setErr("User ID is required.");
-    if (!password) return setErr("Password is required.");
+    if (!form.password) return setErr("Password is required.");
 
     try {
       setLoading(true);
 
       await apiPost("/auth/login", {
         user_id: uid,
-        password,
-        remember_session: remember,
+        password: form.password,
+        remember_session: form.remember,
       });
 
       await refreshAuth();
@@ -45,65 +52,57 @@ export default function Login({ refreshAuth }) {
 
   return (
     <div style={page}>
+      {/* LEFT SIDE */}
       <div style={leftPanel}>
         <div style={brandWrap}>
           <div style={logoBox}>F</div>
           <div>
             <h1 style={brandTitle}>FINANCE ERP</h1>
-            <p style={brandSub}>Accounts Receivable / Accounts Payable Management</p>
+            <p style={brandSub}>Accounts Receivable / Payable System</p>
           </div>
         </div>
 
-        <div style={{ height: 24 }} />
-
-        <h2 style={heroTitle}>Secure access to your finance workspace</h2>
+        <h2 style={heroTitle}>Secure Finance Management</h2>
         <p style={heroText}>
-          Manage customers, vendors, invoices, purchase bills, receipts, payments,
-          statements, aging, and dashboard insights from one place.
+          Manage invoices, payments, vendors, customers, aging, and reports in one unified system.
         </p>
 
-        <div style={{ height: 22 }} />
-
         <div style={featureList}>
-          <Feature text="Secure sign-in flow" />
-          <Feature text="Backend session-based access" />
-          <Feature text="Responsive laptop + phone layout" />
-          <Feature text="Professional ERP-style interface" />
+          <Feature text="Role-based access control" />
+          <Feature text="Secure session authentication" />
+          <Feature text="Responsive ERP interface" />
+          <Feature text="Audit-ready system logs" />
         </div>
       </div>
 
+      {/* RIGHT SIDE */}
       <div style={rightPanel}>
         <div style={card}>
-          <div style={cardTop}>
-            <h2 style={title}>Sign in</h2>
-            <p style={subtitle}>Enter your user ID and password to continue.</p>
-          </div>
+          <h2 style={title}>Sign in</h2>
+          <p style={subtitle}>Enter your credentials to continue</p>
 
-          {err ? <div style={msgErr}>{err}</div> : null}
+          {err && <div style={msgErr}>{err}</div>}
 
           <form onSubmit={onSubmit}>
-            <div style={fieldWrap}>
+            <div style={field}>
               <label style={label}>User ID</label>
               <input
-                type="text"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                value={form.userId}
+                onChange={(e) => update("userId", e.target.value)}
                 placeholder="Enter user ID"
-                autoComplete="username"
                 style={input}
               />
             </div>
 
-            <div style={fieldWrap}>
+            <div style={field}>
               <label style={label}>Password</label>
 
               <div style={pwdWrap}>
                 <input
                   type={showPwd ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={form.password}
+                  onChange={(e) => update("password", e.target.value)}
                   placeholder="Enter password"
-                  autoComplete="current-password"
                   style={pwdInput}
                 />
 
@@ -121,10 +120,10 @@ export default function Login({ refreshAuth }) {
               <label style={rememberWrap}>
                 <input
                   type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
+                  checked={form.remember}
+                  onChange={(e) => update("remember", e.target.checked)}
                 />
-                <span>Remember session</span>
+                Remember session
               </label>
 
               <button
@@ -132,7 +131,7 @@ export default function Login({ refreshAuth }) {
                 style={linkBtn}
                 onClick={() =>
                   setErr(
-                    "For password reset, contact the system administrator. Self-service reset is not enabled."
+                    "Contact admin to reset password. Self-reset not enabled."
                   )
                 }
               >
@@ -146,7 +145,7 @@ export default function Login({ refreshAuth }) {
           </form>
 
           <div style={bottomNote}>
-            Authorized access only. All actions may be logged for security.
+            Authorized users only. Activity may be logged.
           </div>
         </div>
       </div>
@@ -157,23 +156,23 @@ export default function Login({ refreshAuth }) {
 function Feature({ text }) {
   return (
     <div style={featureItem}>
-      <div style={featureDot} />
+      <div style={dot} />
       <span>{text}</span>
     </div>
   );
 }
 
-/* ---------------- styles ---------------- */
+/* ---------- STYLES ---------- */
 
 const page = {
   minHeight: "100vh",
   display: "grid",
-  gridTemplateColumns: "1.1fr 0.9fr",
-  background: "linear-gradient(135deg, #0b1220 0%, #0f172a 45%, #111827 100%)",
+  gridTemplateColumns: "1fr 1fr",
+  background: "linear-gradient(135deg, #0f172a, #111827)",
 };
 
 const leftPanel = {
-  padding: "48px 56px",
+  padding: 40,
   color: "#e5e7eb",
   display: "flex",
   flexDirection: "column",
@@ -184,216 +183,105 @@ const rightPanel = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: 24,
-  background: "rgba(255,255,255,0.03)",
 };
 
 const brandWrap = {
   display: "flex",
+  gap: 12,
   alignItems: "center",
-  gap: 14,
 };
 
 const logoBox = {
-  width: 54,
-  height: 54,
-  borderRadius: 16,
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-  color: "white",
+  width: 50,
+  height: 50,
+  borderRadius: 14,
+  background: "#2563eb",
+  color: "#fff",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 24,
   fontWeight: 900,
-  boxShadow: "0 12px 30px rgba(37,99,235,0.35)",
 };
 
-const brandTitle = {
-  margin: 0,
-  fontSize: 28,
-  fontWeight: 900,
-  letterSpacing: 0.6,
-};
+const brandTitle = { margin: 0, fontSize: 24 };
+const brandSub = { margin: 0, color: "#9ca3af" };
 
-const brandSub = {
-  margin: "6px 0 0 0",
-  color: "#9ca3af",
-  fontSize: 14,
-};
+const heroTitle = { marginTop: 30, fontSize: 32 };
+const heroText = { marginTop: 10, color: "#cbd5e1" };
 
-const heroTitle = {
-  margin: 0,
-  fontSize: 42,
-  lineHeight: 1.1,
-  fontWeight: 900,
-  maxWidth: 520,
-};
-
-const heroText = {
-  marginTop: 16,
-  maxWidth: 560,
-  color: "#cbd5e1",
-  fontSize: 16,
-  lineHeight: 1.7,
-};
-
-const featureList = {
-  display: "grid",
-  gap: 12,
-};
-
-const featureItem = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  color: "#dbeafe",
-  fontSize: 15,
-};
-
-const featureDot = {
-  width: 10,
-  height: 10,
-  borderRadius: 999,
-  background: "#60a5fa",
-  boxShadow: "0 0 0 4px rgba(96,165,250,0.15)",
-};
+const featureList = { marginTop: 20, display: "grid", gap: 8 };
+const featureItem = { display: "flex", gap: 8 };
+const dot = { width: 8, height: 8, background: "#60a5fa", borderRadius: 999 };
 
 const card = {
-  width: "100%",
-  maxWidth: 430,
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 24,
-  padding: 28,
-  boxShadow: "0 30px 80px rgba(0,0,0,0.22)",
+  width: 400,
+  background: "#fff",
+  padding: 24,
+  borderRadius: 20,
 };
 
-const cardTop = {
-  marginBottom: 18,
-};
+const title = { margin: 0 };
+const subtitle = { color: "#666", marginBottom: 16 };
 
-const title = {
-  margin: 0,
-  fontSize: 28,
-  color: "#111827",
-  fontWeight: 900,
-};
+const field = { marginBottom: 14 };
 
-const subtitle = {
-  margin: "8px 0 0 0",
-  color: "#6b7280",
-  fontSize: 14,
-};
-
-const fieldWrap = {
-  marginBottom: 16,
-};
-
-const label = {
-  display: "block",
-  marginBottom: 7,
-  fontSize: 13,
-  fontWeight: 800,
-  color: "#111827",
-};
+const label = { fontSize: 13, fontWeight: 800 };
 
 const input = {
   width: "100%",
-  padding: "12px 14px",
-  borderRadius: 14,
-  border: "1px solid #d1d5db",
-  outline: "none",
-  background: "#fff",
-  color: "#111827",
-  boxSizing: "border-box",
-  fontSize: 14,
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #ccc",
 };
 
 const pwdWrap = {
   display: "flex",
-  alignItems: "center",
-  border: "1px solid #d1d5db",
-  borderRadius: 14,
-  overflow: "hidden",
-  background: "#fff",
+  border: "1px solid #ccc",
+  borderRadius: 10,
 };
 
-const pwdInput = {
-  flex: 1,
-  padding: "12px 14px",
-  border: "none",
-  outline: "none",
-  background: "transparent",
-  color: "#111827",
-  fontSize: 14,
-  minWidth: 0,
-};
+const pwdInput = { flex: 1, padding: 10, border: "none" };
 
 const toggleBtn = {
   border: "none",
-  borderLeft: "1px solid #e5e7eb",
-  background: "#f9fafb",
-  color: "#1d4ed8",
-  fontWeight: 800,
+  padding: "0 10px",
   cursor: "pointer",
-  padding: "12px 16px",
-  whiteSpace: "nowrap",
 };
 
 const metaRow = {
-  marginTop: 2,
-  marginBottom: 18,
   display: "flex",
-  alignItems: "center",
   justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
+  marginBottom: 14,
 };
 
-const rememberWrap = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  color: "#374151",
-  fontSize: 13,
-};
+const rememberWrap = { display: "flex", gap: 6 };
 
 const linkBtn = {
+  background: "none",
   border: "none",
-  background: "transparent",
-  color: "#1d4ed8",
-  fontWeight: 800,
+  color: "#2563eb",
   cursor: "pointer",
-  padding: 0,
 };
 
 const submitBtn = {
   width: "100%",
-  padding: "13px 16px",
-  borderRadius: 14,
-  border: "1px solid #1d4ed8",
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+  padding: 12,
+  background: "#2563eb",
   color: "#fff",
+  border: "none",
+  borderRadius: 10,
   fontWeight: 900,
-  fontSize: 15,
-  cursor: "pointer",
-  boxShadow: "0 14px 30px rgba(37,99,235,0.28)",
 };
 
 const msgErr = {
   background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  color: "#a40000",
   padding: 10,
-  borderRadius: 12,
-  marginBottom: 14,
-  fontSize: 14,
+  marginBottom: 10,
 };
 
 const bottomNote = {
-  marginTop: 18,
-  color: "#6b7280",
+  marginTop: 14,
   fontSize: 12,
+  color: "#666",
   textAlign: "center",
-  lineHeight: 1.6,
 };
