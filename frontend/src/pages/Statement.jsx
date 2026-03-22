@@ -2,6 +2,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
 
+import AlertBox from "../components/ui/AlertBox";
+import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import {
+  page,
+  stack,
+  card,
+  cardHeader,
+  cardTitle,
+  cardSubtitle,
+  field,
+  labelStyle,
+  input,
+  tableWrap,
+  table,
+  th,
+  thRight,
+  tr,
+  td,
+  tdCode,
+  tdRight,
+  emptyTd,
+  btnGhost,
+  badgeBlue,
+  badgeGreen,
+} from "../components/ui/uiStyles";
+
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
@@ -88,7 +114,11 @@ export default function Statement() {
     }
   }
 
-  async function loadAllStatements(type, customerList = customers, vendorList = vendors) {
+  async function loadAllStatements(
+    type,
+    customerList = customers,
+    vendorList = vendors
+  ) {
     setErr("");
     setLoading(true);
 
@@ -103,7 +133,9 @@ export default function Statement() {
 
         const results = await Promise.allSettled(
           codes.map(async (code) => {
-            const data = await apiGet(`/customers/${encodeURIComponent(code)}/statement`);
+            const data = await apiGet(
+              `/customers/${encodeURIComponent(code)}/statement`
+            );
             const list = Array.isArray(data) ? data : [];
 
             return list.map((row) => ({
@@ -123,10 +155,18 @@ export default function Statement() {
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
-          setErr(String(firstError?.message || firstError || "Failed to load customer statements"));
+          setErr(
+            String(
+              firstError?.message ||
+                firstError ||
+                "Failed to load customer statements"
+            )
+          );
         } else if (failures.length > 0) {
           setErr(
-            `Some customer statements could not be loaded (${failures.length} failed, ${results.length - failures.length} loaded).`
+            `Some customer statements could not be loaded (${failures.length} failed, ${
+              results.length - failures.length
+            } loaded).`
           );
         }
       } else {
@@ -139,7 +179,9 @@ export default function Statement() {
 
         const results = await Promise.allSettled(
           codes.map(async (code) => {
-            const data = await apiGet(`/vendors/${encodeURIComponent(code)}/statement`);
+            const data = await apiGet(
+              `/vendors/${encodeURIComponent(code)}/statement`
+            );
             const list = Array.isArray(data) ? data : [];
 
             return list.map((row) => ({
@@ -159,10 +201,18 @@ export default function Statement() {
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
-          setErr(String(firstError?.message || firstError || "Failed to load vendor statements"));
+          setErr(
+            String(
+              firstError?.message ||
+                firstError ||
+                "Failed to load vendor statements"
+            )
+          );
         } else if (failures.length > 0) {
           setErr(
-            `Some vendor statements could not be loaded (${failures.length} failed, ${results.length - failures.length} loaded).`
+            `Some vendor statements could not be loaded (${failures.length} failed, ${
+              results.length - failures.length
+            } loaded).`
           );
         }
       }
@@ -305,89 +355,111 @@ export default function Statement() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
-      <h2 style={{ margin: 0, color: "#fff" }}>{pageTitle}</h2>
-      <p style={{ marginTop: 6, color: "#b8b8b8" }}>{pageDesc}</p>
+    <div style={page}>
+      <PageHeaderBlock
+        eyebrowText="STATEMENTS"
+        title={pageTitle}
+        subtitle={pageDesc}
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setMode("CUSTOMER");
+              }}
+              style={mode === "CUSTOMER" ? tabActiveBlue : tabButton}
+            >
+              Customer Statement
+            </button>
 
-      {err && <div style={msgErr}>{err}</div>}
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setMode("VENDOR");
+              }}
+              style={mode === "VENDOR" ? tabActiveGreen : tabButton}
+            >
+              Vendor Statement
+            </button>
+          </>
+        }
+      />
 
-      <div style={topTabs}>
-        <button
-          onClick={() => {
-            setSearch("");
-            setMode("CUSTOMER");
-          }}
-          style={tabBtn(mode === "CUSTOMER")}
-        >
-          Customer Statement
-        </button>
-        <button
-          onClick={() => {
-            setSearch("");
-            setMode("VENDOR");
-          }}
-          style={tabBtn(mode === "VENDOR")}
-        >
-          Vendor Statement
-        </button>
+      <div style={stack}>
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {loading ? <AlertBox kind="info" message="Loading statement..." /> : null}
       </div>
 
-      <div style={card}>
-        <div style={toolbar}>
-          <div style={toolbarLeft}>
-            <div style={{ minWidth: 260, flex: 1 }}>
-              <div style={lbl}>Search</div>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={
-                  mode === "CUSTOMER"
-                    ? "Search customer code / customer name..."
-                    : "Search vendor code / vendor name..."
-                }
-                style={inp}
-              />
-            </div>
-
-            <div style={{ minWidth: 300, flex: 1 }}>
-              <div style={lbl}>{mode === "CUSTOMER" ? "Customer" : "Vendor"}</div>
-
-              {mode === "CUSTOMER" ? (
-                <select
-                  value={customerCode}
-                  onChange={(e) => setCustomerCode(e.target.value)}
-                  style={inp}
-                >
-                  <option value="">ALL CUSTOMERS</option>
-                  {filteredCustomers.map((c) => (
-                    <option key={c.customer_code} value={c.customer_code}>
-                      {c.customer_code} - {c.customer_name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <select
-                  value={vendorCode}
-                  onChange={(e) => setVendorCode(e.target.value)}
-                  style={inp}
-                >
-                  <option value="">ALL VENDORS</option>
-                  {filteredVendors.map((v) => (
-                    <option key={v.vendor_code} value={v.vendor_code}>
-                      {v.vendor_code} - {v.vendor_name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>Filters</h2>
+            <p style={cardSubtitle}>
+              Search and select a customer or vendor to narrow the statement view.
+            </p>
           </div>
 
-          <button onClick={handleRefresh} style={btnGhost} disabled={loading}>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            style={btnGhost}
+            disabled={loading}
+          >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
 
-        <div style={{ height: 12 }} />
+        <div style={filterGrid}>
+          <div style={field}>
+            <label style={labelStyle}>Search</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={
+                mode === "CUSTOMER"
+                  ? "Search customer code / customer name"
+                  : "Search vendor code / vendor name"
+              }
+              style={input}
+            />
+          </div>
+
+          <div style={field}>
+            <label style={labelStyle}>
+              {mode === "CUSTOMER" ? "Customer" : "Vendor"}
+            </label>
+
+            {mode === "CUSTOMER" ? (
+              <select
+                value={customerCode}
+                onChange={(e) => setCustomerCode(e.target.value)}
+                style={input}
+              >
+                <option value="">ALL CUSTOMERS</option>
+                {filteredCustomers.map((c) => (
+                  <option key={c.customer_code} value={c.customer_code}>
+                    {c.customer_code} - {c.customer_name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={vendorCode}
+                onChange={(e) => setVendorCode(e.target.value)}
+                style={input}
+              >
+                <option value="">ALL VENDORS</option>
+                {filteredVendors.map((v) => (
+                  <option key={v.vendor_code} value={v.vendor_code}>
+                    {v.vendor_code} - {v.vendor_name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
 
         <div style={infoStrip}>
           {mode === "CUSTOMER" ? (
@@ -399,6 +471,7 @@ export default function Statement() {
                     ? `${selectedCustomer.customer_code} - ${selectedCustomer.customer_name}`
                     : "ALL CUSTOMERS"
                 }
+                badge={badgeBlue}
               />
               <InfoMini
                 title="Address"
@@ -414,6 +487,7 @@ export default function Statement() {
                     ? `${selectedVendor.vendor_code} - ${selectedVendor.vendor_name}`
                     : "ALL VENDORS"
                 }
+                badge={badgeGreen}
               />
               <InfoMini
                 title="Address"
@@ -422,49 +496,50 @@ export default function Statement() {
             </>
           )}
         </div>
+      </section>
 
-        <div style={{ height: 12 }} />
+      <div style={statGrid}>
+        <Stat title="Total Debit" value={money(totals.debit)} badge={badgeBlue} />
+        <Stat title="Total Credit" value={money(totals.credit)} badge={badgeGreen} />
+        <Stat
+          title="Closing Balance"
+          value={money(totals.balance)}
+          strong
+        />
+      </div>
 
-        <div style={statGrid}>
-          <Stat title="Total Debit" value={money(totals.debit)} />
-          <Stat title="Total Credit" value={money(totals.credit)} />
-          <Stat title="Closing Balance" value={money(totals.balance)} strong />
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>
+              {mode === "CUSTOMER" ? "Customer Statement Rows" : "Vendor Statement Rows"}
+            </h2>
+            <p style={cardSubtitle}>Rows: {rows.length}</p>
+          </div>
         </div>
 
-        <div style={{ height: 12 }} />
-
-        <div style={{ overflowX: "auto" }}>
-          <table
-            width="100%"
-            cellPadding="10"
-            style={{ borderCollapse: "collapse", minWidth: 900 }}
-          >
+        <div style={tableWrap}>
+          <table style={{ ...table, minWidth: 900 }}>
             <thead>
-              <tr style={{ background: "#f6f7f9" }}>
-                <th align="left">Date</th>
-                <th align="left">Doc No</th>
-                <th align="left">Type</th>
-                <th align="right">Debit</th>
-                <th align="right">Credit</th>
-                <th align="right">Balance</th>
+              <tr>
+                <th style={th}>Date</th>
+                <th style={th}>Doc No</th>
+                <th style={th}>Type</th>
+                <th style={thRight}>Debit</th>
+                <th style={thRight}>Credit</th>
+                <th style={thRight}>Balance</th>
               </tr>
             </thead>
+
             <tbody>
               {rows.map((r, i) => (
-                <tr
-                  key={`${r.doc_no}-${r.type}-${i}`}
-                  style={{ borderTop: "1px solid #eee" }}
-                >
-                  <td style={{ color: "#111" }}>{String(r.date || "")}</td>
-                  <td style={{ color: "#111", fontWeight: 900 }}>{r.doc_no}</td>
-                  <td style={{ color: "#111" }}>{r.type}</td>
-                  <td align="right" style={{ color: "#111" }}>
-                    {money(r.debit)}
-                  </td>
-                  <td align="right" style={{ color: "#111" }}>
-                    {money(r.credit)}
-                  </td>
-                  <td align="right" style={{ color: "#111", fontWeight: 900 }}>
+                <tr key={`${r.doc_no}-${r.type}-${i}`} style={tr}>
+                  <td style={td}>{String(r.date || "")}</td>
+                  <td style={tdCode}>{r.doc_no}</td>
+                  <td style={td}>{r.type}</td>
+                  <td style={tdRight}>{money(r.debit)}</td>
+                  <td style={tdRight}>{money(r.credit)}</td>
+                  <td style={{ ...tdRight, fontWeight: 900 }}>
                     {money(r.balance)}
                   </td>
                 </tr>
@@ -472,7 +547,7 @@ export default function Statement() {
 
               {rows.length === 0 && !loading && (
                 <tr>
-                  <td colSpan="6" style={{ padding: 12, color: "#666" }}>
+                  <td colSpan="6" style={emptyTd}>
                     No statement rows found.
                   </td>
                 </tr>
@@ -480,75 +555,73 @@ export default function Statement() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-function Stat({ title, value, strong }) {
+function Stat({ title, value, strong = false, badge = null }) {
   return (
     <div style={statCard}>
-      <div style={{ fontSize: 12, color: "#666" }}>{title}</div>
-      <div style={{ fontSize: 20, fontWeight: strong ? 950 : 900, color: "#111" }}>
+      <div style={statHead}>
+        <div style={statTitle}>{title}</div>
+        {badge ? <span style={badge}>LIVE</span> : null}
+      </div>
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: strong ? 950 : 900,
+          color: "#111",
+          marginTop: 8,
+        }}
+      >
         {value}
       </div>
     </div>
   );
 }
 
-function InfoMini({ title, value }) {
+function InfoMini({ title, value, badge = null }) {
   return (
     <div style={miniCard}>
-      <div style={{ fontSize: 12, color: "#666" }}>{title}</div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: "#111", marginTop: 4 }}>
-        {value}
+      <div style={miniHead}>
+        <div style={miniTitle}>{title}</div>
+        {badge ? <span style={badge}>LIVE</span> : null}
       </div>
+      <div style={miniValue}>{value}</div>
     </div>
   );
 }
 
-function tabBtn(active) {
-  return {
-    padding: "10px 14px",
-    borderRadius: 12,
-    border: active ? "1px solid #0b5cff" : "1px solid #ccc",
-    background: active ? "#0b5cff" : "white",
-    color: active ? "white" : "#111",
-    cursor: "pointer",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
-  };
-}
-
-const card = {
-  background: "white",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 16,
+const tabButton = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #dbe2ea",
+  background: "#fff",
+  color: "#334155",
+  cursor: "pointer",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
 };
 
-const topTabs = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  alignItems: "center",
-  marginBottom: 12,
+const tabActiveBlue = {
+  ...tabButton,
+  background: "#eef4ff",
+  color: "#0b5cff",
+  border: "1px solid #b7cbff",
 };
 
-const toolbar = {
-  display: "flex",
+const tabActiveGreen = {
+  ...tabButton,
+  background: "#ecfff1",
+  color: "#116b2f",
+  border: "1px solid #a6e0b8",
+};
+
+const filterGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
   gap: 12,
-  flexWrap: "wrap",
-  alignItems: "end",
-  justifyContent: "space-between",
-};
-
-const toolbarLeft = {
-  display: "flex",
-  gap: 12,
-  flexWrap: "wrap",
-  alignItems: "end",
-  flex: 1,
 };
 
 const infoStrip = {
@@ -570,6 +643,18 @@ const statCard = {
   padding: 12,
 };
 
+const statHead = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+};
+
+const statTitle = {
+  fontSize: 12,
+  color: "#666",
+};
+
 const miniCard = {
   background: "#f7f8fa",
   border: "1px solid #eee",
@@ -577,41 +662,21 @@ const miniCard = {
   padding: 12,
 };
 
-const lbl = {
-  fontSize: 13,
-  color: "#111",
-  display: "block",
-  marginBottom: 6,
+const miniHead = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+};
+
+const miniTitle = {
+  fontSize: 12,
+  color: "#666",
+};
+
+const miniValue = {
+  fontSize: 14,
   fontWeight: 800,
-};
-
-const inp = {
-  width: "100%",
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  outline: "none",
-  background: "#fff",
   color: "#111",
-  boxSizing: "border-box",
-};
-
-const btnGhost = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "white",
-  color: "#111",
-  cursor: "pointer",
-  fontWeight: 900,
-  whiteSpace: "nowrap",
-};
-
-const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  padding: 10,
-  borderRadius: 12,
-  color: "#a40000",
-  marginBottom: 12,
+  marginTop: 4,
 };

@@ -1,3 +1,4 @@
+// src/pages/AuditLogs.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../api/client";
 
@@ -10,7 +11,12 @@ function fmtDateTime(value) {
 
 function safeJson(value) {
   if (!value) return "—";
+
   try {
+    const compact = JSON.stringify(value);
+    if (compact.length > 5000) {
+      return `${JSON.stringify(value, null, 2).slice(0, 5000)}\n\n...TRUNCATED`;
+    }
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
@@ -133,6 +139,13 @@ function parseUserAgent(ua) {
   };
 }
 
+function truncateText(value, max = 200) {
+  const s = String(value || "");
+  if (!s) return "—";
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}...`;
+}
+
 const fallbackModuleOptions = [
   "USER",
   "CUSTOMER",
@@ -176,6 +189,11 @@ export default function AuditLogs() {
     limit: "100",
   });
 
+  const [page, setPage] = useState(1);
+  const [debounceTick, setDebounceTick] = useState(0);
+
+  const debounceRef = useRef(null);
+
   async function loadMeta() {
     try {
       setMetaLoading(true);
@@ -195,21 +213,23 @@ export default function AuditLogs() {
     }
   }
 
-  async function loadLogs(customFilters = filters) {
+  async function loadLogs(customFilters = filters, customPage = page) {
     try {
       setLoading(true);
       setErr("");
 
       const params = new URLSearchParams();
+      const limit = Number(customFilters.limit || "100");
+      const offset = (Math.max(customPage, 1) - 1) * limit;
 
       if (customFilters.user_id.trim()) {
         params.set("user_id", customFilters.user_id.trim().toUpperCase());
       }
       if (customFilters.module) {
-        params.set("module", customFilters.module);
+        params.set("module", customFilters.module.trim().toUpperCase());
       }
       if (customFilters.action) {
-        params.set("action", customFilters.action);
+        params.set("action", customFilters.action.trim().toUpperCase());
       }
       if (customFilters.record_id.trim()) {
         params.set("record_id", customFilters.record_id.trim().toUpperCase());
@@ -225,21 +245,38 @@ export default function AuditLogs() {
         params.set("date_to", end.toISOString());
       }
 
-      params.set("limit", customFilters.limit || "100");
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
 
       const data = await apiGet(`/audit/?${params.toString()}`);
       setRows(Array.isArray(data) ? data : []);
+
+      if (selected) {
+        const nextSelected = Array.isArray(data)
+          ? data.find((row) => row.id === selected.id)
+          : null;
+        setSelected(nextSelected || null);
+      }
     } catch (e) {
       setErr(e.message || "Failed to load audit logs");
       setRows([]);
+      setSelected(null);
     } finally {
       setLoading(false);
     }
   }
 
+  function debouncedLoad(customFilters = filters, customPage = page) {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      loadLogs(customFilters, customPage);
+    }, 400);
+  }
+
   useEffect(() => {
     loadMeta();
     loadLogs();
+    return () => clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -250,7 +287,8 @@ export default function AuditLogs() {
   async function applyFilters(e) {
     e.preventDefault();
     setSelected(null);
-    await loadLogs(filters);
+    setPage(1);
+    await loadLogs(filters, 1);
   }
 
   async function resetFilters() {
@@ -265,15 +303,41 @@ export default function AuditLogs() {
     };
     setFilters(fresh);
     setSelected(null);
-    await loadLogs(fresh);
+    setPage(1);
+    await loadLogs(fresh, 1);
   }
+
+  function goPrevPage() {
+    if (page === 1 || loading) return;
+    const nextPage = page - 1;
+    setPage(nextPage);
+    setSelected(null);
+    loadLogs(filters, nextPage);
+  }
+
+  function goNextPage() {
+    if (loading || rows.length < Number(filters.limit || "100")) return;
+    const nextPage = page + 1;
+    setPage(nextPage);
+    setSelected(null);
+    loadLogs(filters, nextPage);
+  }
+
+  useEffect(() => {
+    if (debounceTick === 0) return;
+    debouncedLoad(filters, 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounceTick]);
 
   const recordsLoadedText = useMemo(() => {
     if (loading) return "…";
     return String(rows.length);
   }, [loading, rows.length]);
 
-  const parsedAgent = useMemo(() => parseUserAgent(selected?.user_agent), [selected]);
+  const parsedAgent = useMemo(
+    () => parseUserAgent(selected?.user_agent),
+    [selected]
+  );
 
   return (
     <div style={pageWrap}>
@@ -299,7 +363,11 @@ export default function AuditLogs() {
           <Field label="User ID">
             <textarea
               value={filters.user_id}
-              onChange={(e) => setFilter("user_id", e.target.value)}
+              onChange={(e) => {
+                setFilter("user_id", e.target.value);
+                setPage(1);
+                setDebounceTick((v) => v + 1);
+              }}
               placeholder="ADMIN"
               rows={1}
               style={userIdScrollBox}
@@ -309,7 +377,11 @@ export default function AuditLogs() {
           <Field label="Module">
             <InlineDropdown
               value={filters.module}
-              onChange={(value) => setFilter("module", value)}
+              onChange={(value) => {
+                setFilter("module", value);
+                setPage(1);
+                setDebounceTick((v) => v + 1);
+              }}
               options={[
                 { value: "", label: "ALL MODULES" },
                 ...moduleOptions.map((opt) => ({
@@ -325,7 +397,11 @@ export default function AuditLogs() {
           <Field label="Action">
             <InlineDropdown
               value={filters.action}
-              onChange={(value) => setFilter("action", value)}
+              onChange={(value) => {
+                setFilter("action", value);
+                setPage(1);
+                setDebounceTick((v) => v + 1);
+              }}
               options={[
                 { value: "", label: "ALL ACTIONS" },
                 ...actionOptions.map((opt) => ({
@@ -341,7 +417,11 @@ export default function AuditLogs() {
           <Field label="Record ID">
             <input
               value={filters.record_id}
-              onChange={(e) => setFilter("record_id", e.target.value)}
+              onChange={(e) => {
+                setFilter("record_id", e.target.value);
+                setPage(1);
+                setDebounceTick((v) => v + 1);
+              }}
               placeholder="INV0001 / RCPT0001 / ADMIN"
               style={inputStyle}
             />
@@ -368,7 +448,11 @@ export default function AuditLogs() {
           <Field label="Limit">
             <InlineDropdown
               value={filters.limit}
-              onChange={(value) => setFilter("limit", value)}
+              onChange={(value) => {
+                setFilter("limit", value);
+                setPage(1);
+                setDebounceTick((v) => v + 1);
+              }}
               options={[
                 { value: "50", label: "50" },
                 { value: "100", label: "100" },
@@ -402,7 +486,31 @@ export default function AuditLogs() {
         <div style={tableCard}>
           <div style={cardHeaderRow}>
             <div style={sectionTitle}>Activity List</div>
-            <div style={hintText}>Click a row to view full details</div>
+            <div style={hintText}>
+              {loading ? "Loading..." : "Click a row to view full details"}
+            </div>
+          </div>
+
+          <div style={paginationRow}>
+            <button
+              type="button"
+              onClick={goPrevPage}
+              style={secondaryBtn}
+              disabled={loading || page === 1}
+            >
+              Previous
+            </button>
+
+            <div style={pageInfo}>Page {page}</div>
+
+            <button
+              type="button"
+              onClick={goNextPage}
+              style={secondaryBtn}
+              disabled={loading || rows.length < Number(filters.limit || "100")}
+            >
+              Next
+            </button>
           </div>
 
           <div style={tableWrap}>
@@ -427,7 +535,7 @@ export default function AuditLogs() {
                 ) : rows.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={emptyCell}>
-                      No audit records found
+                      No audit records found. Try changing filters or increasing limit.
                     </td>
                   </tr>
                 ) : (
@@ -451,7 +559,9 @@ export default function AuditLogs() {
                           </span>
                         </td>
                         <td style={tdStyle}>{row.record_id || "—"}</td>
-                        <td style={tdStyleDetails}>{row.details || "—"}</td>
+                        <td style={tdStyleDetails}>
+                          {truncateText(row.details, 200)}
+                        </td>
                       </tr>
                     );
                   })
@@ -899,6 +1009,21 @@ const hintText = {
   fontWeight: 700,
 };
 
+const paginationRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 12,
+  flexWrap: "wrap",
+};
+
+const pageInfo = {
+  color: "#d9e5ff",
+  fontSize: 13,
+  fontWeight: 800,
+};
+
 const tableWrap = {
   overflowX: "auto",
   borderRadius: 16,
@@ -942,6 +1067,7 @@ const tdStyleDetails = {
 const rowStyle = (selected) => ({
   cursor: "pointer",
   background: selected ? "rgba(48, 101, 255, 0.14)" : "transparent",
+  transition: "background 0.15s ease",
 });
 
 const emptyCell = {

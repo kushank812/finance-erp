@@ -2,6 +2,38 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
 
+import AlertBox from "../components/ui/AlertBox";
+import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import {
+  page,
+  stack,
+  card,
+  cardHeader,
+  cardTitle,
+  cardSubtitle,
+  field,
+  labelStyle,
+  input,
+  tableWrap,
+  table,
+  th,
+  thCenter,
+  thRight,
+  tr,
+  td,
+  tdCode,
+  tdCenter,
+  tdRight,
+  emptyTd,
+  btnPrimary,
+  btnSecondary,
+  btnGhost,
+  badgeBlue,
+  badgeGreen,
+  badgeAmber,
+  badgeGray,
+} from "../components/ui/uiStyles";
+
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
@@ -15,7 +47,6 @@ function todayISO() {
 }
 
 function daysBetween(dateISOa, dateISOb) {
-  // returns (b - a) in days
   const a = new Date(dateISOa);
   const b = new Date(dateISOb);
   const ms = b.getTime() - a.getTime();
@@ -28,6 +59,10 @@ function bucketFromDaysOverdue(days) {
   if (days <= 60) return "31-60";
   if (days <= 90) return "61-90";
   return "90+";
+}
+
+function normalizeStatus(value) {
+  return String(value || "").trim().toUpperCase();
 }
 
 function downloadCSV(filename, rows) {
@@ -45,7 +80,9 @@ function downloadCSV(filename, rows) {
     ...rows.map((r) => header.map((h) => esc(r[h])).join(",")),
   ];
 
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([lines.join("\n")], {
+    type: "text/csv;charset=utf-8",
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -55,7 +92,7 @@ function downloadCSV(filename, rows) {
 }
 
 export default function Aging() {
-  const [tab, setTab] = useState("AR"); // AR / AP
+  const [tab, setTab] = useState("AR");
   const [asOf, setAsOf] = useState(todayISO());
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("ALL");
@@ -88,22 +125,22 @@ export default function Aging() {
     load();
   }, []);
 
-  // ---- normalize rows for aging ----
   const rows = useMemo(() => {
     const src = tab === "AR" ? ar : ap;
     const qq = q.trim().toLowerCase();
+    const wantedStatus = normalizeStatus(status);
 
     const mapped = src.map((r) => {
       const docNo = tab === "AR" ? r.invoice_no : r.bill_no;
       const party = tab === "AR" ? r.customer_code : r.vendor_code;
-
       const docDate = tab === "AR" ? r.invoice_date : r.bill_date;
-      const dueDate = r.due_date || docDate; // fallback rule
+      const dueDate = r.due_date || docDate;
       const bal = Number(r.balance || 0);
 
-      const dOver = daysBetween(String(dueDate || docDate || asOf), asOf); // >0 overdue
+      const dOver = daysBetween(String(dueDate || docDate || asOf), asOf);
       const daysOverdue = Math.max(0, dOver);
       const bucket = bucketFromDaysOverdue(dOver);
+      const rowStatus = normalizeStatus(r.status);
 
       return {
         docNo,
@@ -113,14 +150,14 @@ export default function Aging() {
         daysOverdue,
         bucket,
         balance: bal,
-        status: r.status,
+        status: rowStatus,
         remark: r.remark || "",
       };
     });
 
     return mapped.filter((r) => {
       if (onlyOpen && !(r.balance > 0)) return false;
-      if (status !== "ALL" && r.status !== status) return false;
+      if (wantedStatus !== "ALL" && r.status !== wantedStatus) return false;
 
       const matches =
         !qq ||
@@ -132,7 +169,6 @@ export default function Aging() {
     });
   }, [tab, ar, ap, q, status, onlyOpen, asOf]);
 
-  // ---- bucket totals ----
   const totals = useMemo(() => {
     const t = {
       "Not Due": 0,
@@ -170,148 +206,194 @@ export default function Aging() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
-      <h2 style={{ margin: 0, color: "#fff" }}>Aging Report (AR / AP)</h2>
-      <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        Breaks open balances into aging buckets as of selected date.
-      </p>
+    <div style={page}>
+      <PageHeaderBlock
+        eyebrowText="AGING"
+        title="Aging Report"
+        subtitle={
+          tab === "AR"
+            ? "Customer outstanding aging as of selected date."
+            : "Vendor outstanding aging as of selected date."
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => setTab("AR")}
+              style={tab === "AR" ? tabActiveBlue : tabButton}
+            >
+              AR Aging
+            </button>
 
-      <div style={{ color: "#9aa4b2", fontSize: 13, marginBottom: 12 }}>
-        {tab === "AR" ? "Customer outstanding aging" : "Vendor outstanding aging"}
+            <button
+              type="button"
+              onClick={() => setTab("AP")}
+              style={tab === "AP" ? tabActiveGreen : tabButton}
+            >
+              AP Aging
+            </button>
+
+            <button
+              type="button"
+              onClick={load}
+              style={btnGhost}
+              disabled={loading}
+            >
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
+          </>
+        }
+      />
+
+      <div style={stack}>
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {loading ? <AlertBox kind="info" message="Loading aging report..." /> : null}
       </div>
 
-      {err && <div style={msgErr}>{err}</div>}
-
-      {/* Tabs */}
-      <div style={toolbarWrap}>
-        <button onClick={() => setTab("AR")} style={tabBtn(tab === "AR")}>
-          AR Aging
-        </button>
-        <button onClick={() => setTab("AP")} style={tabBtn(tab === "AP")}>
-          AP Aging
-        </button>
-        <button onClick={load} style={btnGhost} disabled={loading}>
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-
-      {/* Controls */}
-      <div style={controlsWrap}>
-        <div style={{ minWidth: 180, flex: 1 }}>
-          <label style={lblDark}>As of Date</label>
-          <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} style={inp} />
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>Filters</h2>
+            <p style={cardSubtitle}>
+              Break open balances into aging buckets as of a selected date.
+            </p>
+          </div>
         </div>
 
-        <div style={{ minWidth: 220, flex: 2 }}>
-          <label style={lblDark}>Search</label>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={tab === "AR" ? "invoice/customer/remark..." : "bill/vendor/remark..."}
-            style={inp}
-          />
-        </div>
-
-        <div style={{ minWidth: 180, flex: 1 }}>
-          <label style={lblDark}>Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={inp}>
-            <option value="ALL">All</option>
-            <option value="Pending">Pending</option>
-            <option value="Partial">Partial</option>
-            <option value="Paid">Paid</option>
-            <option value="Overdue">Overdue</option>
-          </select>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
-          <label
-            style={{
-              color: "white",
-              fontWeight: 800,
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
+        <div style={filterGrid}>
+          <div style={field}>
+            <label style={labelStyle}>As of Date</label>
             <input
-              type="checkbox"
-              checked={onlyOpen}
-              onChange={(e) => setOnlyOpen(e.target.checked)}
+              type="date"
+              value={asOf}
+              onChange={(e) => setAsOf(e.target.value)}
+              style={input}
             />
-            Only Open (balance &gt; 0)
-          </label>
+          </div>
 
+          <div style={field}>
+            <label style={labelStyle}>Search</label>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={
+                tab === "AR"
+                  ? "invoice / customer / remark"
+                  : "bill / vendor / remark"
+              }
+              style={input}
+            />
+          </div>
+
+          <div style={field}>
+            <label style={labelStyle}>Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              style={input}
+            >
+              <option value="ALL">ALL</option>
+              <option value="PENDING">PENDING</option>
+              <option value="PARTIAL">PARTIAL</option>
+              <option value="PAID">PAID</option>
+              <option value="OVERDUE">OVERDUE</option>
+              <option value="CANCELLED">CANCELLED</option>
+            </select>
+          </div>
+
+          <div style={checkboxWrap}>
+            <label style={checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={onlyOpen}
+                onChange={(e) => setOnlyOpen(e.target.checked)}
+              />
+              Only Open (balance {">"} 0)
+            </label>
+          </div>
+        </div>
+
+        <div style={filterActions}>
           <button
+            type="button"
             onClick={exportCSV}
-            style={{
-              ...btnPrimary,
-              opacity: rows.length === 0 ? 0.6 : 1,
-              cursor: rows.length === 0 ? "not-allowed" : "pointer",
-            }}
+            style={rows.length === 0 ? disabledLike(btnPrimary) : btnPrimary}
             disabled={rows.length === 0}
           >
             Export CSV
           </button>
 
-          <button onClick={() => window.print()} style={btnGhost}>
+          <button type="button" onClick={() => window.print()} style={btnSecondary}>
             Print
           </button>
         </div>
+      </section>
+
+      <div style={summaryGrid}>
+        <Bucket
+          title="Not Due"
+          value={money(totals["Not Due"])}
+          badge={badgeBlue}
+        />
+        <Bucket
+          title="0–30"
+          value={money(totals["0-30"])}
+          badge={badgeGreen}
+        />
+        <Bucket
+          title="31–60"
+          value={money(totals["31-60"])}
+          badge={badgeAmber}
+        />
+        <Bucket
+          title="61–90"
+          value={money(totals["61-90"])}
+          badge={badgeGray}
+        />
+        <Bucket title="90+" value={money(totals["90+"])} danger />
+        <Bucket title="Total" value={money(totals.total)} strong />
       </div>
 
-      {/* Bucket totals */}
-      <div style={bucketCard}>
-        <div style={bucketGrid}>
-          <Bucket title="Not Due" value={money(totals["Not Due"])} />
-          <Bucket title="0–30" value={money(totals["0-30"])} />
-          <Bucket title="31–60" value={money(totals["31-60"])} />
-          <Bucket title="61–90" value={money(totals["61-90"])} />
-          <Bucket title="90+" value={money(totals["90+"])} danger />
-          <Bucket title="Total" value={money(totals.total)} strong />
-        </div>
-      </div>
-
-      <div style={{ height: 14 }} />
-
-      <div style={card}>
-        <div style={headerRow}>
-          <h3 style={{ margin: 0, color: "#111" }}>
-            {tab === "AR" ? "Accounts Receivable Aging" : "Accounts Payable Aging"}
-          </h3>
-          <div style={{ color: "#666" }}>Rows: {rows.length}</div>
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>
+              {tab === "AR" ? "Accounts Receivable Aging" : "Accounts Payable Aging"}
+            </h2>
+            <p style={cardSubtitle}>Rows: {rows.length}</p>
+          </div>
         </div>
 
-        <div style={{ height: 10 }} />
-
-        <div style={{ overflowX: "auto" }}>
-          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 980 }}>
+        <div style={tableWrap}>
+          <table style={{ ...table, minWidth: 980 }}>
             <thead>
-              <tr style={{ background: "#f6f7f9" }}>
-                <th align="left">{tab === "AR" ? "Invoice No" : "Bill No"}</th>
-                <th align="left">{tab === "AR" ? "Customer Code" : "Vendor Code"}</th>
-                <th align="left">Doc Date</th>
-                <th align="left">Due Date</th>
-                <th align="center">Days Overdue</th>
-                <th align="center">Bucket</th>
-                <th align="right">Balance</th>
-                <th align="center">Status</th>
-                <th align="left">Remark</th>
+              <tr>
+                <th style={th}>{tab === "AR" ? "Invoice No" : "Bill No"}</th>
+                <th style={th}>{tab === "AR" ? "Customer Code" : "Vendor Code"}</th>
+                <th style={th}>Doc Date</th>
+                <th style={th}>Due Date</th>
+                <th style={thCenter}>Days Overdue</th>
+                <th style={thCenter}>Bucket</th>
+                <th style={thRight}>Balance</th>
+                <th style={thCenter}>Status</th>
+                <th style={th}>Remark</th>
               </tr>
             </thead>
+
             <tbody>
               {rows.map((r) => (
                 <tr
                   key={`${r.docNo}-${r.party}-${r.docDate}`}
-                  style={{ borderTop: "1px solid #eee" }}
+                  style={tr}
                 >
-                  <td style={{ fontWeight: 900, color: "#111" }}>{r.docNo}</td>
-                  <td style={{ color: "#111" }}>{r.party}</td>
-                  <td style={{ color: "#111" }}>{r.docDate}</td>
-                  <td style={{ color: "#111" }}>{r.dueDate}</td>
+                  <td style={tdCode}>{r.docNo}</td>
+                  <td style={td}>{r.party}</td>
+                  <td style={td}>{r.docDate}</td>
+                  <td style={td}>{r.dueDate}</td>
 
                   <td
-                    align="center"
                     style={{
+                      ...tdCenter,
                       fontWeight: 900,
                       color: r.daysOverdue > 0 ? "#a40000" : "#0a6a0a",
                     }}
@@ -319,25 +401,23 @@ export default function Aging() {
                     {r.daysOverdue}
                   </td>
 
-                  <td align="center" style={{ fontWeight: 900, color: "#111" }}>
-                    {r.bucket}
-                  </td>
+                  <td style={{ ...tdCenter, fontWeight: 900 }}>{r.bucket}</td>
 
-                  <td align="right" style={{ fontWeight: 900, color: "#111" }}>
+                  <td style={{ ...tdRight, fontWeight: 900 }}>
                     {money(r.balance)}
                   </td>
 
-                  <td align="center">
-                    <span style={badge(r.status)}>{r.status}</span>
+                  <td style={tdCenter}>
+                    <span style={statusBadge(r.status)}>{r.status}</span>
                   </td>
 
-                  <td style={{ color: "#111" }}>{r.remark}</td>
+                  <td style={td}>{r.remark}</td>
                 </tr>
               ))}
 
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan="9" style={{ padding: 12, color: "#666" }}>
+                  <td colSpan="9" style={emptyTd}>
                     No aging rows found for current filters.
                   </td>
                 </tr>
@@ -346,27 +426,31 @@ export default function Aging() {
           </table>
         </div>
 
-        <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-          Rule: Aging uses <b>Due Date</b>. If Due Date is missing, it falls back to Doc Date.
-          Only open balances are shown by default.
+        <div style={footNote}>
+          Rule: Aging uses <b>Due Date</b>. If Due Date is missing, it falls back to
+          Doc Date. Only open balances are shown by default.
         </div>
-      </div>
+      </section>
 
-      {/* Print styles */}
       <style>{printCss}</style>
     </div>
   );
 }
 
-function Bucket({ title, value, strong, danger }) {
+function Bucket({ title, value, strong = false, danger = false, badge = null }) {
   return (
-    <div style={bucketBox}>
-      <div style={{ fontSize: 12, color: "#666" }}>{title}</div>
+    <div style={bucketCard}>
+      <div style={bucketHead}>
+        <div style={bucketTitle}>{title}</div>
+        {badge ? <span style={badge}>LIVE</span> : null}
+      </div>
+
       <div
         style={{
           fontSize: 22,
           fontWeight: strong ? 950 : 900,
           color: danger ? "#a40000" : "#111",
+          marginTop: 8,
         }}
       >
         {value}
@@ -375,20 +459,9 @@ function Bucket({ title, value, strong, danger }) {
   );
 }
 
-function tabBtn(active) {
-  return {
-    padding: "10px 14px",
-    borderRadius: 12,
-    border: active ? "1px solid #0b5cff" : "1px solid #ccc",
-    background: active ? "#0b5cff" : "white",
-    color: active ? "white" : "#111",
-    cursor: "pointer",
-    fontWeight: 800,
-  };
-}
+function statusBadge(status) {
+  const s = normalizeStatus(status);
 
-function badge(status) {
-  const s = String(status || "");
   const base = {
     display: "inline-block",
     padding: "4px 10px",
@@ -398,7 +471,7 @@ function badge(status) {
     border: "1px solid transparent",
   };
 
-  if (s === "Paid") {
+  if (s === "PAID") {
     return {
       ...base,
       background: "#eaffea",
@@ -406,7 +479,8 @@ function badge(status) {
       borderColor: "#bde7bd",
     };
   }
-  if (s === "Partial") {
+
+  if (s === "PARTIAL") {
     return {
       ...base,
       background: "#fff6db",
@@ -414,12 +488,22 @@ function badge(status) {
       borderColor: "#ffe2a6",
     };
   }
-  if (s === "Overdue") {
+
+  if (s === "OVERDUE") {
     return {
       ...base,
       background: "#ffecec",
       color: "#a40000",
       borderColor: "#ffb3b3",
+    };
+  }
+
+  if (s === "CANCELLED") {
+    return {
+      ...base,
+      background: "#f0f0f0",
+      color: "#555",
+      borderColor: "#d5d5d5",
     };
   }
 
@@ -431,103 +515,96 @@ function badge(status) {
   };
 }
 
-/* ---- styles ---- */
+function disabledLike(base) {
+  return {
+    ...base,
+    opacity: 0.6,
+    cursor: "not-allowed",
+  };
+}
 
-const toolbarWrap = {
-  display: "flex",
-  gap: 10,
-  marginBottom: 12,
-  flexWrap: "wrap",
-  alignItems: "end",
-};
-
-const controlsWrap = {
-  display: "flex",
-  gap: 12,
-  flexWrap: "wrap",
-  alignItems: "end",
-  marginBottom: 12,
-};
-
-const lblDark = {
-  fontSize: 13,
-  color: "#fff",
-  display: "block",
-  marginBottom: 6,
+const tabButton = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #dbe2ea",
+  background: "#fff",
+  color: "#334155",
+  cursor: "pointer",
   fontWeight: 800,
 };
 
-const inp = {
-  width: "100%",
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  outline: "none",
-  background: "#fff",
+const tabActiveBlue = {
+  ...tabButton,
+  background: "#eef4ff",
+  color: "#0b5cff",
+  border: "1px solid #b7cbff",
+};
+
+const tabActiveGreen = {
+  ...tabButton,
+  background: "#ecfff1",
+  color: "#116b2f",
+  border: "1px solid #a6e0b8",
+};
+
+const filterGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 14,
+  alignItems: "end",
+};
+
+const checkboxWrap = {
+  display: "flex",
+  alignItems: "end",
+};
+
+const checkboxLabel = {
   color: "#111",
+  fontWeight: 800,
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  minHeight: 44,
 };
 
-const btnPrimary = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 900,
+const filterActions = {
+  display: "flex",
+  gap: 10,
+  justifyContent: "flex-end",
+  flexWrap: "wrap",
 };
 
-const btnGhost = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "white",
-  color: "#111",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  padding: 10,
-  borderRadius: 12,
-  color: "#a40000",
-  marginBottom: 12,
-};
-
-const bucketCard = {
-  background: "white",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 16,
-};
-
-const bucketGrid = {
+const summaryGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 12,
 };
 
-const bucketBox = {
-  background: "#f7f8fa",
-  border: "1px solid #eee",
-  borderRadius: 14,
-  padding: 12,
-};
-
-const card = {
-  background: "white",
-  border: "1px solid #e6e6e6",
+const bucketCard = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
   borderRadius: 16,
-  padding: 16,
+  padding: 14,
 };
 
-const headerRow = {
+const bucketHead = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 10,
+};
+
+const bucketTitle = {
+  fontSize: 12,
+  color: "#666",
+  fontWeight: 800,
+};
+
+const footNote = {
+  marginTop: 12,
+  fontSize: 12,
+  color: "#666",
 };
 
 const printCss = `
