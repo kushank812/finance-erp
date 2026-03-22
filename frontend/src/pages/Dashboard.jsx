@@ -1,4 +1,3 @@
-// src/pages/Dashboard.jsx
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
 
@@ -47,19 +46,17 @@ export default function Dashboard() {
 
     return {
       netPosition: num(data.receivables) - num(data.payables),
-      overdueExposure:
-        num(data.overdue_receivables) + num(data.overdue_payables),
+      overdueExposure: num(data.overdue_receivables) + num(data.overdue_payables),
     };
   }, [data]);
 
   return (
-    <div style={page}>
-      {/* HEADER */}
-      <div style={header}>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
+      <div style={topWrap}>
         <div>
-          <h1 style={title}>Dashboard</h1>
-          <p style={subtitle}>
-            Real-time overview of receivables, payables, and financial activity.
+          <h2 style={{ margin: 0, color: "#fff" }}>Dashboard</h2>
+          <p style={{ marginTop: 6, color: "#b8b8b8" }}>
+            Summary of receivables, payables, collections, payments and overdue exposure.
           </p>
         </div>
 
@@ -70,82 +67,89 @@ export default function Dashboard() {
 
       {err && <div style={msgErr}>{err}</div>}
 
-      {/* LOADING */}
       {loading && !data ? (
-        <div style={infoText}>Loading dashboard...</div>
+        <div style={{ color: "#b8b8b8" }}>Loading dashboard...</div>
       ) : !data ? (
-        <div style={infoText}>No dashboard data available.</div>
+        <div style={{ color: "#b8b8b8" }}>No dashboard data available.</div>
       ) : (
         <>
-          {/* MAIN CARDS */}
-          <div style={grid4}>
-            <BigCard
-              title="Receivables (AR)"
+          <div style={sectionTitle}>Financial Summary</div>
+          <div style={grid}>
+            <Card
+              title="Total Receivables (AR)"
               value={`₹ ${moneyINR(data.receivables)}`}
-              hint="Total sales invoices"
+              hint="Total sales invoice value"
             />
-            <BigCard
-              title="Payables (AP)"
+            <Card
+              title="Total Payables (AP)"
               value={`₹ ${moneyINR(data.payables)}`}
-              hint="Total purchase bills"
+              hint="Total purchase bill value"
             />
-            <BigCard
+            <Card
               title="Overdue Receivables"
               value={`₹ ${moneyINR(data.overdue_receivables)}`}
               danger
+              hint="Outstanding AR marked overdue"
             />
-            <BigCard
+            <Card
               title="Overdue Payables"
               value={`₹ ${moneyINR(data.overdue_payables)}`}
               danger
+              hint="Outstanding AP marked overdue"
             />
           </div>
 
-          {/* SUMMARY */}
-          <div style={grid4}>
+          <div style={{ height: 14 }} />
+
+          <div style={summaryGrid}>
             <MiniCard
               title="Net Position"
               value={`₹ ${moneyINR(computed.netPosition)}`}
+              hint="Receivables minus payables"
             />
             <MiniCard
-              title="Overdue Exposure"
+              title="Total Overdue Exposure"
               value={`₹ ${moneyINR(computed.overdueExposure)}`}
+              hint="Combined overdue AR + AP"
             />
             <MiniCard
               title="Today's Receipts"
               value={`₹ ${moneyINR(data.today_receipts)}`}
+              hint="Customer collections posted today"
             />
             <MiniCard
-              title="Today's Payments"
+              title="Today's Vendor Payments"
               value={`₹ ${moneyINR(data.today_vendor_payments)}`}
+              hint="Supplier payments posted today"
             />
           </div>
 
-          {/* STATUS PANELS */}
-          <div style={dualGrid}>
-            <StatusPanel
-              title="Sales (AR)"
-              data={[
-                ["Invoices", data.sales_invoice_count],
-                ["Pending", data.sales_pending_count],
-                ["Partial", data.sales_partial_count],
-                ["Paid", data.sales_paid_count],
-                ["Overdue", data.sales_overdue_count],
-                ["Cancelled", data.sales_cancelled_count],
-              ]}
-            />
+          <div style={{ height: 18 }} />
 
-            <StatusPanel
-              title="Purchase (AP)"
-              data={[
-                ["Bills", data.purchase_bill_count],
-                ["Pending", data.purchase_pending_count],
-                ["Partial", data.purchase_partial_count],
-                ["Paid", data.purchase_paid_count],
-                ["Overdue", data.purchase_overdue_count],
-                ["Cancelled", data.purchase_cancelled_count],
-              ]}
-            />
+          <div style={dualGrid}>
+            <div style={panel}>
+              <div style={panelTitle}>Sales / AR Status</div>
+              <div style={statGrid}>
+                <StatTile label="Invoices" value={data.sales_invoice_count} />
+                <StatTile label="Pending" value={data.sales_pending_count} />
+                <StatTile label="Partial" value={data.sales_partial_count} warn />
+                <StatTile label="Paid" value={data.sales_paid_count} ok />
+                <StatTile label="Overdue" value={data.sales_overdue_count} danger />
+                <StatTile label="Cancelled" value={data.sales_cancelled_count} muted />
+              </div>
+            </div>
+
+            <div style={panel}>
+              <div style={panelTitle}>Purchase / AP Status</div>
+              <div style={statGrid}>
+                <StatTile label="Bills" value={data.purchase_bill_count} />
+                <StatTile label="Pending" value={data.purchase_pending_count} />
+                <StatTile label="Partial" value={data.purchase_partial_count} warn />
+                <StatTile label="Paid" value={data.purchase_paid_count} ok />
+                <StatTile label="Overdue" value={data.purchase_overdue_count} danger />
+                <StatTile label="Cancelled" value={data.purchase_cancelled_count} muted />
+              </div>
+            </div>
           </div>
         </>
       )}
@@ -153,84 +157,110 @@ export default function Dashboard() {
   );
 }
 
-/* ---------- COMPONENTS ---------- */
-
-function BigCard({ title, value, hint, danger }) {
+function Card({ title, value, hint, danger }) {
   return (
     <div
       style={{
         ...card,
-        background: danger ? "#fff5f5" : "#fff",
         borderColor: danger ? "#ffb3b3" : "#e6e6e6",
+        background: danger ? "#fff7f7" : "#fff",
       }}
     >
-      <div style={cardLabel}>{title}</div>
-      <div style={{ ...cardValue, color: danger ? "#a40000" : "#111" }}>
+      <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>{title}</div>
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: 900,
+          color: danger ? "#a40000" : "#111",
+          marginTop: 6,
+          lineHeight: 1.2,
+        }}
+      >
         {value}
       </div>
-      {hint && <div style={cardHint}>{hint}</div>}
+      <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>{hint}</div>
     </div>
   );
 }
 
-function MiniCard({ title, value }) {
+function MiniCard({ title, value, hint }) {
   return (
     <div style={{ ...card, background: "#f8f9fb" }}>
-      <div style={cardLabel}>{title}</div>
-      <div style={{ ...cardValue, fontSize: 22 }}>{value}</div>
-    </div>
-  );
-}
-
-function StatusPanel({ title, data }) {
-  return (
-    <div style={panel}>
-      <div style={panelTitle}>{title}</div>
-
-      <div style={statGrid}>
-        {data.map(([label, value]) => (
-          <div key={label} style={statCard}>
-            <div style={statLabel}>{label}</div>
-            <div style={statValue}>{value ?? 0}</div>
-          </div>
-        ))}
+      <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>{title}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color: "#111", marginTop: 6 }}>
+        {value}
       </div>
+      <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>{hint}</div>
     </div>
   );
 }
 
-/* ---------- STYLES ---------- */
+function StatTile({ label, value, ok, warn, danger, muted }) {
+  let bg = "#fff";
+  let border = "#e6e6e6";
+  let color = "#111";
 
-const page = {
-  maxWidth: 1200,
-  margin: "0 auto",
-  padding: 18,
-};
+  if (ok) {
+    bg = "#ecfff1";
+    border = "#a6e0b8";
+    color = "#116b2f";
+  } else if (warn) {
+    bg = "#fff8e8";
+    border = "#edd28a";
+    color = "#8a5a00";
+  } else if (danger) {
+    bg = "#fff2f2";
+    border = "#efb0b0";
+    color = "#c40000";
+  } else if (muted) {
+    bg = "#f0f0f0";
+    border = "#d5d5d5";
+    color = "#555";
+  }
 
-const header = {
+  return (
+    <div
+      style={{
+        border: `1px solid ${border}`,
+        background: bg,
+        borderRadius: 14,
+        padding: 12,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#666" }}>{label}</div>
+      <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color }}>{value ?? 0}</div>
+    </div>
+  );
+}
+
+/* ---- styles ---- */
+
+const topWrap = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "flex-end",
-  marginBottom: 18,
+  gap: 12,
+  flexWrap: "wrap",
+  alignItems: "end",
+  marginBottom: 20,
 };
 
-const title = {
-  margin: 0,
-  color: "#fff",
-  fontSize: 28,
+const sectionTitle = {
+  fontSize: 14,
+  color: "#d7def0",
   fontWeight: 900,
+  marginBottom: 10,
 };
 
-const subtitle = {
-  marginTop: 6,
-  color: "#b8b8b8",
-};
-
-const grid4 = {
+const grid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 14,
-  marginBottom: 18,
+  gap: 12,
+};
+
+const summaryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 12,
 };
 
 const dualGrid = {
@@ -247,8 +277,10 @@ const panel = {
 };
 
 const panelTitle = {
+  fontSize: 14,
+  color: "#111",
   fontWeight: 900,
-  marginBottom: 10,
+  marginBottom: 12,
 };
 
 const statGrid = {
@@ -257,44 +289,11 @@ const statGrid = {
   gap: 10,
 };
 
-const statCard = {
-  border: "1px solid #eee",
-  borderRadius: 12,
-  padding: 10,
-};
-
-const statLabel = {
-  fontSize: 12,
-  color: "#666",
-};
-
-const statValue = {
-  fontSize: 18,
-  fontWeight: 900,
-};
-
 const card = {
+  background: "white",
   border: "1px solid #e6e6e6",
   borderRadius: 16,
   padding: 16,
-};
-
-const cardLabel = {
-  fontSize: 12,
-  color: "#666",
-  fontWeight: 800,
-};
-
-const cardValue = {
-  fontSize: 26,
-  fontWeight: 900,
-  marginTop: 6,
-};
-
-const cardHint = {
-  fontSize: 12,
-  color: "#666",
-  marginTop: 6,
 };
 
 const btnGhost = {
@@ -302,6 +301,7 @@ const btnGhost = {
   borderRadius: 12,
   border: "1px solid #ccc",
   background: "white",
+  color: "#111",
   cursor: "pointer",
   fontWeight: 800,
 };
@@ -312,8 +312,6 @@ const msgErr = {
   padding: 10,
   borderRadius: 12,
   color: "#a40000",
-};
-
-const infoText = {
-  color: "#b8b8b8",
+  marginTop: 12,
+  marginBottom: 12,
 };
