@@ -1,6 +1,36 @@
-// src/pages/Users.jsx
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../api/client";
+import AlertBox from "../components/ui/AlertBox";
+import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import { FormField, FormSelect } from "../components/ui/FormField";
+import {
+  page,
+  stack,
+  card,
+  cardHeader,
+  cardTitle,
+  cardSubtitle,
+  formGrid4,
+  actionBar,
+  saveActions,
+  tableWrap,
+  table,
+  th,
+  thCenter,
+  tr,
+  td,
+  tdCode,
+  tdCenter,
+  emptyTd,
+  btnPrimary,
+  btnSecondary,
+  btnGhost,
+  btnMini,
+  btnWarn,
+  badgeBlue,
+  badgeGreen,
+  input,
+} from "../components/ui/uiStyles";
 
 const ROLES = ["ADMIN", "OPERATOR", "VIEWER"];
 
@@ -179,17 +209,11 @@ export default function Users() {
 
   return (
     <div style={page}>
-      <div style={pageHeader}>
-        <div>
-          <div style={eyebrow}>ADMINISTRATION</div>
-          <h1 style={pageTitle}>User Management</h1>
-          <p style={pageSubtitle}>
-            Admin-only access. Create users, update roles, activate or deactivate
-            accounts, and reset passwords.
-          </p>
-        </div>
-
-        <div style={headerActions}>
+      <PageHeaderBlock
+        eyebrowText="ADMINISTRATION"
+        title="User Management"
+        subtitle="Admin-only access. Create users, update roles, activate or deactivate accounts, and reset passwords."
+        actions={
           <button
             onClick={() => {
               setErr("");
@@ -202,8 +226,8 @@ export default function Users() {
           >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
-        </div>
-      </div>
+        }
+      />
 
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
@@ -224,7 +248,7 @@ export default function Users() {
 
         <form onSubmit={createUser}>
           <div style={formGrid4}>
-            <Field
+            <FormField
               label="User ID *"
               value={form.user_id}
               onChange={(e) => setFormField("user_id", e.target.value)}
@@ -232,7 +256,7 @@ export default function Users() {
               disabled={saving}
             />
 
-            <Field
+            <FormField
               label="Full Name *"
               value={form.full_name}
               onChange={(e) => setFormField("full_name", e.target.value)}
@@ -240,7 +264,7 @@ export default function Users() {
               disabled={saving}
             />
 
-            <Field
+            <FormField
               label="Password *"
               type="password"
               value={form.password}
@@ -249,12 +273,13 @@ export default function Users() {
               disabled={saving}
             />
 
-            <SelectField
+            <FormSelect
               label="Role *"
               value={form.role}
               onChange={(e) => setFormField("role", e.target.value)}
               options={ROLES}
               disabled={saving}
+              placeholder="-- Select Role --"
             />
           </div>
 
@@ -291,7 +316,7 @@ export default function Users() {
         </div>
 
         <div style={tableWrap}>
-          <table style={table}>
+          <table style={{ ...table, minWidth: 1050 }}>
             <thead>
               <tr>
                 <th style={th}>User ID</th>
@@ -306,7 +331,7 @@ export default function Users() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.user_id} style={tr}>
-                  <td style={tdCode}>{r.user_id}</td>
+                  <td style={{ ...tdCode, whiteSpace: "nowrap" }}>{r.user_id}</td>
 
                   <td style={td}>
                     <input
@@ -407,368 +432,9 @@ export default function Users() {
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  disabled = false,
-  placeholder,
-}) {
-  return (
-    <div style={field}>
-      <label style={labelStyle}>{label}</label>
-      <input
-        type={type}
-        value={value ?? ""}
-        onChange={onChange}
-        placeholder={placeholder}
-        style={disabled ? disabledInput : input}
-        disabled={disabled}
-      />
-    </div>
-  );
-}
-
-function SelectField({ label, value, onChange, options, disabled = false }) {
-  return (
-    <div style={field}>
-      <label style={labelStyle}>{label}</label>
-      <select
-        value={value ?? ""}
-        onChange={onChange}
-        style={disabled ? disabledInput : input}
-        disabled={disabled}
-      >
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function AlertBox({ kind, message }) {
-  const styleMap = {
-    error: {
-      background: "#fff1f2",
-      border: "1px solid #fecdd3",
-      color: "#b42318",
-    },
-    success: {
-      background: "#ecfdf3",
-      border: "1px solid #b7ebc6",
-      color: "#027a48",
-    },
-    warning: {
-      background: "#fffaeb",
-      border: "1px solid #fedf89",
-      color: "#b54708",
-    },
-    info: {
-      background: "#eff8ff",
-      border: "1px solid #b2ddff",
-      color: "#175cd3",
-    },
-  };
-
-  return (
-    <div
-      style={{
-        ...styleMap[kind],
-        padding: "12px 14px",
-        borderRadius: 14,
-        fontWeight: 700,
-      }}
-    >
-      {message}
-    </div>
-  );
-}
-
-/* ------------------ shared page styles ------------------ */
-
-const page = {
-  maxWidth: 1180,
-  margin: "0 auto",
-  padding: "18px 16px 28px",
-  display: "grid",
-  gap: 18,
-};
-
-const pageHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-end",
-  gap: 16,
-  flexWrap: "wrap",
-};
-
-const eyebrow = {
-  fontSize: 12,
-  fontWeight: 900,
-  letterSpacing: 1.2,
-  color: "#94a3b8",
-  marginBottom: 6,
-};
-
-const pageTitle = {
-  margin: 0,
-  fontSize: 30,
-  lineHeight: 1.1,
-  color: "#f8fafc",
-  fontWeight: 900,
-};
-
-const pageSubtitle = {
-  margin: "8px 0 0",
-  color: "#cbd5e1",
-  fontSize: 14,
-  maxWidth: 760,
-};
-
-const headerActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const stack = {
-  display: "grid",
-  gap: 10,
-};
-
-const card = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 22,
-  padding: 20,
-  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-  display: "grid",
-  gap: 18,
-};
-
-const cardHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  flexWrap: "wrap",
-};
-
-const cardTitle = {
-  margin: 0,
-  fontSize: 20,
-  color: "#0f172a",
-  fontWeight: 900,
-};
-
-const cardSubtitle = {
-  margin: "6px 0 0",
-  fontSize: 13,
-  color: "#64748b",
-};
-
-const formGrid4 = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 14,
-};
-
-const field = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 7,
-};
-
-const labelStyle = {
-  fontSize: 12,
-  color: "#334155",
-  fontWeight: 900,
-  letterSpacing: 0.3,
-};
-
-const input = {
-  width: "100%",
-  minHeight: 44,
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
-  outline: "none",
-  boxSizing: "border-box",
-  fontSize: 14,
-};
-
-const disabledInput = {
-  ...input,
-  background: "#f8fafc",
-  color: "#64748b",
-  cursor: "not-allowed",
-};
-
-const actionBar = {
-  display: "flex",
-  justifyContent: "flex-end",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const saveActions = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const tableWrap = {
-  overflowX: "auto",
-  border: "1px solid #e2e8f0",
-  borderRadius: 18,
-};
-
-const table = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: 1050,
-  background: "#ffffff",
-};
-
-const th = {
-  textAlign: "left",
-  padding: "14px 14px",
-  background: "#f8fafc",
-  color: "#334155",
-  fontSize: 13,
-  fontWeight: 900,
-  borderBottom: "1px solid #e2e8f0",
-};
-
-const thCenter = {
-  ...th,
-  textAlign: "center",
-};
-
-const tr = {
-  borderBottom: "1px solid #eef2f7",
-};
-
-const td = {
-  padding: 12,
-  verticalAlign: "middle",
-  color: "#0f172a",
-};
-
-const tdCode = {
-  ...td,
-  fontWeight: 900,
-  whiteSpace: "nowrap",
-};
-
-const tdCenter = {
-  ...td,
-  textAlign: "center",
-};
-
-const emptyTd = {
-  padding: 18,
-  textAlign: "center",
-  color: "#64748b",
-  fontWeight: 700,
-};
-
 const resetWrap = {
   display: "flex",
   gap: 8,
   flexWrap: "wrap",
   alignItems: "center",
-};
-
-const btnPrimary = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #2563eb",
-  background: "#2563eb",
-  color: "#ffffff",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-  boxShadow: "0 8px 20px rgba(37, 99, 235, 0.22)",
-};
-
-const btnMini = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #2563eb",
-  background: "#2563eb",
-  color: "#ffffff",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 13,
-};
-
-const btnWarn = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #d97706",
-  background: "#f59e0b",
-  color: "#ffffff",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 13,
-};
-
-const btnSecondary = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-};
-
-const btnGhost = {
-  minHeight: 44,
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #dbe2ea",
-  background: "#f8fafc",
-  color: "#334155",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
-};
-
-const badgeBlue = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#eff8ff",
-  color: "#175cd3",
-  border: "1px solid #b2ddff",
-};
-
-const badgeGreen = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "6px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#ecfdf3",
-  color: "#027a48",
-  border: "1px solid #abefc6",
 };
