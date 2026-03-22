@@ -56,98 +56,23 @@ const empty = {
   gst_no: "",
 };
 
-function Label({ text }) {
-  return (
-    <div style={{ fontSize: 13, color: "#111", fontWeight: 800, marginBottom: 6 }}>
-      {text}
-    </div>
-  );
-}
-
-function Hint({ text }) {
-  return <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>{text}</div>;
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  hint,
-  disabled,
-  readOnly = false,
-}) {
-  return (
-    <div>
-      <Label text={label} />
-      <input
-        value={value ?? ""}
-        onChange={onChange}
-        placeholder={placeholder}
-        type={type}
-        disabled={disabled}
-        readOnly={readOnly}
-        style={{
-          ...inp,
-          background: disabled || readOnly ? "#f4f4f4" : "#fff",
-          cursor: disabled || readOnly ? "not-allowed" : "text",
-        }}
-      />
-      {hint ? <Hint text={hint} /> : null}
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  options,
-  placeholder,
-  hint,
-  disabled = false,
-}) {
-  return (
-    <div>
-      <Label text={label} />
-      <select
-        value={value ?? ""}
-        onChange={onChange}
-        disabled={disabled}
-        style={{
-          ...inp,
-          background: disabled ? "#f4f4f4" : "#fff",
-          cursor: disabled ? "not-allowed" : "pointer",
-        }}
-      >
-        <option value="">{placeholder || "-- Select --"}</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-      {hint ? <Hint text={hint} /> : null}
-    </div>
-  );
-}
-
 export default function CustomerMaster() {
   const [form, setForm] = useState({ ...empty });
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
-  const [mode, setMode] = useState("create"); // "create" | "edit" | "view"
+  const [mode, setMode] = useState("create"); // create | edit | view
   const [editingCode, setEditingCode] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
 
   const isEditing = mode === "edit";
   const isViewing = mode === "view";
   const isViewer = currentUser?.role === "VIEWER";
-  const canWrite = currentUser?.role === "ADMIN" || currentUser?.role === "OPERATOR";
+  const canWrite =
+    currentUser?.role === "ADMIN" || currentUser?.role === "OPERATOR";
 
   const saveLabel = useMemo(
     () => (isEditing ? "Update Customer" : "Save Customer"),
@@ -172,11 +97,14 @@ export default function CustomerMaster() {
 
   async function load() {
     setErr("");
+    setLoading(true);
     try {
       const data = await apiGet("/customers/");
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr(String(e?.message || e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -261,7 +189,10 @@ export default function CustomerMaster() {
         const code = created?.customer_code || "";
         setOk(`✅ Customer created successfully. Generated Code: ${code}`);
       } else {
-        await apiPut(`/customers/${encodeURIComponent(editingCode)}`, buildUpdatePayload());
+        await apiPut(
+          `/customers/${encodeURIComponent(editingCode)}`,
+          buildUpdatePayload()
+        );
         setOk(`✅ Customer "${editingCode}" updated.`);
       }
 
@@ -309,6 +240,7 @@ export default function CustomerMaster() {
 
     setErr("");
     setOk("");
+
     const yes = window.confirm(`Delete customer "${code}"?`);
     if (!yes) return;
 
@@ -328,267 +260,309 @@ export default function CustomerMaster() {
     }
   }
 
+  function getPageTitle() {
+    if (isViewer) return "Customer Master";
+    if (isEditing) return "Customer Master";
+    if (isViewing) return "Customer Master";
+    return "Customer Master";
+  }
+
+  function getPageSubtitle() {
+    if (isViewer) {
+      return "View customer records and details in read-only mode.";
+    }
+    if (isEditing) {
+      return `Edit customer ${editingCode} and update the saved master record.`;
+    }
+    if (isViewing) {
+      return `Review customer ${editingCode} details.`;
+    }
+    return "Create, view, edit, and manage customer master records.";
+  }
+
+  function getModeBadge() {
+    if (isViewer) return <span style={badgeGray}>VIEWER</span>;
+    if (isEditing) return <span style={badgeAmber}>EDIT</span>;
+    if (isViewing) return <span style={badgeBlue}>VIEW</span>;
+    return <span style={badgeGreen}>CREATE</span>;
+  }
+
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
-      <h2 style={{ margin: 0, color: "#fff" }}>Customer Master</h2>
-      <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-        {isViewer
-          ? "View customer list and details in read-only mode."
-          : "Create, edit, delete and view customers."}
-      </p>
-
-      {err && <div style={msgErr}>{err}</div>}
-      {ok && <div style={msgOk}>{ok}</div>}
-
-      <div style={card}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <h3 style={{ margin: 0, color: "#111" }}>
-            {isViewer
-              ? editingCode
-                ? `View Customer (${editingCode})`
-                : "Customer Details"
-              : isEditing
-              ? `Edit Customer (${editingCode})`
-              : isViewing
-              ? `View Customer (${editingCode})`
-              : "Create Customer"}
-          </h3>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={load} style={btnGhost} disabled={saving}>
-              Refresh
-            </button>
-
-            {(isEditing || isViewing) && (
-              <button onClick={resetForm} style={btnGhost} disabled={saving}>
-                {isViewer ? "Clear View" : isEditing ? "Cancel Edit" : "Clear View"}
-              </button>
-            )}
-          </div>
+    <div style={page}>
+      <div style={pageHeader}>
+        <div>
+          <div style={eyebrow}>MASTER DATA</div>
+          <h1 style={pageTitle}>{getPageTitle()}</h1>
+          <p style={pageSubtitle}>{getPageSubtitle()}</p>
         </div>
 
-        <div style={{ height: 12 }} />
+        <div style={headerActions}>
+          <button
+            type="button"
+            onClick={load}
+            style={btnSecondary}
+            disabled={saving || loading}
+          >
+            Refresh
+          </button>
 
-        {isViewer && (
-          <div style={readOnlyBanner}>
-            VIEWER MODE: You can view customer details, but you cannot create, edit, or
-            delete customers.
+          {(isEditing || isViewing) && (
+            <button
+              type="button"
+              onClick={resetForm}
+              style={btnGhost}
+              disabled={saving || loading}
+            >
+              {isViewer ? "Clear View" : isEditing ? "Cancel Edit" : "Clear View"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={stack}>
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {ok ? <AlertBox kind="success" message={ok} /> : null}
+        {loading ? <AlertBox kind="info" message="Loading customers..." /> : null}
+        {isViewer ? (
+          <AlertBox
+            kind="info"
+            message="Viewer mode is active. You can view customer details, but you cannot create, edit, or delete customers."
+          />
+        ) : null}
+      </div>
+
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>
+              {isViewer
+                ? editingCode
+                  ? `Customer Details (${editingCode})`
+                  : "Customer Details"
+                : isEditing
+                ? `Edit Customer (${editingCode})`
+                : isViewing
+                ? `Customer Details (${editingCode})`
+                : "Create Customer"}
+            </h2>
+            <p style={cardSubtitle}>
+              Manage customer identity, address, location, and contact details.
+            </p>
           </div>
-        )}
+          <div>{getModeBadge()}</div>
+        </div>
 
-        <div style={{ height: 12 }} />
-
-        <div style={sectionTitle}>Customer Details</div>
-        <div style={grid2}>
-          {isEditing || isViewing ? (
-            <Field
-              label="Customer Code"
-              value={form.customer_code}
-              onChange={() => {}}
-              placeholder=""
-              hint="Customer code is system-generated and cannot be changed."
-              disabled
-            />
-          ) : (
-            <div>
-              <Label text="Customer Code" />
-              <div style={autoCodeBox}>
-                {isViewer ? "Visible after selecting a customer" : "Auto-generated on save"}
-              </div>
-              <Hint
+        <div style={sectionBlock}>
+          <div style={sectionTitle}>Basic Details</div>
+          <div style={formGrid2}>
+            {isEditing || isViewing ? (
+              <Field
+                label="Customer Code"
+                value={form.customer_code}
+                onChange={() => {}}
+                hint="Customer code is system-generated and cannot be changed."
+                disabled
+              />
+            ) : (
+              <AutoField
+                label="Customer Code"
                 text={
+                  isViewer
+                    ? "Visible after selecting a customer"
+                    : "Auto-generated on save"
+                }
+                hint={
                   isViewer
                     ? "Select a customer from the list to view the customer code."
                     : "The system will generate the next customer code automatically."
                 }
               />
+            )}
+
+            <Field
+              label="Customer Name *"
+              value={form.customer_name}
+              onChange={(e) => update("customer_name", e.target.value)}
+              placeholder="Customer Name"
+              readOnly={!canWrite}
+            />
+          </div>
+        </div>
+
+        <div style={sectionBlock}>
+          <div style={sectionTitle}>Address Details</div>
+          <div style={formGrid3}>
+            <Field
+              label="Address Line 1"
+              value={form.customer_address_line1}
+              onChange={(e) => update("customer_address_line1", e.target.value)}
+              readOnly={!canWrite}
+            />
+            <Field
+              label="Address Line 2"
+              value={form.customer_address_line2}
+              onChange={(e) => update("customer_address_line2", e.target.value)}
+              readOnly={!canWrite}
+            />
+            <Field
+              label="Address Line 3"
+              value={form.customer_address_line3}
+              onChange={(e) => update("customer_address_line3", e.target.value)}
+              readOnly={!canWrite}
+            />
+          </div>
+        </div>
+
+        <div style={sectionBlock}>
+          <div style={sectionTitle}>Location Details</div>
+          <div style={formGrid3}>
+            <Field
+              label="City"
+              value={form.city}
+              onChange={(e) => update("city", e.target.value)}
+              readOnly={!canWrite}
+            />
+            <SelectField
+              label="State"
+              value={form.state}
+              onChange={(e) => update("state", e.target.value)}
+              options={INDIAN_STATES}
+              placeholder="-- Select State --"
+              disabled={!canWrite}
+            />
+            <Field
+              label="Pin Code"
+              value={form.pincode}
+              onChange={(e) => update("pincode", e.target.value)}
+              placeholder="560001"
+              readOnly={!canWrite}
+            />
+          </div>
+        </div>
+
+        <div style={sectionBlock}>
+          <div style={sectionTitle}>Contact Details</div>
+          <div style={formGrid2}>
+            <Field
+              label="Mobile No"
+              value={form.mobile_no}
+              onChange={(e) => update("mobile_no", e.target.value)}
+              placeholder="9999999999"
+              readOnly={!canWrite}
+            />
+            <Field
+              label="Phone No"
+              value={form.ph_no}
+              onChange={(e) => update("ph_no", e.target.value)}
+              placeholder="080-xxxxxxx"
+              readOnly={!canWrite}
+            />
+            <Field
+              label="Email ID"
+              value={form.email_id}
+              onChange={(e) => update("email_id", e.target.value)}
+              placeholder="name@email.com"
+              type="email"
+              readOnly={!canWrite}
+            />
+            <Field
+              label="GST No"
+              value={form.gst_no}
+              onChange={(e) => update("gst_no", e.target.value)}
+              placeholder="29ABCDE1234F1Z5"
+              readOnly={!canWrite}
+            />
+          </div>
+        </div>
+
+        {canWrite ? (
+          <div style={actionBar}>
+            <div style={saveActions}>
+              <button
+                type="button"
+                onClick={save}
+                style={saving ? disabledBtn(btnPrimary) : btnPrimary}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : saveLabel}
+              </button>
+
+              <button
+                type="button"
+                onClick={resetForm}
+                style={btnSecondary}
+                disabled={saving}
+              >
+                Clear
+              </button>
             </div>
-          )}
+          </div>
+        ) : null}
+      </section>
 
-          <Field
-            label="Customer Name *"
-            value={form.customer_name}
-            onChange={(e) => update("customer_name", e.target.value)}
-            placeholder="Customer Name"
-            readOnly={!canWrite}
-          />
-        </div>
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>Customers List</h2>
+            <p style={cardSubtitle}>
+              Search, view, and manage saved customer records.
+            </p>
+          </div>
 
-        <div style={{ height: 12 }} />
-
-        <div style={sectionTitle}>Address Details</div>
-        <div style={grid1}>
-          <Field
-            label="Address Line 1"
-            value={form.customer_address_line1}
-            onChange={(e) => update("customer_address_line1", e.target.value)}
-            readOnly={!canWrite}
-          />
-          <Field
-            label="Address Line 2"
-            value={form.customer_address_line2}
-            onChange={(e) => update("customer_address_line2", e.target.value)}
-            readOnly={!canWrite}
-          />
-          <Field
-            label="Address Line 3"
-            value={form.customer_address_line3}
-            onChange={(e) => update("customer_address_line3", e.target.value)}
-            readOnly={!canWrite}
-          />
-        </div>
-
-        <div style={{ height: 12 }} />
-
-        <div style={sectionTitle}>Location Details</div>
-        <div style={grid3}>
-          <Field
-            label="City"
-            value={form.city}
-            onChange={(e) => update("city", e.target.value)}
-            readOnly={!canWrite}
-          />
-          <SelectField
-            label="State"
-            value={form.state}
-            onChange={(e) => update("state", e.target.value)}
-            options={INDIAN_STATES}
-            placeholder="-- Select State --"
-            disabled={!canWrite}
-          />
-          <Field
-            label="PinCode"
-            value={form.pincode}
-            onChange={(e) => update("pincode", e.target.value)}
-            placeholder="560001"
-            readOnly={!canWrite}
-          />
-        </div>
-
-        <div style={{ height: 12 }} />
-
-        <div style={sectionTitle}>Contact Details</div>
-        <div style={grid2}>
-          <Field
-            label="Mobile No"
-            value={form.mobile_no}
-            onChange={(e) => update("mobile_no", e.target.value)}
-            placeholder="9999999999"
-            readOnly={!canWrite}
-          />
-          <Field
-            label="Phone No"
-            value={form.ph_no}
-            onChange={(e) => update("ph_no", e.target.value)}
-            placeholder="080-xxxxxxx"
-            readOnly={!canWrite}
-          />
-          <Field
-            label="Email ID"
-            value={form.email_id}
-            onChange={(e) => update("email_id", e.target.value)}
-            placeholder="name@email.com"
-            type="email"
-            readOnly={!canWrite}
-          />
-          <Field
-            label="GST No"
-            value={form.gst_no}
-            onChange={(e) => update("gst_no", e.target.value)}
-            placeholder="29ABCDE1234F1Z5"
-            readOnly={!canWrite}
-          />
-        </div>
-
-        {canWrite && (
-          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-            <button onClick={save} style={btnPrimary} disabled={saving}>
-              {saving ? "Saving..." : saveLabel}
-            </button>
-
-            <button onClick={resetForm} style={btnGhost} disabled={saving}>
-              Clear
+          <div style={listToolbar}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by code, name, city, mobile, GST, or email"
+              style={searchInput}
+            />
+            <button
+              type="button"
+              onClick={load}
+              style={btnGhost}
+              disabled={saving || loading}
+            >
+              Refresh
             </button>
           </div>
-        )}
-      </div>
-
-      <div style={{ height: 14 }} />
-
-      <div style={card}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <h3 style={{ margin: 0, color: "#111" }}>Customers List</h3>
-          <button onClick={load} style={btnGhost} disabled={saving}>
-            Refresh
-          </button>
         </div>
 
-        <div style={{ height: 10 }} />
-
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by code, name, city, mobile, GST, or email..."
-          style={searchInp}
-        />
-
-        <div style={{ height: 10 }} />
-
-        <div style={{ overflowX: "auto" }}>
-          <table
-            width="100%"
-            cellPadding="10"
-            style={{ borderCollapse: "collapse", minWidth: 820 }}
-          >
+        <div style={tableWrap}>
+          <table style={table}>
             <thead>
-              <tr style={{ background: "#f6f7f9" }}>
-                <th align="left">Code</th>
-                <th align="left">Name</th>
-                <th align="left">City</th>
-                <th align="left">Mobile</th>
-                <th align="left">GST</th>
-                <th align="center">Actions</th>
+              <tr>
+                <th style={th}>Code</th>
+                <th style={th}>Name</th>
+                <th style={th}>City</th>
+                <th style={th}>Mobile</th>
+                <th style={th}>GST</th>
+                <th style={thCenter}>Actions</th>
               </tr>
             </thead>
 
             <tbody>
               {filteredRows.map((r) => (
-                <tr key={r.customer_code} style={{ borderTop: "1px solid #eee" }}>
-                  <td style={{ color: "#111", fontWeight: 900 }}>{r.customer_code}</td>
-                  <td style={{ color: "#111" }}>{r.customer_name}</td>
-                  <td style={{ color: "#111" }}>{r.city || ""}</td>
-                  <td style={{ color: "#111" }}>{r.mobile_no || ""}</td>
-                  <td style={{ color: "#111" }}>{r.gst_no || ""}</td>
-                  <td align="center">
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        justifyContent: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <button onClick={() => startView(r)} style={btnViewMini} disabled={saving}>
+                <tr key={r.customer_code} style={tr}>
+                  <td style={tdCode}>{r.customer_code}</td>
+                  <td style={td}>{r.customer_name}</td>
+                  <td style={td}>{r.city || ""}</td>
+                  <td style={td}>{r.mobile_no || ""}</td>
+                  <td style={td}>{r.gst_no || ""}</td>
+                  <td style={tdCenter}>
+                    <div style={rowActions}>
+                      <button
+                        type="button"
+                        onClick={() => startView(r)}
+                        style={btnViewMini}
+                        disabled={saving}
+                      >
                         View
                       </button>
 
-                      {canWrite && (
+                      {canWrite ? (
                         <>
                           <button
+                            type="button"
                             onClick={() => startEdit(r)}
                             style={btnMini}
                             disabled={saving}
@@ -596,6 +570,7 @@ export default function CustomerMaster() {
                             Edit
                           </button>
                           <button
+                            type="button"
                             onClick={() => del(r.customer_code)}
                             style={btnDangerMini}
                             disabled={saving}
@@ -603,182 +578,535 @@ export default function CustomerMaster() {
                             Delete
                           </button>
                         </>
-                      )}
+                      ) : null}
                     </div>
                   </td>
                 </tr>
               ))}
 
-              {filteredRows.length === 0 && (
+              {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ color: "#666", padding: 12 }}>
+                  <td colSpan="6" style={emptyTd}>
                     No matching customers found.
                   </td>
                 </tr>
-              )}
+              ) : null}
             </tbody>
           </table>
         </div>
 
-        <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
+        <div style={footerNote}>
           {canWrite ? (
             <>
-              Tip: Tap <b>Edit</b> to load a customer into the form, then press{" "}
+              Tip: Use <b>Edit</b> to load a customer into the form, then click{" "}
               <b>Update Customer</b>.
             </>
           ) : (
             <>
-              Tip: Tap <b>View</b> to load customer details in read-only mode.
+              Tip: Use <b>View</b> to load customer details in read-only mode.
             </>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-/* ---- Styles ---- */
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  hint,
+  disabled = false,
+  readOnly = false,
+}) {
+  return (
+    <div style={field}>
+      <label style={labelStyle}>{label}</label>
+      <input
+        value={value ?? ""}
+        onChange={onChange}
+        placeholder={placeholder}
+        type={type}
+        disabled={disabled}
+        readOnly={readOnly}
+        style={disabled || readOnly ? disabledInput : input}
+      />
+      {hint ? <div style={hintText}>{hint}</div> : null}
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  hint,
+  disabled = false,
+}) {
+  return (
+    <div style={field}>
+      <label style={labelStyle}>{label}</label>
+      <select
+        value={value ?? ""}
+        onChange={onChange}
+        disabled={disabled}
+        style={disabled ? disabledInput : input}
+      >
+        <option value="">{placeholder || "-- Select --"}</option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+      {hint ? <div style={hintText}>{hint}</div> : null}
+    </div>
+  );
+}
+
+function AutoField({ label, text, hint }) {
+  return (
+    <div style={field}>
+      <label style={labelStyle}>{label}</label>
+      <div style={autoBox}>{text}</div>
+      {hint ? <div style={hintText}>{hint}</div> : null}
+    </div>
+  );
+}
+
+function AlertBox({ kind, message }) {
+  const styleMap = {
+    error: {
+      background: "#fff1f2",
+      border: "1px solid #fecdd3",
+      color: "#b42318",
+    },
+    success: {
+      background: "#ecfdf3",
+      border: "1px solid #b7ebc6",
+      color: "#027a48",
+    },
+    warning: {
+      background: "#fffaeb",
+      border: "1px solid #fedf89",
+      color: "#b54708",
+    },
+    info: {
+      background: "#eff8ff",
+      border: "1px solid #b2ddff",
+      color: "#175cd3",
+    },
+  };
+
+  return (
+    <div
+      style={{
+        ...styleMap[kind],
+        padding: "12px 14px",
+        borderRadius: 14,
+        fontWeight: 700,
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
+function disabledBtn(base) {
+  return {
+    ...base,
+    opacity: 0.55,
+    cursor: "not-allowed",
+    boxShadow: "none",
+  };
+}
+
+/* ------------------ shared page styles ------------------ */
+
+const page = {
+  maxWidth: 1180,
+  margin: "0 auto",
+  padding: "18px 16px 28px",
+  display: "grid",
+  gap: 18,
+};
+
+const pageHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-end",
+  gap: 16,
+  flexWrap: "wrap",
+};
+
+const eyebrow = {
+  fontSize: 12,
+  fontWeight: 900,
+  letterSpacing: 1.2,
+  color: "#94a3b8",
+  marginBottom: 6,
+};
+
+const pageTitle = {
+  margin: 0,
+  fontSize: 30,
+  lineHeight: 1.1,
+  color: "#f8fafc",
+  fontWeight: 900,
+};
+
+const pageSubtitle = {
+  margin: "8px 0 0",
+  color: "#cbd5e1",
+  fontSize: 14,
+  maxWidth: 760,
+};
+
+const headerActions = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const stack = {
+  display: "grid",
+  gap: 10,
+};
 
 const card = {
-  background: "white",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 16,
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 22,
+  padding: 20,
+  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  display: "grid",
+  gap: 18,
+};
+
+const cardHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  flexWrap: "wrap",
+};
+
+const cardTitle = {
+  margin: 0,
+  fontSize: 20,
+  color: "#0f172a",
+  fontWeight: 900,
+};
+
+const cardSubtitle = {
+  margin: "6px 0 0",
+  fontSize: 13,
+  color: "#64748b",
+};
+
+const sectionBlock = {
+  display: "grid",
+  gap: 10,
 };
 
 const sectionTitle = {
   fontSize: 13,
   fontWeight: 900,
-  color: "#111",
-  marginBottom: 8,
+  color: "#334155",
 };
 
-const grid1 = {
+const formGrid2 = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 14,
 };
 
-const grid2 = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 12,
-};
-
-const grid3 = {
+const formGrid3 = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 14,
+};
+
+const field = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 7,
+};
+
+const labelStyle = {
+  fontSize: 12,
+  color: "#334155",
+  fontWeight: 900,
+  letterSpacing: 0.3,
+};
+
+const input = {
+  width: "100%",
+  minHeight: 44,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
+  outline: "none",
+  boxSizing: "border-box",
+  fontSize: 14,
+};
+
+const disabledInput = {
+  ...input,
+  background: "#f8fafc",
+  color: "#64748b",
+  cursor: "not-allowed",
+};
+
+const autoBox = {
+  width: "100%",
+  minHeight: 44,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #dbe2ea",
+  background: "#f8fafc",
+  color: "#475569",
+  fontWeight: 800,
+  boxSizing: "border-box",
+  display: "flex",
+  alignItems: "center",
+};
+
+const hintText = {
+  fontSize: 12,
+  color: "#64748b",
+};
+
+const actionBar = {
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
   gap: 12,
+  flexWrap: "wrap",
 };
 
-const inp = {
-  width: "100%",
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  outline: "none",
-  background: "#fff",
-  color: "#111",
-  boxSizing: "border-box",
+const saveActions = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+  alignItems: "center",
 };
 
-const autoCodeBox = {
-  width: "100%",
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  background: "#f7f7f7",
-  color: "#555",
-  fontWeight: 700,
-  boxSizing: "border-box",
+const listToolbar = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+  alignItems: "center",
 };
 
-const searchInp = {
+const searchInput = {
   width: "100%",
+  minWidth: 280,
   maxWidth: 420,
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
+  minHeight: 44,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
   outline: "none",
-  background: "#fff",
-  color: "#111",
   boxSizing: "border-box",
+  fontSize: 14,
+};
+
+const tableWrap = {
+  overflowX: "auto",
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
+};
+
+const table = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: 900,
+  background: "#ffffff",
+};
+
+const th = {
+  textAlign: "left",
+  padding: "14px 14px",
+  background: "#f8fafc",
+  color: "#334155",
+  fontSize: 13,
+  fontWeight: 900,
+  borderBottom: "1px solid #e2e8f0",
+};
+
+const thCenter = {
+  ...th,
+  textAlign: "center",
+};
+
+const tr = {
+  borderBottom: "1px solid #eef2f7",
+};
+
+const td = {
+  padding: 12,
+  verticalAlign: "middle",
+  color: "#0f172a",
+};
+
+const tdCode = {
+  ...td,
+  fontWeight: 900,
+};
+
+const tdCenter = {
+  ...td,
+  textAlign: "center",
+};
+
+const rowActions = {
+  display: "flex",
+  gap: 10,
+  justifyContent: "center",
+  flexWrap: "wrap",
+};
+
+const emptyTd = {
+  padding: 18,
+  textAlign: "center",
+  color: "#64748b",
+  fontWeight: 700,
+};
+
+const footerNote = {
+  marginTop: 2,
+  color: "#64748b",
+  fontSize: 12,
 };
 
 const btnPrimary = {
+  minHeight: 44,
   padding: "10px 16px",
   borderRadius: 12,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#ffffff",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 14,
+  boxShadow: "0 8px 20px rgba(37, 99, 235, 0.22)",
+};
+
+const btnSecondary = {
+  minHeight: 44,
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
 };
 
 const btnGhost = {
-  padding: "10px 14px",
+  minHeight: 44,
+  padding: "10px 16px",
   borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "white",
-  color: "#111",
+  border: "1px solid #dbe2ea",
+  background: "#f8fafc",
+  color: "#334155",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 14,
 };
 
 const btnMini = {
   padding: "8px 12px",
   borderRadius: 10,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#ffffff",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 13,
 };
 
 const btnViewMini = {
   padding: "8px 12px",
   borderRadius: 10,
-  border: "1px solid #4b5563",
-  background: "#4b5563",
-  color: "white",
+  border: "1px solid #475569",
+  background: "#475569",
+  color: "#ffffff",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 13,
 };
 
 const btnDangerMini = {
   padding: "8px 12px",
   borderRadius: 10,
-  border: "1px solid #ffb3b3",
-  background: "#ffecec",
-  color: "#a40000",
+  border: "1px solid #fda4af",
+  background: "#fff1f2",
+  color: "#b42318",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 13,
 };
 
-const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
-  padding: 10,
-  borderRadius: 12,
-  color: "#a40000",
-  marginBottom: 12,
+const badgeBlue = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#eff8ff",
+  color: "#175cd3",
+  border: "1px solid #b2ddff",
 };
 
-const msgOk = {
-  background: "#eaffea",
-  border: "1px solid #bde7bd",
-  padding: 10,
-  borderRadius: 12,
-  color: "#0a6a0a",
-  marginBottom: 12,
+const badgeGray = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#f2f4f7",
+  color: "#475467",
+  border: "1px solid #d0d5dd",
 };
 
-const readOnlyBanner = {
-  background: "#f4f7ff",
-  border: "1px solid #cdd9ff",
-  padding: 10,
-  borderRadius: 12,
-  color: "#1d3f91",
-  fontWeight: 700,
-  marginBottom: 4,
+const badgeAmber = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#fffaeb",
+  color: "#b54708",
+  border: "1px solid #fedf89",
+};
+
+const badgeGreen = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#ecfdf3",
+  color: "#027a48",
+  border: "1px solid #abefc6",
 };

@@ -56,6 +56,12 @@ export default function Users() {
     );
   }
 
+  function clearCreateForm() {
+    setForm(emptyForm);
+    setErr("");
+    setOk("");
+  }
+
   async function createUser(e) {
     e.preventDefault();
     setErr("");
@@ -172,157 +178,154 @@ export default function Users() {
   }
 
   return (
-    <div style={pageWrap}>
+    <div style={page}>
       <div style={pageHeader}>
-        <h2 style={title}>User Management</h2>
-        <p style={subTitle}>
-          Admin-only access. Create users, update roles, activate or deactivate
-          accounts, and reset passwords.
-        </p>
-      </div>
+        <div>
+          <div style={eyebrow}>ADMINISTRATION</div>
+          <h1 style={pageTitle}>User Management</h1>
+          <p style={pageSubtitle}>
+            Admin-only access. Create users, update roles, activate or deactivate
+            accounts, and reset passwords.
+          </p>
+        </div>
 
-      {err ? <div style={msgErr}>{err}</div> : null}
-      {ok ? <div style={msgOk}>{ok}</div> : null}
-
-      <div style={card}>
-        <div style={toolbarBetween}>
-          <div>
-            <h3 style={sectionTitle}>Create User</h3>
-            <p style={sectionSub}>
-              Add new login accounts for administrators, operators, and viewers.
-            </p>
-          </div>
-
+        <div style={headerActions}>
           <button
             onClick={() => {
               setErr("");
               setOk("");
               load();
             }}
-            style={btnGhost}
+            style={btnSecondary}
             disabled={loading || saving}
             type="button"
           >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
-
-        <form onSubmit={createUser}>
-          <div style={grid4}>
-            <div>
-              <label style={lbl}>User ID *</label>
-              <input
-                value={form.user_id}
-                onChange={(e) => setFormField("user_id", e.target.value)}
-                placeholder="e.g. OPERATOR1"
-                style={inp}
-                disabled={saving}
-              />
-            </div>
-
-            <div>
-              <label style={lbl}>Full Name *</label>
-              <input
-                value={form.full_name}
-                onChange={(e) => setFormField("full_name", e.target.value)}
-                placeholder="e.g. CASHIER 1"
-                style={inp}
-                disabled={saving}
-              />
-            </div>
-
-            <div>
-              <label style={lbl}>Password *</label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setFormField("password", e.target.value)}
-                placeholder="Minimum 8 characters"
-                style={inp}
-                disabled={saving}
-              />
-            </div>
-
-            <div>
-              <label style={lbl}>Role *</label>
-              <select
-                value={form.role}
-                onChange={(e) => setFormField("role", e.target.value)}
-                style={inp}
-                disabled={saving}
-              >
-                {ROLES.map((role) => (
-                  <option key={role} value={role}>
-                    {role}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div style={btnRow}>
-            <button type="submit" style={btnPrimary} disabled={saving}>
-              {saving ? "Creating..." : "Create User"}
-            </button>
-          </div>
-        </form>
       </div>
 
-      <div style={{ height: 16 }} />
+      <div style={stack}>
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {ok ? <AlertBox kind="success" message={ok} /> : null}
+        {loading ? <AlertBox kind="info" message="Loading users..." /> : null}
+      </div>
 
-      <div style={card}>
-        <div style={toolbarBetween}>
+      <section style={card}>
+        <div style={cardHeader}>
           <div>
-            <h3 style={sectionTitle}>Existing Users</h3>
-            <p style={sectionSub}>
+            <h2 style={cardTitle}>Create User</h2>
+            <p style={cardSubtitle}>
+              Add new login accounts for administrators, operators, and viewers.
+            </p>
+          </div>
+          <div style={badgeGreen}>CREATE</div>
+        </div>
+
+        <form onSubmit={createUser}>
+          <div style={formGrid4}>
+            <Field
+              label="User ID *"
+              value={form.user_id}
+              onChange={(e) => setFormField("user_id", e.target.value)}
+              placeholder="e.g. OPERATOR1"
+              disabled={saving}
+            />
+
+            <Field
+              label="Full Name *"
+              value={form.full_name}
+              onChange={(e) => setFormField("full_name", e.target.value)}
+              placeholder="e.g. CASHIER 1"
+              disabled={saving}
+            />
+
+            <Field
+              label="Password *"
+              type="password"
+              value={form.password}
+              onChange={(e) => setFormField("password", e.target.value)}
+              placeholder="Minimum 8 characters"
+              disabled={saving}
+            />
+
+            <SelectField
+              label="Role *"
+              value={form.role}
+              onChange={(e) => setFormField("role", e.target.value)}
+              options={ROLES}
+              disabled={saving}
+            />
+          </div>
+
+          <div style={actionBar}>
+            <div style={saveActions}>
+              <button type="submit" style={btnPrimary} disabled={saving}>
+                {saving ? "Creating..." : "Create User"}
+              </button>
+
+              <button
+                type="button"
+                onClick={clearCreateForm}
+                style={btnSecondary}
+                disabled={saving}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>Existing Users</h2>
+            <p style={cardSubtitle}>
               Edit full name, role, active status, and reset passwords.
             </p>
           </div>
-          <div style={pillInfo}>
-            {loading ? "Loading users..." : `${rows.length} user(s)`}
+          <div style={badgeBlue}>
+            {loading ? "Loading..." : `${rows.length} USER(S)`}
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table
-            width="100%"
-            cellPadding="10"
-            style={table}
-          >
+        <div style={tableWrap}>
+          <table style={table}>
             <thead>
-              <tr style={tableHeadRow}>
-                <th align="left" style={thCell}>User ID</th>
-                <th align="left" style={thCell}>Full Name</th>
-                <th align="left" style={thCell}>Role</th>
-                <th align="center" style={thCell}>Active</th>
-                <th align="left" style={thCell}>Reset Password</th>
-                <th align="center" style={thCell}>Actions</th>
+              <tr>
+                <th style={th}>User ID</th>
+                <th style={th}>Full Name</th>
+                <th style={th}>Role</th>
+                <th style={thCenter}>Active</th>
+                <th style={th}>Reset Password</th>
+                <th style={thCenter}>Actions</th>
               </tr>
             </thead>
 
             <tbody>
               {rows.map((r) => (
-                <tr key={r.user_id} style={tableRow}>
-                  <td style={userIdCell}>{r.user_id}</td>
+                <tr key={r.user_id} style={tr}>
+                  <td style={tdCode}>{r.user_id}</td>
 
-                  <td style={tdCell}>
+                  <td style={td}>
                     <input
                       value={r.full_name || ""}
                       onChange={(e) =>
                         setRowField(r.user_id, "full_name", e.target.value)
                       }
-                      style={inp}
+                      style={input}
                       disabled={saving}
                     />
                   </td>
 
-                  <td style={tdCell}>
+                  <td style={td}>
                     <select
                       value={r.role}
                       onChange={(e) =>
                         setRowField(r.user_id, "role", e.target.value)
                       }
-                      style={inp}
+                      style={input}
                       disabled={saving}
                     >
                       {ROLES.map((role) => (
@@ -333,7 +336,7 @@ export default function Users() {
                     </select>
                   </td>
 
-                  <td align="center" style={tdCell}>
+                  <td style={tdCenter}>
                     <input
                       type="checkbox"
                       checked={!!r.is_active}
@@ -344,7 +347,7 @@ export default function Users() {
                     />
                   </td>
 
-                  <td style={tdCell}>
+                  <td style={td}>
                     <div style={resetWrap}>
                       <input
                         type="password"
@@ -354,7 +357,7 @@ export default function Users() {
                           setResetPwdValue(e.target.value);
                         }}
                         placeholder="New password"
-                        style={{ ...inp, minWidth: 180 }}
+                        style={{ ...input, minWidth: 180 }}
                         disabled={saving}
                       />
                       <button
@@ -368,10 +371,10 @@ export default function Users() {
                     </div>
                   </td>
 
-                  <td align="center" style={tdCell}>
+                  <td style={tdCenter}>
                     <button
                       onClick={() => saveRow(r)}
-                      style={btnPrimarySmall}
+                      style={btnMini}
                       disabled={saving}
                       type="button"
                     >
@@ -381,217 +384,301 @@ export default function Users() {
                 </tr>
               ))}
 
-              {rows.length === 0 && !loading && (
+              {rows.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan="6" style={emptyCell}>
+                  <td colSpan="6" style={emptyTd}>
                     No users found.
                   </td>
                 </tr>
-              )}
+              ) : null}
 
-              {loading && rows.length === 0 && (
+              {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={emptyCell}>
+                  <td colSpan="6" style={emptyTd}>
                     Loading users...
                   </td>
                 </tr>
-              )}
+              ) : null}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-/* ---------- styles ---------- */
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  disabled = false,
+  placeholder,
+}) {
+  return (
+    <div style={field}>
+      <label style={labelStyle}>{label}</label>
+      <input
+        type={type}
+        value={value ?? ""}
+        onChange={onChange}
+        placeholder={placeholder}
+        style={disabled ? disabledInput : input}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
 
-const pageWrap = {
-  maxWidth: 1200,
+function SelectField({ label, value, onChange, options, disabled = false }) {
+  return (
+    <div style={field}>
+      <label style={labelStyle}>{label}</label>
+      <select
+        value={value ?? ""}
+        onChange={onChange}
+        style={disabled ? disabledInput : input}
+        disabled={disabled}
+      >
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function AlertBox({ kind, message }) {
+  const styleMap = {
+    error: {
+      background: "#fff1f2",
+      border: "1px solid #fecdd3",
+      color: "#b42318",
+    },
+    success: {
+      background: "#ecfdf3",
+      border: "1px solid #b7ebc6",
+      color: "#027a48",
+    },
+    warning: {
+      background: "#fffaeb",
+      border: "1px solid #fedf89",
+      color: "#b54708",
+    },
+    info: {
+      background: "#eff8ff",
+      border: "1px solid #b2ddff",
+      color: "#175cd3",
+    },
+  };
+
+  return (
+    <div
+      style={{
+        ...styleMap[kind],
+        padding: "12px 14px",
+        borderRadius: 14,
+        fontWeight: 700,
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
+/* ------------------ shared page styles ------------------ */
+
+const page = {
+  maxWidth: 1180,
   margin: "0 auto",
-  padding: 18,
+  padding: "18px 16px 28px",
+  display: "grid",
+  gap: 18,
 };
 
 const pageHeader = {
-  marginBottom: 14,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-end",
+  gap: 16,
+  flexWrap: "wrap",
 };
 
-const title = {
+const eyebrow = {
+  fontSize: 12,
+  fontWeight: 900,
+  letterSpacing: 1.2,
+  color: "#94a3b8",
+  marginBottom: 6,
+};
+
+const pageTitle = {
   margin: 0,
-  color: "#fff",
   fontSize: 30,
+  lineHeight: 1.1,
+  color: "#f8fafc",
   fontWeight: 900,
 };
 
-const subTitle = {
-  marginTop: 8,
-  color: "#c8cfdb",
-  fontSize: 15,
-  lineHeight: 1.5,
+const pageSubtitle = {
+  margin: "8px 0 0",
+  color: "#cbd5e1",
+  fontSize: 14,
+  maxWidth: 760,
+};
+
+const headerActions = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const stack = {
+  display: "grid",
+  gap: 10,
 };
 
 const card = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 20,
-  padding: 18,
-  boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
+  border: "1px solid #e2e8f0",
+  borderRadius: 22,
+  padding: 20,
+  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  display: "grid",
+  gap: 18,
 };
 
-const toolbarBetween = {
+const cardHeader = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: 12,
+  gap: 16,
   flexWrap: "wrap",
-  marginBottom: 14,
 };
 
-const sectionTitle = {
+const cardTitle = {
   margin: 0,
-  color: "#111827",
   fontSize: 20,
+  color: "#0f172a",
   fontWeight: 900,
 };
 
-const sectionSub = {
-  margin: "6px 0 0 0",
-  color: "#6b7280",
-  fontSize: 14,
+const cardSubtitle = {
+  margin: "6px 0 0",
+  fontSize: 13,
+  color: "#64748b",
 };
 
-const grid4 = {
+const formGrid4 = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 14,
 };
 
-const lbl = {
-  fontSize: 13,
-  color: "#111827",
-  display: "block",
-  marginBottom: 6,
-  fontWeight: 800,
+const field = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 7,
 };
 
-const inp = {
+const labelStyle = {
+  fontSize: 12,
+  color: "#334155",
+  fontWeight: 900,
+  letterSpacing: 0.3,
+};
+
+const input = {
   width: "100%",
-  padding: "11px 12px",
-  border: "1px solid #d1d5db",
+  minHeight: 44,
+  padding: "10px 12px",
   borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
   outline: "none",
-  background: "#fff",
-  color: "#111827",
   boxSizing: "border-box",
   fontSize: 14,
 };
 
-const btnRow = {
+const disabledInput = {
+  ...input,
+  background: "#f8fafc",
+  color: "#64748b",
+  cursor: "not-allowed",
+};
+
+const actionBar = {
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const saveActions = {
   display: "flex",
   gap: 10,
   flexWrap: "wrap",
-  marginTop: 16,
+  alignItems: "center",
 };
 
-const btnPrimary = {
-  padding: "12px 18px",
-  borderRadius: 14,
-  border: "1px solid #2563eb",
-  background: "#2563eb",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 15,
-};
-
-const btnPrimarySmall = {
-  padding: "9px 14px",
-  borderRadius: 10,
-  border: "1px solid #2563eb",
-  background: "#2563eb",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const btnWarn = {
-  padding: "9px 14px",
-  borderRadius: 10,
-  border: "1px solid #d97706",
-  background: "#f59e0b",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const btnGhost = {
-  padding: "11px 14px",
-  borderRadius: 12,
-  border: "1px solid #d1d5db",
-  background: "#fff",
-  color: "#111827",
-  cursor: "pointer",
-  fontWeight: 800,
-};
-
-const msgErr = {
-  background: "#ffe9e9",
-  border: "1px solid #f4b4b4",
-  padding: 12,
-  borderRadius: 14,
-  color: "#b42318",
-  marginBottom: 14,
-  fontWeight: 600,
-};
-
-const msgOk = {
-  background: "#e9fff0",
-  border: "1px solid #b7ebc6",
-  padding: 12,
-  borderRadius: 14,
-  color: "#067647",
-  marginBottom: 14,
-  fontWeight: 600,
+const tableWrap = {
+  overflowX: "auto",
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
 };
 
 const table = {
-  borderCollapse: "separate",
-  borderSpacing: 0,
+  width: "100%",
+  borderCollapse: "collapse",
   minWidth: 1050,
+  background: "#ffffff",
 };
 
-const tableHeadRow = {
+const th = {
+  textAlign: "left",
+  padding: "14px 14px",
   background: "#f8fafc",
-};
-
-const thCell = {
-  color: "#111827",
+  color: "#334155",
+  fontSize: 13,
   fontWeight: 900,
-  fontSize: 14,
-  borderBottom: "1px solid #e5e7eb",
+  borderBottom: "1px solid #e2e8f0",
 };
 
-const tableRow = {
-  borderTop: "1px solid #eef2f7",
+const thCenter = {
+  ...th,
+  textAlign: "center",
 };
 
-const tdCell = {
-  borderTop: "1px solid #eef2f7",
+const tr = {
+  borderBottom: "1px solid #eef2f7",
+};
+
+const td = {
+  padding: 12,
   verticalAlign: "middle",
+  color: "#0f172a",
 };
 
-const userIdCell = {
+const tdCode = {
+  ...td,
   fontWeight: 900,
-  color: "#111827",
-  borderTop: "1px solid #eef2f7",
-  verticalAlign: "middle",
   whiteSpace: "nowrap",
 };
 
-const emptyCell = {
-  padding: 18,
-  color: "#6b7280",
+const tdCenter = {
+  ...td,
   textAlign: "center",
+};
+
+const emptyTd = {
+  padding: 18,
+  textAlign: "center",
+  color: "#64748b",
+  fontWeight: 700,
 };
 
 const resetWrap = {
@@ -601,12 +688,87 @@ const resetWrap = {
   alignItems: "center",
 };
 
-const pillInfo = {
+const btnPrimary = {
+  minHeight: 44,
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#ffffff",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
+  boxShadow: "0 8px 20px rgba(37, 99, 235, 0.22)",
+};
+
+const btnMini = {
   padding: "8px 12px",
-  borderRadius: 999,
-  background: "#eef2ff",
-  border: "1px solid #c7d2fe",
-  color: "#3730a3",
-  fontWeight: 800,
+  borderRadius: 10,
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#ffffff",
+  cursor: "pointer",
+  fontWeight: 900,
   fontSize: 13,
+};
+
+const btnWarn = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #d97706",
+  background: "#f59e0b",
+  color: "#ffffff",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 13,
+};
+
+const btnSecondary = {
+  minHeight: 44,
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
+};
+
+const btnGhost = {
+  minHeight: 44,
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #dbe2ea",
+  background: "#f8fafc",
+  color: "#334155",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
+};
+
+const badgeBlue = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#eff8ff",
+  color: "#175cd3",
+  border: "1px solid #b2ddff",
+};
+
+const badgeGreen = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#ecfdf3",
+  color: "#027a48",
+  border: "1px solid #abefc6",
 };
