@@ -1,6 +1,4 @@
-// src/pages/ReceiptList.jsx
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiGet, apiDelete } from "../api/client";
 
@@ -32,6 +30,7 @@ export default function ReceiptList() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState("");
 
   async function loadData(activeFilters = filters) {
     setLoading(true);
@@ -67,9 +66,11 @@ export default function ReceiptList() {
 
   async function onDelete(receiptNo) {
     const ok = window.confirm(
-      `Delete receipt ${receiptNo}?\n\nThis will reverse the payment.`
+      `Reverse receipt ${receiptNo}?\n\nThis will undo the payment.`
     );
     if (!ok) return;
+
+    setBusy(receiptNo);
 
     try {
       await apiDelete(`/receipts/${encodeURIComponent(receiptNo)}`);
@@ -77,19 +78,39 @@ export default function ReceiptList() {
       await loadData(filters);
     } catch (e) {
       setErr(String(e.message || e));
+    } finally {
+      setBusy("");
     }
   }
 
+  const summary = useMemo(() => {
+    const total = rows.length;
+    const amount = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+
+    return {
+      total,
+      amount: money(amount),
+    };
+  }, [rows]);
+
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>
-      <h2 style={{ color: "#fff" }}>Receipts</h2>
+      {/* HEADER */}
+      <div style={header}>
+        <div>
+          <h2 style={{ margin: 0, color: "#fff" }}>Receipt Management</h2>
+          <p style={{ marginTop: 6, color: "#b8b8b8" }}>
+            View and reverse customer receipts.
+          </p>
+        </div>
+      </div>
 
       {/* FILTER */}
       <form onSubmit={onSearch} style={card}>
         <div style={grid}>
           <input
             style={input}
-            placeholder="Receipt No / Invoice No"
+            placeholder="Receipt / Invoice"
             value={filters.q}
             onChange={(e) =>
               setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))
@@ -116,7 +137,9 @@ export default function ReceiptList() {
         </div>
 
         <div style={{ marginTop: 10 }}>
-          <button style={btnPrimary}>Search</button>
+          <button style={btnPrimary} disabled={loading}>
+            {loading ? "Loading..." : "Search"}
+          </button>
           <button type="button" style={btnGhost} onClick={onReset}>
             Reset
           </button>
@@ -126,51 +149,61 @@ export default function ReceiptList() {
       {err && <div style={msgErr}>{err}</div>}
       {msg && <div style={msgOk}>{msg}</div>}
 
+      {/* SUMMARY */}
+      <div style={summaryGrid}>
+        <Card title="Total Receipts" value={summary.total} />
+        <Card title="Total Amount" value={`₹ ${summary.amount}`} />
+      </div>
+
       {/* TABLE */}
       <div style={card}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={table}>
           <thead>
             <tr>
               <th style={th}>Receipt No</th>
               <th style={th}>Date</th>
               <th style={th}>Invoice</th>
-              <th style={th}>Amount</th>
+              <th style={{ ...th, textAlign: "right" }}>Amount</th>
               <th style={th}>Remark</th>
-              <th style={th}>Actions</th>
+              <th style={{ ...th, textAlign: "center" }}>Actions</th>
             </tr>
           </thead>
 
           <tbody>
             {rows.map((r) => (
               <tr key={r.receipt_no}>
-                <td style={td}>{r.receipt_no}</td>
+                <td style={tdStrong}>{r.receipt_no}</td>
                 <td style={td}>{r.receipt_date}</td>
                 <td style={td}>{r.invoice_no}</td>
-                <td style={td}>{money(r.amount)}</td>
+                <td style={tdRight}>{money(r.amount)}</td>
                 <td style={td}>{r.remark || "-"}</td>
-                <td style={td}>
-                  <button
-                    style={miniBtn}
-                    onClick={() =>
-                      nav(`/receipt/view/${encodeURIComponent(r.receipt_no)}`)
-                    }
-                  >
-                    View
-                  </button>
 
-                  <button
-                    style={miniBtnDanger}
-                    onClick={() => onDelete(r.receipt_no)}
-                  >
-                    Reverse
-                  </button>
+                <td style={td}>
+                  <div style={actionWrap}>
+                    <button
+                      style={miniBtn}
+                      onClick={() =>
+                        nav(`/receipt/view/${encodeURIComponent(r.receipt_no)}`)
+                      }
+                    >
+                      View
+                    </button>
+
+                    <button
+                      style={miniBtnDanger}
+                      disabled={busy === r.receipt_no}
+                      onClick={() => onDelete(r.receipt_no)}
+                    >
+                      {busy === r.receipt_no ? "Working..." : "Reverse"}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
 
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ textAlign: "center", padding: 20 }}>
+                <td colSpan="6" style={empty}>
                   No receipts found
                 </td>
               </tr>
@@ -182,33 +215,84 @@ export default function ReceiptList() {
   );
 }
 
+/* ---- styles ---- */
+
+const header = {
+  marginBottom: 14,
+};
+
 const card = {
   background: "#fff",
   padding: 14,
-  borderRadius: 12,
+  borderRadius: 14,
   marginBottom: 14,
+  border: "1px solid #e6e6e6",
 };
 
 const grid = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr 1fr",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
   gap: 10,
 };
 
 const input = {
   padding: 10,
-  borderRadius: 8,
+  borderRadius: 10,
   border: "1px solid #ccc",
+};
+
+const table = {
+  width: "100%",
+  borderCollapse: "collapse",
 };
 
 const th = {
   padding: 10,
-  background: "#f5f5f5",
+  background: "#f5f6f8",
+  fontWeight: 900,
+  fontSize: 13,
 };
 
 const td = {
   padding: 10,
 };
+
+const tdStrong = {
+  ...td,
+  fontWeight: 900,
+};
+
+const tdRight = {
+  ...td,
+  textAlign: "right",
+};
+
+const empty = {
+  textAlign: "center",
+  padding: 20,
+};
+
+const actionWrap = {
+  display: "flex",
+  gap: 6,
+  justifyContent: "center",
+};
+
+const summaryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gap: 12,
+  marginBottom: 14,
+};
+
+function Card({ title, value }) {
+  return (
+    <div style={card}>
+      <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>{title}</div>
+      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6 }}>{value}</div>
+    </div>
+  );
+}
 
 const btnPrimary = {
   marginRight: 10,
@@ -216,24 +300,25 @@ const btnPrimary = {
   background: "#0b5cff",
   color: "#fff",
   border: "none",
-  borderRadius: 8,
+  borderRadius: 10,
 };
 
 const btnGhost = {
   padding: "8px 12px",
   background: "#eee",
   border: "none",
-  borderRadius: 8,
+  borderRadius: 10,
 };
 
 const miniBtn = {
-  marginRight: 6,
   padding: "6px 10px",
+  borderRadius: 8,
 };
 
 const miniBtnDanger = {
   padding: "6px 10px",
-  background: "#ffdddd",
+  borderRadius: 8,
+  background: "#fff2f2",
   border: "1px solid red",
 };
 
