@@ -170,7 +170,10 @@ export default function BillingNew() {
       setLoadingMasters(true);
 
       try {
-        const [c, it] = await Promise.all([apiGet("/customers/"), apiGet("/items/")]);
+        const [c, it] = await Promise.all([
+          apiGet("/customers/"),
+          apiGet("/items/"),
+        ]);
         setCustomers(Array.isArray(c) ? c : []);
         setItems(Array.isArray(it) ? it : []);
       } catch (e) {
@@ -190,7 +193,9 @@ export default function BillingNew() {
       setLoadingInvoice(true);
 
       try {
-        const inv = await apiGet(`/sales-invoices/${encodeURIComponent(invoiceNo)}`);
+        const inv = await apiGet(
+          `/sales-invoices/${encodeURIComponent(invoiceNo)}`
+        );
         const data = normalizeInvoiceToForm(inv);
 
         setCustomerCode(data.customerCode);
@@ -230,23 +235,37 @@ export default function BillingNew() {
     if (routeEditMode === "FULL") {
       return computed.pageMode === "VIEW_ONLY"
         ? computed
-        : { ...computed, pageMode: "FULL", restricted: false, fullEdit: true, readOnly: false, saveBlocked: false };
+        : {
+            ...computed,
+            pageMode: "FULL",
+            restricted: false,
+            fullEdit: true,
+            readOnly: false,
+            saveBlocked: false,
+          };
     }
 
     if (routeEditMode === "RESTRICTED") {
       return computed.pageMode === "VIEW_ONLY"
         ? computed
-        : { ...computed, pageMode: "RESTRICTED", restricted: true, fullEdit: false, readOnly: false, saveBlocked: false };
+        : {
+            ...computed,
+            pageMode: "RESTRICTED",
+            restricted: true,
+            fullEdit: false,
+            readOnly: false,
+            saveBlocked: false,
+          };
     }
 
     return computed;
   }, [isEditMode, effectiveStatus, effectiveAmountReceived, routeEditMode]);
 
   const pageLoading = loadingMasters || loadingInvoice;
-  const disableAll = saving || pageLoading || access.readOnly;
   const disableRestrictedFields = saving || pageLoading || access.readOnly;
-  const disableFullEditFields = saving || pageLoading || access.readOnly || access.restricted;
-  const canChangeHeaderCore = !disableFullEditFields;
+  const disableFullEditFields =
+    saving || pageLoading || access.readOnly || access.restricted;
+
   const canChangeDueDateRemark = !disableRestrictedFields;
   const canEditLines = !disableFullEditFields;
   const canSave = !saving && !pageLoading && !access.saveBlocked;
@@ -281,7 +300,9 @@ export default function BillingNew() {
   }, [customers, customerCode]);
 
   function setLine(i, patch) {
-    setLines((prev) => prev.map((ln, idx) => (idx === i ? { ...ln, ...patch } : ln)));
+    setLines((prev) =>
+      prev.map((ln, idx) => (idx === i ? { ...ln, ...patch } : ln))
+    );
   }
 
   function addRow() {
@@ -291,7 +312,9 @@ export default function BillingNew() {
 
   function removeRow(i) {
     if (!canEditLines) return;
-    setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)));
+    setLines((prev) =>
+      prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)
+    );
   }
 
   const calc = useMemo(() => {
@@ -397,8 +420,13 @@ export default function BillingNew() {
       setSaving(true);
 
       if (isEditMode) {
-        const updated = await apiPut(`/sales-invoices/${encodeURIComponent(invoiceNo)}`, payload);
-        setOkMsg(`✅ Invoice "${updated?.invoice_no || invoiceNo}" updated successfully.`);
+        const updated = await apiPut(
+          `/sales-invoices/${encodeURIComponent(invoiceNo)}`,
+          payload
+        );
+        setOkMsg(
+          `✅ Invoice "${updated?.invoice_no || invoiceNo}" updated successfully.`
+        );
 
         if (updated?.status) {
           setInvoiceStatus(String(updated.status).toUpperCase());
@@ -419,48 +447,46 @@ export default function BillingNew() {
   }
 
   function getPageTitle() {
-    if (!isEditMode) return "Create New Bill (Sales Invoice)";
-    if (access.readOnly) return "View Sales Invoice (Locked)";
-    if (access.restricted) return "Edit Sales Invoice (Restricted)";
-    return "Edit Sales Invoice";
+    if (!isEditMode) return "Sales Invoice";
+    if (access.readOnly) return "Sales Invoice Details";
+    if (access.restricted) return "Sales Invoice Edit";
+    return "Sales Invoice Edit";
   }
 
   function getPageSubtitle() {
-    if (!isEditMode) return "Select customer + items from masters and save invoice.";
-    if (access.readOnly) return `Invoice ${invoiceNo} is locked for editing. ${access.reason}`;
-    if (access.restricted) return `Restricted edit for invoice ${invoiceNo}. Only due date and remark can be changed.`;
-    return `Update invoice ${invoiceNo}.`;
+    if (!isEditMode) {
+      return "Create a new sales invoice using customer and item master records.";
+    }
+    if (access.readOnly) {
+      return `Invoice ${invoiceNo} is locked for editing.`;
+    }
+    if (access.restricted) {
+      return `Restricted edit for invoice ${invoiceNo}. Only due date and remark can be changed.`;
+    }
+    return `Update invoice ${invoiceNo} and recalculate totals automatically.`;
   }
 
   function getModeBadge() {
-    if (!isEditMode) {
-      return <div style={modeBadgeBlue}>NEW INVOICE</div>;
-    }
-
-    if (access.readOnly) {
-      return <div style={modeBadgeLocked}>VIEW ONLY</div>;
-    }
-
-    if (access.restricted) {
-      return <div style={modeBadgeWarning}>RESTRICTED EDIT</div>;
-    }
-
-    return <div style={modeBadge}>FULL EDIT</div>;
+    if (!isEditMode) return <span style={badgeBlue}>NEW</span>;
+    if (access.readOnly) return <span style={badgeGray}>LOCKED</span>;
+    if (access.restricted) return <span style={badgeAmber}>RESTRICTED</span>;
+    return <span style={badgeGreen}>EDITABLE</span>;
   }
 
   return (
     <div style={page}>
-      <div style={headerWrap}>
+      <div style={pageHeader}>
         <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>{getPageTitle()}</h2>
-          <p style={{ marginTop: 6, color: "#b8b8b8" }}>{getPageSubtitle()}</p>
+          <div style={eyebrow}>BILLING</div>
+          <h1 style={pageTitle}>{getPageTitle()}</h1>
+          <p style={pageSubtitle}>{getPageSubtitle()}</p>
         </div>
 
         <div style={headerActions}>
           <button
             type="button"
             onClick={() => nav("/sales-invoices")}
-            style={btnGhost}
+            style={btnSecondary}
             disabled={saving || pageLoading}
           >
             Back to Invoices
@@ -469,7 +495,9 @@ export default function BillingNew() {
           {isEditMode ? (
             <button
               type="button"
-              onClick={() => nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)}
+              onClick={() =>
+                nav(`/sales-invoice-view/${encodeURIComponent(invoiceNo)}`)
+              }
               style={btnGhost}
               disabled={saving || pageLoading}
             >
@@ -479,15 +507,24 @@ export default function BillingNew() {
         </div>
       </div>
 
-      {err && box(err, "#ffecec", "#a40000")}
-      {okMsg && box(okMsg, "#eaffea", "#0a6a0a")}
-      {pageLoading && box("Loading data...", "#eef4ff", "#0b5cff")}
-      {isEditMode && access.reason ? box(access.reason, "#fff8e8", "#8a5a00") : null}
+      <div style={stack}>
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {okMsg ? <AlertBox kind="success" message={okMsg} /> : null}
+        {pageLoading ? <AlertBox kind="info" message="Loading data..." /> : null}
+        {isEditMode && access.reason ? (
+          <AlertBox kind="warning" message={access.reason} />
+        ) : null}
+      </div>
 
-      <div style={card}>
-        <div style={sectionHeader}>
-          <h3 style={{ marginTop: 0, marginBottom: 0, color: "#111" }}>Invoice Header</h3>
-          {getModeBadge()}
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>Invoice Header</h2>
+            <p style={cardSubtitle}>
+              Basic invoice information, customer selection, and billing dates.
+            </p>
+          </div>
+          <div>{getModeBadge()}</div>
         </div>
 
         <div style={formGrid}>
@@ -497,7 +534,7 @@ export default function BillingNew() {
             hint={
               isEditMode
                 ? "Invoice number cannot be changed."
-                : "The system will generate the next invoice number automatically."
+                : "The next invoice number will be generated automatically."
             }
           />
 
@@ -539,16 +576,19 @@ export default function BillingNew() {
             label="Remark"
             value={remark}
             onChange={(e) => setRemark(e.target.value)}
-            placeholder="Optional note..."
+            placeholder="Optional note"
             disabled={!canChangeDueDateRemark}
           />
         </div>
 
         {selectedCustomer ? (
-          <div style={{ marginTop: 14 }}>
-            <div style={customerInfoCard}>
-              <div style={customerInfoTitle}>Selected Customer</div>
-              <div style={customerInfoGrid}>
+          <div style={{ marginTop: 18 }}>
+            <div style={subSectionCard}>
+              <div style={subSectionHeader}>
+                <h3 style={subSectionTitle}>Selected Customer</h3>
+              </div>
+
+              <div style={infoGrid}>
                 <InfoMini label="Code" value={selectedCustomer.customer_code || "-"} />
                 <InfoMini label="Name" value={selectedCustomer.customer_name || "-"} />
                 <InfoMini label="City" value={selectedCustomer.city || "-"} />
@@ -557,13 +597,17 @@ export default function BillingNew() {
             </div>
           </div>
         ) : null}
-      </div>
+      </section>
 
-      <div style={{ height: 14 }} />
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>Line Items</h2>
+            <p style={cardSubtitle}>
+              Add invoice rows, quantities, prices, and review totals.
+            </p>
+          </div>
 
-      <div style={card}>
-        <div style={toolbarWrap}>
-          <h3 style={{ margin: 0, color: "#111" }}>Line Items</h3>
           <button
             type="button"
             onClick={addRow}
@@ -574,15 +618,15 @@ export default function BillingNew() {
           </button>
         </div>
 
-        <div style={{ overflowX: "auto", marginTop: 10 }}>
-          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 900 }}>
+        <div style={tableWrap}>
+          <table style={table}>
             <thead>
-              <tr style={{ background: "#f6f7f9" }}>
-                <th align="left">Item</th>
-                <th align="left">Qty</th>
-                <th align="left">Rate</th>
-                <th align="left">Line Total</th>
-                <th align="left">Action</th>
+              <tr>
+                <th style={th}>Item</th>
+                <th style={th}>Qty</th>
+                <th style={th}>Rate</th>
+                <th style={th}>Line Total</th>
+                <th style={th}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -592,8 +636,8 @@ export default function BillingNew() {
                 const lineTotal = round2(qty * rate);
 
                 return (
-                  <tr key={i} style={{ borderTop: "1px solid #eee" }}>
-                    <td>
+                  <tr key={i} style={tr}>
+                    <td style={td}>
                       <select
                         value={ln.item_code}
                         onChange={(e) => {
@@ -604,7 +648,7 @@ export default function BillingNew() {
                             rate: it ? Number(it.selling_price || 0) : 0,
                           });
                         }}
-                        style={input}
+                        style={canEditLines ? input : disabledInput}
                         disabled={!canEditLines}
                       >
                         <option value="">-- Select Item --</option>
@@ -616,29 +660,29 @@ export default function BillingNew() {
                       </select>
                     </td>
 
-                    <td>
+                    <td style={tdSmall}>
                       <input
                         type="number"
                         value={ln.qty}
                         onChange={(e) => setLine(i, { qty: e.target.value })}
-                        style={input}
+                        style={canEditLines ? input : disabledInput}
                         disabled={!canEditLines}
                       />
                     </td>
 
-                    <td>
+                    <td style={tdSmall}>
                       <input
                         type="number"
                         value={ln.rate}
                         onChange={(e) => setLine(i, { rate: e.target.value })}
-                        style={input}
+                        style={canEditLines ? input : disabledInput}
                         disabled={!canEditLines}
                       />
                     </td>
 
-                    <td style={{ color: "#111", fontWeight: 800 }}>{lineTotal}</td>
+                    <td style={tdAmount}>{lineTotal}</td>
 
-                    <td>
+                    <td style={tdAction}>
                       <button
                         type="button"
                         onClick={() => removeRow(i)}
@@ -654,8 +698,8 @@ export default function BillingNew() {
 
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan="5" style={{ padding: 14, color: "#666" }}>
-                    No line items.
+                  <td colSpan="5" style={emptyTd}>
+                    No line items added.
                   </td>
                 </tr>
               ) : null}
@@ -663,35 +707,32 @@ export default function BillingNew() {
           </table>
         </div>
 
-        <div style={{ height: 12 }} />
+        <div style={footerGrid}>
+          <div style={noteBox}>
+            {!isEditMode
+              ? "Save to create the invoice and generate the invoice number automatically."
+              : access.readOnly
+              ? "This invoice is locked. Editing is not allowed."
+              : access.restricted
+              ? "Restricted edit mode is active. Only due date and remark can be updated."
+              : "Full edit mode is active. Totals will be recalculated when you save."}
+          </div>
 
-        <div style={totalsRow}>
-          <div style={totalsBox}>
+          <div style={summaryCard}>
+            <div style={summaryTitle}>Invoice Summary</div>
             <Row label="Subtotal" value={calc.subtotal} />
             <Row label="Tax Amount" value={calc.taxAmt} />
             <Row label="Grand Total" value={calc.grand} bold />
           </div>
         </div>
 
-        <div style={{ height: 14 }} />
-
-        <div style={toolbarWrap}>
-          <div style={{ color: "#666", fontSize: 13 }}>
-            {!isEditMode
-              ? "Save to generate invoice number automatically."
-              : access.readOnly
-              ? "This invoice is locked. Editing is not allowed."
-              : access.restricted
-              ? "Restricted edit mode: only due date and remark can be updated."
-              : "Update the invoice carefully. Existing totals will be recalculated."}
-          </div>
-
+        <div style={actionBar}>
           <div style={saveActions}>
             {!isEditMode ? (
               <button
                 type="button"
                 onClick={clearForm}
-                style={btnGhost}
+                style={btnSecondary}
                 disabled={saving || pageLoading}
               >
                 Clear
@@ -716,12 +757,19 @@ export default function BillingNew() {
             </button>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-function Field({ label, value, onChange, type = "text", placeholder, disabled = false }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  disabled = false,
+}) {
   return (
     <div style={field}>
       <label style={labelStyle}>{label}</label>
@@ -763,7 +811,7 @@ function CustomerSelect({
         type="text"
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
-        placeholder="Search customer by code, name, city, mobile..."
+        placeholder="Search by code, name, city, mobile"
         style={disabled ? disabledInput : input}
         disabled={disabled}
       />
@@ -791,8 +839,13 @@ function Row({ label, value, bold }) {
       style={{
         display: "flex",
         justifyContent: "space-between",
-        color: "#111",
-        fontWeight: bold ? 900 : 600,
+        alignItems: "center",
+        gap: 12,
+        fontSize: bold ? 16 : 14,
+        fontWeight: bold ? 900 : 700,
+        color: "#0f172a",
+        padding: bold ? "10px 0 0 0" : "0",
+        borderTop: bold ? "1px solid #dbe2ea" : "none",
       }}
     >
       <span>{label}</span>
@@ -810,19 +863,40 @@ function InfoMini({ label, value }) {
   );
 }
 
-function box(msg, bg, color) {
+function AlertBox({ kind, message }) {
+  const styleMap = {
+    error: {
+      background: "#fff1f2",
+      border: "1px solid #fecdd3",
+      color: "#b42318",
+    },
+    success: {
+      background: "#ecfdf3",
+      border: "1px solid #b7ebc6",
+      color: "#027a48",
+    },
+    warning: {
+      background: "#fffaeb",
+      border: "1px solid #fedf89",
+      color: "#b54708",
+    },
+    info: {
+      background: "#eff8ff",
+      border: "1px solid #b2ddff",
+      color: "#175cd3",
+    },
+  };
+
   return (
     <div
       style={{
-        background: bg,
-        border: "1px solid #ddd",
-        padding: 10,
-        borderRadius: 12,
-        color,
-        marginBottom: 12,
+        ...styleMap[kind],
+        padding: "12px 14px",
+        borderRadius: 14,
+        fontWeight: 700,
       }}
     >
-      {msg}
+      {message}
     </div>
   );
 }
@@ -830,22 +904,51 @@ function box(msg, bg, color) {
 function disabledBtn(base) {
   return {
     ...base,
-    opacity: 0.5,
+    opacity: 0.55,
     cursor: "not-allowed",
+    boxShadow: "none",
   };
 }
 
-/* ---- styles ---- */
+/* ------------------ styles ------------------ */
 
-const page = { maxWidth: 1100, margin: "0 auto", padding: 14 };
+const page = {
+  maxWidth: 1180,
+  margin: "0 auto",
+  padding: "18px 16px 28px",
+  display: "grid",
+  gap: 18,
+};
 
-const headerWrap = {
+const pageHeader = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-end",
-  gap: 12,
+  gap: 16,
   flexWrap: "wrap",
-  marginBottom: 12,
+};
+
+const eyebrow = {
+  fontSize: 12,
+  fontWeight: 900,
+  letterSpacing: 1.2,
+  color: "#94a3b8",
+  marginBottom: 6,
+};
+
+const pageTitle = {
+  margin: 0,
+  fontSize: 30,
+  lineHeight: 1.1,
+  color: "#f8fafc",
+  fontWeight: 900,
+};
+
+const pageSubtitle = {
+  margin: "8px 0 0",
+  color: "#cbd5e1",
+  fontSize: 14,
+  maxWidth: 720,
 };
 
 const headerActions = {
@@ -854,86 +957,248 @@ const headerActions = {
   flexWrap: "wrap",
 };
 
-const card = {
-  background: "white",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
-  padding: 16,
+const stack = {
+  display: "grid",
+  gap: 10,
 };
 
-const sectionHeader = {
+const card = {
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 22,
+  padding: 20,
+  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  display: "grid",
+  gap: 18,
+};
+
+const cardHeader = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
-  gap: 10,
+  alignItems: "flex-start",
+  gap: 16,
   flexWrap: "wrap",
-  marginBottom: 12,
+};
+
+const cardTitle = {
+  margin: 0,
+  fontSize: 20,
+  color: "#0f172a",
+  fontWeight: 900,
+};
+
+const cardSubtitle = {
+  margin: "6px 0 0",
+  fontSize: 13,
+  color: "#64748b",
 };
 
 const formGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+  gap: 14,
   alignItems: "end",
 };
 
-const toolbarWrap = {
+const field = {
   display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  alignItems: "end",
-  justifyContent: "space-between",
+  flexDirection: "column",
+  gap: 7,
 };
 
-const field = { display: "flex", flexDirection: "column", gap: 6 };
-
-const labelStyle = { fontSize: 13, color: "#222", fontWeight: 800 };
+const labelStyle = {
+  fontSize: 12,
+  color: "#334155",
+  fontWeight: 900,
+  letterSpacing: 0.3,
+};
 
 const input = {
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  background: "#fff",
-  color: "#111",
   width: "100%",
+  minHeight: 44,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
   outline: "none",
   boxSizing: "border-box",
+  fontSize: 14,
 };
 
 const disabledInput = {
   ...input,
-  background: "#f5f5f5",
-  color: "#666",
+  background: "#f8fafc",
+  color: "#64748b",
   cursor: "not-allowed",
 };
 
 const autoBox = {
-  padding: 10,
-  border: "1px solid #d0d0d0",
-  borderRadius: 10,
-  background: "#f7f7f7",
-  color: "#555",
-  fontWeight: 700,
   width: "100%",
+  minHeight: 44,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #dbe2ea",
+  background: "#f8fafc",
+  color: "#475569",
+  fontWeight: 800,
   boxSizing: "border-box",
+  display: "flex",
+  alignItems: "center",
 };
 
 const hintText = {
   fontSize: 12,
-  color: "#666",
-  marginTop: 2,
+  color: "#64748b",
 };
 
-const totalsRow = { display: "flex", justifyContent: "flex-end" };
+const subSectionCard = {
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
+  padding: 14,
+};
 
-const totalsBox = {
-  width: "min(420px, 100%)",
+const subSectionHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 12,
+};
+
+const subSectionTitle = {
+  margin: 0,
+  fontSize: 14,
+  color: "#0f172a",
+  fontWeight: 900,
+};
+
+const infoGrid = {
   display: "grid",
-  gap: 8,
-  background: "#f7f8fa",
-  border: "1px solid #eee",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 12,
+};
+
+const infoMini = {
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
   borderRadius: 14,
   padding: 12,
+};
+
+const infoMiniLabel = {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 700,
+};
+
+const infoMiniValue = {
+  fontSize: 14,
+  color: "#0f172a",
+  fontWeight: 900,
+  marginTop: 4,
+  wordBreak: "break-word",
+};
+
+const tableWrap = {
+  overflowX: "auto",
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
+};
+
+const table = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: 900,
+  background: "#ffffff",
+};
+
+const th = {
+  textAlign: "left",
+  padding: "14px 14px",
+  background: "#f8fafc",
+  color: "#334155",
+  fontSize: 13,
+  fontWeight: 900,
+  borderBottom: "1px solid #e2e8f0",
+};
+
+const tr = {
+  borderBottom: "1px solid #eef2f7",
+};
+
+const td = {
+  padding: 12,
+  verticalAlign: "middle",
+};
+
+const tdSmall = {
+  padding: 12,
+  verticalAlign: "middle",
+  width: 140,
+};
+
+const tdAmount = {
+  padding: 12,
+  verticalAlign: "middle",
+  fontWeight: 900,
+  color: "#0f172a",
+  minWidth: 120,
+};
+
+const tdAction = {
+  padding: 12,
+  verticalAlign: "middle",
+  minWidth: 120,
+};
+
+const emptyTd = {
+  padding: 18,
+  textAlign: "center",
+  color: "#64748b",
+  fontWeight: 700,
+};
+
+const footerGrid = {
+  display: "grid",
+  gridTemplateColumns: "1.5fr minmax(280px, 360px)",
+  gap: 16,
+  alignItems: "start",
+};
+
+const noteBox = {
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  padding: 14,
+  color: "#475569",
+  fontSize: 13,
+  lineHeight: 1.5,
+  fontWeight: 700,
+};
+
+const summaryCard = {
+  background: "#f8fafc",
+  border: "1px solid #dbe2ea",
+  borderRadius: 18,
+  padding: 16,
+  display: "grid",
+  gap: 10,
+};
+
+const summaryTitle = {
+  fontSize: 13,
+  color: "#334155",
+  fontWeight: 900,
+  marginBottom: 4,
+};
+
+const actionBar = {
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
 };
 
 const saveActions = {
@@ -944,115 +1209,102 @@ const saveActions = {
 };
 
 const btnPrimary = {
+  minHeight: 44,
   padding: "10px 16px",
   borderRadius: 12,
-  border: "1px solid #0b5cff",
-  background: "#0b5cff",
-  color: "white",
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#ffffff",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 14,
+  boxShadow: "0 8px 20px rgba(37, 99, 235, 0.22)",
+};
+
+const btnSecondary = {
+  minHeight: 44,
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
 };
 
 const btnGhost = {
+  minHeight: 44,
   padding: "10px 16px",
   borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "#fff",
-  color: "#111",
+  border: "1px solid #dbe2ea",
+  background: "#f8fafc",
+  color: "#334155",
   cursor: "pointer",
   fontWeight: 900,
+  fontSize: 14,
 };
 
 const btnDanger = {
+  minHeight: 38,
   padding: "8px 12px",
   borderRadius: 10,
-  border: "1px solid #ff9a9a",
-  background: "#ffecec",
-  color: "#a40000",
+  border: "1px solid #fda4af",
+  background: "#fff1f2",
+  color: "#b42318",
   cursor: "pointer",
   fontWeight: 800,
-};
-
-const modeBadge = {
-  display: "inline-block",
-  padding: "6px 10px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#eef4ff",
-  color: "#0b5cff",
-  border: "1px solid #b7cbff",
-};
-
-const modeBadgeBlue = {
-  display: "inline-block",
-  padding: "6px 10px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#eef4ff",
-  color: "#0b5cff",
-  border: "1px solid #b7cbff",
-};
-
-const modeBadgeWarning = {
-  display: "inline-block",
-  padding: "6px 10px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#fff8e8",
-  color: "#8a5a00",
-  border: "1px solid #edd28a",
-};
-
-const modeBadgeLocked = {
-  display: "inline-block",
-  padding: "6px 10px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 900,
-  background: "#f0f0f0",
-  color: "#555",
-  border: "1px solid #d5d5d5",
-};
-
-const customerInfoCard = {
-  background: "#f7f8fa",
-  border: "1px solid #eee",
-  borderRadius: 14,
-  padding: 12,
-};
-
-const customerInfoTitle = {
   fontSize: 13,
-  fontWeight: 900,
-  color: "#111",
-  marginBottom: 10,
 };
 
-const customerInfoGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 10,
-};
-
-const infoMini = {
-  background: "#fff",
-  border: "1px solid #e6e6e6",
-  borderRadius: 12,
-  padding: 10,
-};
-
-const infoMiniLabel = {
+const badgeBlue = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
   fontSize: 12,
-  color: "#666",
-  fontWeight: 700,
+  fontWeight: 900,
+  background: "#eff8ff",
+  color: "#175cd3",
+  border: "1px solid #b2ddff",
 };
 
-const infoMiniValue = {
-  fontSize: 14,
-  color: "#111",
+const badgeGray = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
   fontWeight: 900,
-  marginTop: 4,
+  background: "#f2f4f7",
+  color: "#475467",
+  border: "1px solid #d0d5dd",
+};
+
+const badgeAmber = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#fffaeb",
+  color: "#b54708",
+  border: "1px solid #fedf89",
+};
+
+const badgeGreen = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 900,
+  background: "#ecfdf3",
+  color: "#027a48",
+  border: "1px solid #abefc6",
 };
