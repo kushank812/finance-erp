@@ -20,7 +20,9 @@ import BillingNew from "./pages/BillingNew";
 import PurchaseBillNew from "./pages/PurchaseBillNew";
 
 import ReceiptNew from "./pages/ReceiptNew";
+import ReceiptList from "./pages/ReceiptList";
 import VendorPaymentNew from "./pages/VendorPaymentNew";
+import VendorPaymentList from "./pages/VendorPaymentList";
 
 import Ledger from "./pages/Ledger";
 import Aging from "./pages/Aging";
@@ -310,6 +312,10 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
                   Receipt
                 </NavLink>
 
+                <NavLink to="/receipts" style={({ isActive }) => linkStyle(isActive)}>
+                  Receipts
+                </NavLink>
+
                 <div style={divider} />
 
                 <div style={groupLabelStyle()}>AP</div>
@@ -324,6 +330,10 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
 
                 <NavLink to="/purchase/pay" style={({ isActive }) => linkStyle(isActive)}>
                   Vendor Payment
+                </NavLink>
+
+                <NavLink to="/vendor-payments" style={({ isActive }) => linkStyle(isActive)}>
+                  Payments
                 </NavLink>
 
                 <div style={divider} />
@@ -616,6 +626,19 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
         />
 
         <Route
+          path="/receipts"
+          element={
+            <DocumentViewRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <ReceiptList />
+            </DocumentViewRoute>
+          }
+        />
+
+        <Route
           path="/receipt/view/:receiptNo"
           element={
             <DocumentViewRoute
@@ -690,6 +713,19 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
             >
               <VendorPaymentNew />
             </TransactionRoute>
+          }
+        />
+
+        <Route
+          path="/vendor-payments"
+          element={
+            <DocumentViewRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <VendorPaymentList />
+            </DocumentViewRoute>
           }
         />
 
