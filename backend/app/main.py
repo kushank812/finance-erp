@@ -77,7 +77,6 @@ app.include_router(audit_meta_router)
 def health():
     return {"status": "ok"}
 
-
 @app.get("/health/db")
 def health_db():
     test_db_connection()
