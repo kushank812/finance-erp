@@ -356,7 +356,7 @@ export default function PurchaseBillView() {
       </div>
 
       <div style={infoCard}>
-        <div style={infoTitle}>Real-life action rules</div>
+        <div style={infoTitle}>Rules</div>
         <div style={infoText}>
           PENDING / OVERDUE bills can be fully edited. PARTIAL bills can be edited
           in restricted mode only. PAID and CANCELLED bills are view-only. Cancel
