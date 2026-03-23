@@ -1,4 +1,3 @@
-// src/pages/Users.jsx
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
@@ -105,19 +104,39 @@ export default function Users() {
       role: String(form.role || "").trim().toUpperCase(),
     };
 
-    if (!payload.user_id) return setErr("User ID is required.");
-    if (!payload.full_name) return setErr("Full name is required.");
-    if (!payload.password || payload.password.length < 8)
-      return setErr("Password must be at least 8 characters.");
-    if (!ROLES.includes(payload.role))
-      return setErr("Invalid role selected.");
+    if (!payload.user_id) {
+      setErr("User ID is required.");
+      return;
+    }
+
+    if (!payload.full_name) {
+      setErr("Full name is required.");
+      return;
+    }
+
+    if (!payload.password || payload.password.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (!ROLES.includes(payload.role)) {
+      setErr("Invalid role selected.");
+      return;
+    }
 
     setSaving(true);
     try {
       await apiPost("/users/", payload);
+
       setOk(`User "${payload.user_id}" created successfully.`);
       setForm(emptyForm);
-      await load(false);
+
+      const refreshed = await load(false);
+      if (!refreshed) {
+        setErr(
+          `User "${payload.user_id}" was created, but the user list could not be refreshed.`
+        );
+      }
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -135,15 +154,27 @@ export default function Users() {
       is_active: !!row.is_active,
     };
 
-    if (!payload.full_name) return setErr("Full name cannot be empty.");
-    if (!ROLES.includes(payload.role))
-      return setErr("Invalid role selected.");
+    if (!payload.full_name) {
+      setErr("Full name cannot be empty.");
+      return;
+    }
+
+    if (!ROLES.includes(payload.role)) {
+      setErr("Invalid role selected.");
+      return;
+    }
 
     setSaving(true);
     try {
       await apiPut(`/users/${encodeURIComponent(row.user_id)}`, payload);
       setOk(`User "${row.user_id}" updated successfully.`);
-      await load(false);
+
+      const refreshed = await load(false);
+      if (!refreshed) {
+        setErr(
+          `User "${row.user_id}" was updated, but the user list could not be refreshed.`
+        );
+      }
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -156,8 +187,10 @@ export default function Users() {
     setOk("");
 
     const pwd = resetPwdUser === userId ? resetPwdValue : "";
-    if (!pwd || pwd.length < 8)
-      return setErr("Reset password must be at least 8 characters.");
+    if (!pwd || pwd.length < 8) {
+      setErr("Reset password must be at least 8 characters.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -180,12 +213,26 @@ export default function Users() {
         eyebrowText="ADMINISTRATION"
         title="User Management"
         subtitle="Admin-only access. Create users, update roles, activate or deactivate accounts, and reset passwords."
+        actions={
+          <button
+            onClick={() => {
+              setErr("");
+              setOk("");
+              load();
+            }}
+            style={btnSecondary}
+            disabled={loading || saving}
+            type="button"
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        }
       />
 
       <div style={stack}>
-        {err && <AlertBox kind="error" message={err} />}
-        {ok && <AlertBox kind="success" message={ok} />}
-        {loading && <AlertBox kind="info" message="Loading users..." />}
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {ok ? <AlertBox kind="success" message={ok} /> : null}
+        {loading ? <AlertBox kind="info" message="Loading users..." /> : null}
       </div>
 
       <section style={card}>
@@ -200,8 +247,7 @@ export default function Users() {
         </div>
 
         <form onSubmit={createUser}>
-          {/* ✅ ADDED BIG GAP BELOW FIELDS */}
-          <div style={{ ...formGrid4, marginBottom: 32 }}>
+          <div style={formGrid4}>
             <FormField
               label="User ID *"
               value={form.user_id}
@@ -233,12 +279,12 @@ export default function Users() {
               onChange={(e) => setFormField("role", e.target.value)}
               options={ROLES}
               disabled={saving}
+              placeholder="-- Select Role --"
             />
           </div>
 
-          {/* ✅ EXTRA GAP ABOVE BUTTONS */}
-          <div style={{ ...actionBar, marginTop: 20 }}>
-            <div style={{ ...saveActions, gap: 16 }}>
+          <div style={actionBar}>
+            <div style={saveActions}>
               <button type="submit" style={btnPrimary} disabled={saving}>
                 {saving ? "Creating..." : "Create User"}
               </button>
@@ -256,7 +302,6 @@ export default function Users() {
         </form>
       </section>
 
-      {/* -------- Existing Users Section unchanged -------- */}
       <section style={card}>
         <div style={cardHeader}>
           <div>
@@ -286,7 +331,7 @@ export default function Users() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.user_id} style={tr}>
-                  <td style={{ ...tdCode }}>{r.user_id}</td>
+                  <td style={{ ...tdCode, whiteSpace: "nowrap" }}>{r.user_id}</td>
 
                   <td style={td}>
                     <input
@@ -309,7 +354,9 @@ export default function Users() {
                       disabled={saving}
                     >
                       {ROLES.map((role) => (
-                        <option key={role}>{role}</option>
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
                       ))}
                     </select>
                   </td>
@@ -321,6 +368,7 @@ export default function Users() {
                       onChange={(e) =>
                         setRowField(r.user_id, "is_active", e.target.checked)
                       }
+                      disabled={saving}
                     />
                   </td>
 
@@ -335,10 +383,12 @@ export default function Users() {
                         }}
                         placeholder="New password"
                         style={{ ...input, minWidth: 180 }}
+                        disabled={saving}
                       />
                       <button
                         onClick={() => resetPassword(r.user_id)}
                         style={btnWarn}
+                        disabled={saving}
                         type="button"
                       >
                         Reset
@@ -350,6 +400,7 @@ export default function Users() {
                     <button
                       onClick={() => saveRow(r)}
                       style={btnMini}
+                      disabled={saving}
                       type="button"
                     >
                       Save
@@ -358,13 +409,21 @@ export default function Users() {
                 </tr>
               ))}
 
-              {rows.length === 0 && (
+              {rows.length === 0 && !loading ? (
                 <tr>
                   <td colSpan="6" style={emptyTd}>
                     No users found.
                   </td>
                 </tr>
-              )}
+              ) : null}
+
+              {loading && rows.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={emptyTd}>
+                    Loading users...
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
