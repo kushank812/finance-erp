@@ -210,11 +210,16 @@ export default function VendorPaymentList() {
   );
 }
 
+/* ✅ ONLY CHANGE IS HERE */
 function Card({ title, value }) {
   return (
     <div style={card}>
-      <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>{title}</div>
-      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6 }}>{value}</div>
+      <div style={{ fontSize: 12, color: "#111", fontWeight: 800 }}>
+        {title}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6, color: "#111" }}>
+        {value}
+      </div>
     </div>
   );
 }
