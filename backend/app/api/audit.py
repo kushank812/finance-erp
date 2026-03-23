@@ -7,6 +7,7 @@ from app.api.auth import require_admin
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.user import User
+from app.utils.audit_constants import AuditAction, AuditModule
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
 
@@ -20,6 +21,7 @@ def get_logs(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -45,6 +47,7 @@ def get_logs(
 
     rows = (
         query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset(offset)
         .limit(limit)
         .all()
     )
@@ -66,3 +69,13 @@ def get_logs(
         }
         for row in rows
     ]
+
+
+@router.get("/meta")
+def get_audit_meta(
+    current_user: User = Depends(require_admin),
+):
+    return {
+        "modules": [item.value for item in AuditModule],
+        "actions": [item.value for item in AuditAction],
+    }

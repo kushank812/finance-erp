@@ -203,3 +203,53 @@ def reset_user_password(
         )
 
     return {"ok": True, "message": "Password reset successfully"}
+
+
+@router.delete("/{user_id}")
+def delete_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    user_id = user_id.strip().upper()
+    obj = db.get(User, user_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if obj.user_id == current_user.user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete yourself")
+
+    if obj.user_id == "ADMIN":
+        raise HTTPException(status_code=400, detail='Primary "ADMIN" user cannot be deleted')
+
+    old_values = {
+        "user_id": obj.user_id,
+        "full_name": obj.full_name,
+        "role": obj.role,
+        "is_active": obj.is_active,
+    }
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.DELETE,
+        module=AuditModule.USER,
+        record_id=obj.user_id,
+        record_name=obj.full_name,
+        details=f"User deleted: {obj.user_id}",
+        old_values=old_values,
+    )
+
+    try:
+        db.delete(obj)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Could not delete user due to database error: {str(getattr(e, 'orig', e))}",
+        )
+
+    return {"ok": True, "message": "User deleted successfully"}

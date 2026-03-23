@@ -198,7 +198,7 @@ export default function AuditLogs() {
     try {
       setMetaLoading(true);
 
-      const data = await apiGet("/audit-meta/");
+      const data = await apiGet("/audit/meta");
 
       const nextModules = normalizeOptions(data?.modules);
       const nextActions = normalizeOptions(data?.actions);
@@ -249,12 +249,11 @@ export default function AuditLogs() {
       params.set("offset", String(offset));
 
       const data = await apiGet(`/audit/?${params.toString()}`);
-      setRows(Array.isArray(data) ? data : []);
+      const nextRows = Array.isArray(data) ? data : [];
+      setRows(nextRows);
 
       if (selected) {
-        const nextSelected = Array.isArray(data)
-          ? data.find((row) => row.id === selected.id)
-          : null;
+        const nextSelected = nextRows.find((row) => row.id === selected.id);
         setSelected(nextSelected || null);
       }
     } catch (e) {
@@ -276,6 +275,7 @@ export default function AuditLogs() {
   useEffect(() => {
     loadMeta();
     loadLogs();
+
     return () => clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -346,7 +346,7 @@ export default function AuditLogs() {
           <h1 style={heroTitle}>Audit Logs</h1>
           <p style={heroSub}>
             Track user actions across masters, transactions, payments, password
-            changes, and authentication activity.
+            changes, authentication activity, and delete operations.
           </p>
         </div>
 
