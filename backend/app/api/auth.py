@@ -33,17 +33,26 @@ def delete_expired_sessions(db: Session) -> None:
     db.commit()
 
 
-def is_request_https(request: Request) -> bool:
-    forwarded_proto = request.headers.get("x-forwarded-proto", "")
-    if forwarded_proto:
-        return forwarded_proto.lower() == "https"
-    return request.url.scheme == "https"
-
-
 def get_cookie_settings(request: Request) -> dict:
-    https = is_request_https(request)
+    origin = (request.headers.get("origin") or "").lower()
+    host = (request.headers.get("host") or "").lower()
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").lower()
 
-    if https:
+    is_local = (
+        "localhost" in origin
+        or "127.0.0.1" in origin
+        or "localhost" in host
+        or "127.0.0.1" in host
+    )
+
+    if is_local:
+        return {
+            "secure": False,
+            "samesite": "lax",
+        }
+
+    # Production / cross-site frontend like Vercel
+    if "vercel.app" in origin or forwarded_proto == "https":
         return {
             "secure": True,
             "samesite": "none",
@@ -187,7 +196,7 @@ def login(
         .filter(
             or_(
                 User.user_id == login_upper,
-                User.email == login_lower,
+                User.email.isnot(None) & (User.email == login_lower),
             )
         )
         .first()
