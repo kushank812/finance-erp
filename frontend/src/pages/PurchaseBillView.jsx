@@ -74,10 +74,6 @@ function isPartial(row) {
   return getStatus(row) === "PARTIAL";
 }
 
-function isPending(row) {
-  return getStatus(row) === "PENDING" || getStatus(row) === "OVERDUE";
-}
-
 function canFullEditBill(row) {
   return !isCancelled(row) && !isPaid(row) && !hasPayment(row);
 }
@@ -114,6 +110,8 @@ function actionDisabledStyle(baseStyle) {
 
 export default function PurchaseBillView() {
   const nav = useNavigate();
+  const role = (localStorage.getItem("role") || "").toUpperCase();
+  const isViewer = role === "VIEWER";
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -258,13 +256,15 @@ export default function PurchaseBillView() {
         title="Purchase Bill Management"
         subtitle="Search, view, edit, cancel, and delete purchase bills."
         actions={
-          <button
-            style={btnPrimary}
-            onClick={() => nav("/purchase")}
-            type="button"
-          >
-            + Create Bill
-          </button>
+          !isViewer ? (
+            <button
+              style={btnPrimary}
+              onClick={() => nav("/purchase")}
+              type="button"
+            >
+              + Create Bill
+            </button>
+          ) : null
         }
       />
 
@@ -463,43 +463,51 @@ export default function PurchaseBillView() {
                             View
                           </button>
 
-                          <button
-                            type="button"
-                            style={editAllowed ? miniBtnBlue : actionDisabledStyle(miniBtnBlue)}
-                            disabled={!editAllowed || busy}
-                            title={editTitle}
-                            onClick={() => onEditBill(row)}
-                          >
-                            {editMode === "RESTRICTED" ? "Edit*" : "Edit"}
-                          </button>
+                          {!isViewer && (
+                            <>
+                              <button
+                                type="button"
+                                style={
+                                  editAllowed
+                                    ? miniBtnBlue
+                                    : actionDisabledStyle(miniBtnBlue)
+                                }
+                                disabled={!editAllowed || busy}
+                                title={editTitle}
+                                onClick={() => onEditBill(row)}
+                              >
+                                {editMode === "RESTRICTED" ? "Edit*" : "Edit"}
+                              </button>
 
-                          <button
-                            type="button"
-                            style={
-                              cancelAllowed
-                                ? miniBtnWarning
-                                : actionDisabledStyle(miniBtnWarning)
-                            }
-                            disabled={!cancelAllowed || busy}
-                            title={cancelTitle}
-                            onClick={() => onCancelBill(billNo)}
-                          >
-                            {busy ? "Working..." : "Cancel"}
-                          </button>
+                              <button
+                                type="button"
+                                style={
+                                  cancelAllowed
+                                    ? miniBtnWarning
+                                    : actionDisabledStyle(miniBtnWarning)
+                                }
+                                disabled={!cancelAllowed || busy}
+                                title={cancelTitle}
+                                onClick={() => onCancelBill(billNo)}
+                              >
+                                {busy ? "Working..." : "Cancel"}
+                              </button>
 
-                          <button
-                            type="button"
-                            style={
-                              deleteAllowed
-                                ? btnDangerMini
-                                : actionDisabledStyle(btnDangerMini)
-                            }
-                            disabled={!deleteAllowed || busy}
-                            title={deleteTitle}
-                            onClick={() => onDeleteBill(billNo)}
-                          >
-                            {busy ? "Working..." : "Delete"}
-                          </button>
+                              <button
+                                type="button"
+                                style={
+                                  deleteAllowed
+                                    ? btnDangerMini
+                                    : actionDisabledStyle(btnDangerMini)
+                                }
+                                disabled={!deleteAllowed || busy}
+                                title={deleteTitle}
+                                onClick={() => onDeleteBill(billNo)}
+                              >
+                                {busy ? "Working..." : "Delete"}
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

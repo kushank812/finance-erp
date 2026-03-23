@@ -19,6 +19,8 @@ function buildQuery(params) {
 
 export default function ReceiptList() {
   const nav = useNavigate();
+  const role = (localStorage.getItem("role") || "").toUpperCase();
+  const isViewer = role === "VIEWER";
 
   const [rows, setRows] = useState([]);
   const [filters, setFilters] = useState({
@@ -95,7 +97,6 @@ export default function ReceiptList() {
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>
-      {/* HEADER */}
       <div style={header}>
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Receipt Management</h2>
@@ -105,7 +106,6 @@ export default function ReceiptList() {
         </div>
       </div>
 
-      {/* FILTER */}
       <form onSubmit={onSearch} style={card}>
         <div style={grid}>
           <input
@@ -149,13 +149,11 @@ export default function ReceiptList() {
       {err && <div style={msgErr}>{err}</div>}
       {msg && <div style={msgOk}>{msg}</div>}
 
-      {/* SUMMARY */}
       <div style={summaryGrid}>
         <Card title="Total Receipts" value={summary.total} />
         <Card title="Total Amount" value={`₹ ${summary.amount}`} />
       </div>
 
-      {/* TABLE */}
       <div style={card}>
         <table style={table}>
           <thead>
@@ -181,6 +179,7 @@ export default function ReceiptList() {
                 <td style={td}>
                   <div style={actionWrap}>
                     <button
+                      type="button"
                       style={miniBtn}
                       onClick={() =>
                         nav(`/receipt/view/${encodeURIComponent(r.receipt_no)}`)
@@ -189,13 +188,16 @@ export default function ReceiptList() {
                       View
                     </button>
 
-                    <button
-                      style={miniBtnDanger}
-                      disabled={busy === r.receipt_no}
-                      onClick={() => onDelete(r.receipt_no)}
-                    >
-                      {busy === r.receipt_no ? "Working..." : "Reverse"}
-                    </button>
+                    {!isViewer && (
+                      <button
+                        type="button"
+                        style={miniBtnDanger}
+                        disabled={busy === r.receipt_no}
+                        onClick={() => onDelete(r.receipt_no)}
+                      >
+                        {busy === r.receipt_no ? "Working..." : "Reverse"}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -214,8 +216,6 @@ export default function ReceiptList() {
     </div>
   );
 }
-
-/* ---- styles ---- */
 
 const header = {
   marginBottom: 14,

@@ -31,11 +31,6 @@ import {
   btnGhost,
   btnMini,
   btnDangerMini,
-  badgeBlue,
-  badgeGray,
-  badgeAmber,
-  badgeGreen,
-  disabledBtn,
 } from "../components/ui/uiStyles";
 
 function money(n) {
@@ -79,10 +74,6 @@ function isPartial(row) {
   return getStatus(row) === "PARTIAL";
 }
 
-function isPending(row) {
-  return getStatus(row) === "PENDING" || getStatus(row) === "OVERDUE";
-}
-
 function canFullEditInvoice(row) {
   return !isCancelled(row) && !isPaid(row) && !hasReceipt(row);
 }
@@ -119,6 +110,8 @@ function actionDisabledStyle(baseStyle) {
 
 export default function SalesInvoiceDirectView() {
   const nav = useNavigate();
+  const role = (localStorage.getItem("role") || "").toUpperCase();
+  const isViewer = role === "VIEWER";
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -263,9 +256,11 @@ export default function SalesInvoiceDirectView() {
         title="Sales Invoice Management"
         subtitle="Search, view, edit, cancel, and delete sales invoices."
         actions={
-          <button style={btnPrimary} onClick={() => nav("/billing")} type="button">
-            + Create Invoice
-          </button>
+          !isViewer ? (
+            <button style={btnPrimary} onClick={() => nav("/billing")} type="button">
+              + Create Invoice
+            </button>
+          ) : null
         }
       />
 
@@ -462,43 +457,51 @@ export default function SalesInvoiceDirectView() {
                             View
                           </button>
 
-                          <button
-                            type="button"
-                            style={editAllowed ? miniBtnBlue : actionDisabledStyle(miniBtnBlue)}
-                            disabled={!editAllowed || busy}
-                            title={editTitle}
-                            onClick={() => onEditInvoice(row)}
-                          >
-                            {editMode === "RESTRICTED" ? "Edit*" : "Edit"}
-                          </button>
+                          {!isViewer && (
+                            <>
+                              <button
+                                type="button"
+                                style={
+                                  editAllowed
+                                    ? miniBtnBlue
+                                    : actionDisabledStyle(miniBtnBlue)
+                                }
+                                disabled={!editAllowed || busy}
+                                title={editTitle}
+                                onClick={() => onEditInvoice(row)}
+                              >
+                                {editMode === "RESTRICTED" ? "Edit*" : "Edit"}
+                              </button>
 
-                          <button
-                            type="button"
-                            style={
-                              cancelAllowed
-                                ? miniBtnWarning
-                                : actionDisabledStyle(miniBtnWarning)
-                            }
-                            disabled={!cancelAllowed || busy}
-                            title={cancelTitle}
-                            onClick={() => onCancelInvoice(invoiceNo)}
-                          >
-                            {busy ? "Working..." : "Cancel"}
-                          </button>
+                              <button
+                                type="button"
+                                style={
+                                  cancelAllowed
+                                    ? miniBtnWarning
+                                    : actionDisabledStyle(miniBtnWarning)
+                                }
+                                disabled={!cancelAllowed || busy}
+                                title={cancelTitle}
+                                onClick={() => onCancelInvoice(invoiceNo)}
+                              >
+                                {busy ? "Working..." : "Cancel"}
+                              </button>
 
-                          <button
-                            type="button"
-                            style={
-                              deleteAllowed
-                                ? btnDangerMini
-                                : actionDisabledStyle(btnDangerMini)
-                            }
-                            disabled={!deleteAllowed || busy}
-                            title={deleteTitle}
-                            onClick={() => onDeleteInvoice(invoiceNo)}
-                          >
-                            {busy ? "Working..." : "Delete"}
-                          </button>
+                              <button
+                                type="button"
+                                style={
+                                  deleteAllowed
+                                    ? btnDangerMini
+                                    : actionDisabledStyle(btnDangerMini)
+                                }
+                                disabled={!deleteAllowed || busy}
+                                title={deleteTitle}
+                                onClick={() => onDeleteInvoice(invoiceNo)}
+                              >
+                                {busy ? "Working..." : "Delete"}
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

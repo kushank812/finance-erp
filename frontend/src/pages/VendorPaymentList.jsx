@@ -19,6 +19,8 @@ function buildQuery(params) {
 
 export default function VendorPaymentList() {
   const nav = useNavigate();
+  const role = (localStorage.getItem("role") || "").toUpperCase();
+  const isViewer = role === "VIEWER";
 
   const [rows, setRows] = useState([]);
   const [filters, setFilters] = useState({
@@ -176,6 +178,7 @@ export default function VendorPaymentList() {
                 <td style={td}>
                   <div style={actionWrap}>
                     <button
+                      type="button"
                       style={miniBtn}
                       onClick={() =>
                         nav(`/vendor-payment/view/${encodeURIComponent(r.payment_no)}`)
@@ -184,13 +187,16 @@ export default function VendorPaymentList() {
                       View
                     </button>
 
-                    <button
-                      style={miniBtnDanger}
-                      disabled={busy === r.payment_no}
-                      onClick={() => onReverse(r.payment_no)}
-                    >
-                      {busy === r.payment_no ? "Working..." : "Reverse"}
-                    </button>
+                    {!isViewer && (
+                      <button
+                        type="button"
+                        style={miniBtnDanger}
+                        disabled={busy === r.payment_no}
+                        onClick={() => onReverse(r.payment_no)}
+                      >
+                        {busy === r.payment_no ? "Working..." : "Reverse"}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -210,7 +216,6 @@ export default function VendorPaymentList() {
   );
 }
 
-/* ✅ ONLY CHANGE IS HERE */
 function Card({ title, value }) {
   return (
     <div style={card}>
