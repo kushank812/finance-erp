@@ -355,7 +355,7 @@ export default function SalesInvoiceDirectView() {
       </div>
 
       <div style={infoCard}>
-        <div style={infoTitle}>Real-life action rules</div>
+        <div style={infoTitle}>Rules</div>
         <div style={infoText}>
           PENDING / OVERDUE invoices can be fully edited. PARTIAL invoices can be
           edited in restricted mode only. PAID and CANCELLED invoices are view-only.
