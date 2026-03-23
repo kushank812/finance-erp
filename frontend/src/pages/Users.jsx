@@ -1,6 +1,5 @@
-// src/pages/Users.jsx
 import { useEffect, useState } from "react";
-import { apiGet, apiPost, apiPut } from "../api/client";
+import { apiDelete, apiGet, apiPost, apiPut } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { FormField, FormSelect } from "../components/ui/FormField";
@@ -25,7 +24,6 @@ import {
   emptyTd,
   btnPrimary,
   btnSecondary,
-  btnGhost,
   btnMini,
   btnWarn,
   badgeBlue,
@@ -105,19 +103,38 @@ export default function Users() {
       role: String(form.role || "").trim().toUpperCase(),
     };
 
-    if (!payload.user_id) return setErr("User ID is required.");
-    if (!payload.full_name) return setErr("Full name is required.");
-    if (!payload.password || payload.password.length < 8)
-      return setErr("Password must be at least 8 characters.");
-    if (!ROLES.includes(payload.role))
-      return setErr("Invalid role selected.");
+    if (!payload.user_id) {
+      setErr("User ID is required.");
+      return;
+    }
+
+    if (!payload.full_name) {
+      setErr("Full name is required.");
+      return;
+    }
+
+    if (!payload.password || payload.password.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (!ROLES.includes(payload.role)) {
+      setErr("Invalid role selected.");
+      return;
+    }
 
     setSaving(true);
     try {
       await apiPost("/users/", payload);
       setOk(`User "${payload.user_id}" created successfully.`);
       setForm(emptyForm);
-      await load(false);
+
+      const refreshed = await load(false);
+      if (!refreshed) {
+        setErr(
+          `User "${payload.user_id}" was created, but the user list could not be refreshed.`
+        );
+      }
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -135,15 +152,27 @@ export default function Users() {
       is_active: !!row.is_active,
     };
 
-    if (!payload.full_name) return setErr("Full name cannot be empty.");
-    if (!ROLES.includes(payload.role))
-      return setErr("Invalid role selected.");
+    if (!payload.full_name) {
+      setErr("Full name cannot be empty.");
+      return;
+    }
+
+    if (!ROLES.includes(payload.role)) {
+      setErr("Invalid role selected.");
+      return;
+    }
 
     setSaving(true);
     try {
       await apiPut(`/users/${encodeURIComponent(row.user_id)}`, payload);
       setOk(`User "${row.user_id}" updated successfully.`);
-      await load(false);
+
+      const refreshed = await load(false);
+      if (!refreshed) {
+        setErr(
+          `User "${row.user_id}" was updated, but the user list could not be refreshed.`
+        );
+      }
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -156,8 +185,10 @@ export default function Users() {
     setOk("");
 
     const pwd = resetPwdUser === userId ? resetPwdValue : "";
-    if (!pwd || pwd.length < 8)
-      return setErr("Reset password must be at least 8 characters.");
+    if (!pwd || pwd.length < 8) {
+      setErr("Reset password must be at least 8 characters.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -174,18 +205,70 @@ export default function Users() {
     }
   }
 
+  async function deleteUser(userId) {
+    setErr("");
+    setOk("");
+
+    if (String(userId).toUpperCase() === "ADMIN") {
+      setErr('The primary "ADMIN" user cannot be deleted.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete user "${userId}"? This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      await apiDelete(`/users/${encodeURIComponent(userId)}`);
+      setOk(`User "${userId}" deleted successfully.`);
+
+      if (resetPwdUser === userId) {
+        setResetPwdUser("");
+        setResetPwdValue("");
+      }
+
+      const refreshed = await load(false);
+      if (!refreshed) {
+        setErr(
+          `User "${userId}" was deleted, but the user list could not be refreshed.`
+        );
+      }
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div style={page}>
       <PageHeaderBlock
         eyebrowText="ADMINISTRATION"
         title="User Management"
-        subtitle="Admin-only access. Create users, update roles, activate or deactivate accounts, and reset passwords."
+        subtitle="Admin-only access. Create users, update roles, activate or deactivate accounts, reset passwords, and delete users."
+        actions={
+          <button
+            onClick={() => {
+              setErr("");
+              setOk("");
+              load();
+            }}
+            style={btnSecondary}
+            disabled={loading || saving}
+            type="button"
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        }
       />
 
       <div style={stack}>
-        {err && <AlertBox kind="error" message={err} />}
-        {ok && <AlertBox kind="success" message={ok} />}
-        {loading && <AlertBox kind="info" message="Loading users..." />}
+        {err ? <AlertBox kind="error" message={err} /> : null}
+        {ok ? <AlertBox kind="success" message={ok} /> : null}
+        {loading ? <AlertBox kind="info" message="Loading users..." /> : null}
       </div>
 
       <section style={card}>
@@ -200,7 +283,6 @@ export default function Users() {
         </div>
 
         <form onSubmit={createUser}>
-          {/* ✅ ADDED BIG GAP BELOW FIELDS */}
           <div style={{ ...formGrid4, marginBottom: 32 }}>
             <FormField
               label="User ID *"
@@ -233,10 +315,10 @@ export default function Users() {
               onChange={(e) => setFormField("role", e.target.value)}
               options={ROLES}
               disabled={saving}
+              placeholder="-- Select Role --"
             />
           </div>
 
-          {/* ✅ EXTRA GAP ABOVE BUTTONS */}
           <div style={{ ...actionBar, marginTop: 20 }}>
             <div style={{ ...saveActions, gap: 16 }}>
               <button type="submit" style={btnPrimary} disabled={saving}>
@@ -256,13 +338,12 @@ export default function Users() {
         </form>
       </section>
 
-      {/* -------- Existing Users Section unchanged -------- */}
       <section style={card}>
         <div style={cardHeader}>
           <div>
             <h2 style={cardTitle}>Existing Users</h2>
             <p style={cardSubtitle}>
-              Edit full name, role, active status, and reset passwords.
+              Edit full name, role, active status, reset passwords, and delete users.
             </p>
           </div>
           <div style={badgeBlue}>
@@ -271,7 +352,7 @@ export default function Users() {
         </div>
 
         <div style={tableWrap}>
-          <table style={{ ...table, minWidth: 1050 }}>
+          <table style={{ ...table, minWidth: 1180 }}>
             <thead>
               <tr>
                 <th style={th}>User ID</th>
@@ -279,92 +360,139 @@ export default function Users() {
                 <th style={th}>Role</th>
                 <th style={thCenter}>Active</th>
                 <th style={th}>Reset Password</th>
-                <th style={thCenter}>Actions</th>
+                <th style={thCenter}>Save</th>
+                <th style={thCenter}>Delete</th>
               </tr>
             </thead>
 
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.user_id} style={tr}>
-                  <td style={{ ...tdCode }}>{r.user_id}</td>
+              {rows.map((r) => {
+                const isPrimaryAdmin =
+                  String(r.user_id || "").toUpperCase() === "ADMIN";
 
-                  <td style={td}>
-                    <input
-                      value={r.full_name || ""}
-                      onChange={(e) =>
-                        setRowField(r.user_id, "full_name", e.target.value)
-                      }
-                      style={input}
-                      disabled={saving}
-                    />
-                  </td>
+                return (
+                  <tr key={r.user_id} style={tr}>
+                    <td style={{ ...tdCode, whiteSpace: "nowrap" }}>
+                      {r.user_id}
+                    </td>
 
-                  <td style={td}>
-                    <select
-                      value={r.role}
-                      onChange={(e) =>
-                        setRowField(r.user_id, "role", e.target.value)
-                      }
-                      style={input}
-                      disabled={saving}
-                    >
-                      {ROLES.map((role) => (
-                        <option key={role}>{role}</option>
-                      ))}
-                    </select>
-                  </td>
-
-                  <td style={tdCenter}>
-                    <input
-                      type="checkbox"
-                      checked={!!r.is_active}
-                      onChange={(e) =>
-                        setRowField(r.user_id, "is_active", e.target.checked)
-                      }
-                    />
-                  </td>
-
-                  <td style={td}>
-                    <div style={resetWrap}>
+                    <td style={td}>
                       <input
-                        type="password"
-                        value={resetPwdUser === r.user_id ? resetPwdValue : ""}
-                        onChange={(e) => {
-                          setResetPwdUser(r.user_id);
-                          setResetPwdValue(e.target.value);
-                        }}
-                        placeholder="New password"
-                        style={{ ...input, minWidth: 180 }}
+                        value={r.full_name || ""}
+                        onChange={(e) =>
+                          setRowField(r.user_id, "full_name", e.target.value)
+                        }
+                        style={input}
+                        disabled={saving}
                       />
+                    </td>
+
+                    <td style={td}>
+                      <select
+                        value={r.role}
+                        onChange={(e) =>
+                          setRowField(r.user_id, "role", e.target.value)
+                        }
+                        style={input}
+                        disabled={saving}
+                      >
+                        {ROLES.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
+                    <td style={tdCenter}>
+                      <input
+                        type="checkbox"
+                        checked={!!r.is_active}
+                        onChange={(e) =>
+                          setRowField(r.user_id, "is_active", e.target.checked)
+                        }
+                        disabled={saving || isPrimaryAdmin}
+                        title={
+                          isPrimaryAdmin
+                            ? "Primary ADMIN user cannot be deactivated here."
+                            : ""
+                        }
+                      />
+                    </td>
+
+                    <td style={td}>
+                      <div style={resetWrap}>
+                        <input
+                          type="password"
+                          value={resetPwdUser === r.user_id ? resetPwdValue : ""}
+                          onChange={(e) => {
+                            setResetPwdUser(r.user_id);
+                            setResetPwdValue(e.target.value);
+                          }}
+                          placeholder="New password"
+                          style={{ ...input, minWidth: 180 }}
+                          disabled={saving}
+                        />
+                        <button
+                          onClick={() => resetPassword(r.user_id)}
+                          style={btnWarn}
+                          disabled={saving}
+                          type="button"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </td>
+
+                    <td style={tdCenter}>
                       <button
-                        onClick={() => resetPassword(r.user_id)}
-                        style={btnWarn}
+                        onClick={() => saveRow(r)}
+                        style={btnMini}
+                        disabled={saving}
                         type="button"
                       >
-                        Reset
+                        Save
                       </button>
-                    </div>
-                  </td>
+                    </td>
 
-                  <td style={tdCenter}>
-                    <button
-                      onClick={() => saveRow(r)}
-                      style={btnMini}
-                      type="button"
-                    >
-                      Save
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    <td style={tdCenter}>
+                      <button
+                        onClick={() => deleteUser(r.user_id)}
+                        style={
+                          isPrimaryAdmin
+                            ? disabledDeleteBtn
+                            : deleteBtn
+                        }
+                        disabled={saving || isPrimaryAdmin}
+                        type="button"
+                        title={
+                          isPrimaryAdmin
+                            ? "Primary ADMIN user cannot be deleted."
+                            : "Delete user"
+                        }
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
 
-              {rows.length === 0 && (
+              {rows.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan="6" style={emptyTd}>
+                  <td colSpan="7" style={emptyTd}>
                     No users found.
                   </td>
                 </tr>
-              )}
+              ) : null}
+
+              {loading && rows.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={emptyTd}>
+                    Loading users...
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -378,4 +506,25 @@ const resetWrap = {
   gap: 8,
   flexWrap: "wrap",
   alignItems: "center",
+};
+
+const deleteBtn = {
+  minWidth: 92,
+  height: 44,
+  border: "none",
+  borderRadius: 14,
+  padding: "0 18px",
+  fontWeight: 800,
+  fontSize: 15,
+  cursor: "pointer",
+  color: "#ffffff",
+  background: "linear-gradient(180deg, #ef4444 0%, #dc2626 100%)",
+  boxShadow: "0 10px 20px rgba(220,38,38,0.18)",
+};
+
+const disabledDeleteBtn = {
+  ...deleteBtn,
+  cursor: "not-allowed",
+  opacity: 0.45,
+  boxShadow: "none",
 };
