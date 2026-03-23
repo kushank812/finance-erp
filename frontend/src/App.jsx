@@ -297,45 +297,61 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
 
             <div style={divider} />
 
-            {canDoTransactions(currentUser) && (
+            {(canDoTransactions(currentUser) || canViewDocuments(currentUser)) && (
               <>
                 <div style={groupLabelStyle()}>AR</div>
 
-                <NavLink to="/billing" style={({ isActive }) => linkStyle(isActive)}>
-                  Create Invoice
-                </NavLink>
+                {canDoTransactions(currentUser) && (
+                  <NavLink to="/billing" style={({ isActive }) => linkStyle(isActive)}>
+                    Create Invoice
+                  </NavLink>
+                )}
 
-                <NavLink to="/sales-invoices" style={({ isActive }) => linkStyle(isActive)}>
-                  Invoices
-                </NavLink>
+                {canViewDocuments(currentUser) && (
+                  <NavLink to="/sales-invoices" style={({ isActive }) => linkStyle(isActive)}>
+                    Invoices
+                  </NavLink>
+                )}
 
-                <NavLink to="/receipt/new" style={({ isActive }) => linkStyle(isActive)}>
-                  Receipt
-                </NavLink>
+                {canDoTransactions(currentUser) && (
+                  <NavLink to="/receipt/new" style={({ isActive }) => linkStyle(isActive)}>
+                    Receipt
+                  </NavLink>
+                )}
 
-                <NavLink to="/receipts" style={({ isActive }) => linkStyle(isActive)}>
-                  Receipts
-                </NavLink>
+                {canViewDocuments(currentUser) && (
+                  <NavLink to="/receipts" style={({ isActive }) => linkStyle(isActive)}>
+                    Receipts
+                  </NavLink>
+                )}
 
                 <div style={divider} />
 
                 <div style={groupLabelStyle()}>AP</div>
 
-                <NavLink to="/purchase/new" style={({ isActive }) => linkStyle(isActive)}>
-                  Purchase Bill
-                </NavLink>
+                {canDoTransactions(currentUser) && (
+                  <NavLink to="/purchase/new" style={({ isActive }) => linkStyle(isActive)}>
+                    Purchase Bill
+                  </NavLink>
+                )}
 
-                <NavLink to="/purchase-bills" style={({ isActive }) => linkStyle(isActive)}>
-                  Bills
-                </NavLink>
+                {canViewDocuments(currentUser) && (
+                  <NavLink to="/purchase-bills" style={({ isActive }) => linkStyle(isActive)}>
+                    Bills
+                  </NavLink>
+                )}
 
-                <NavLink to="/purchase/pay" style={({ isActive }) => linkStyle(isActive)}>
-                  Vendor Payment
-                </NavLink>
+                {canDoTransactions(currentUser) && (
+                  <NavLink to="/purchase/pay" style={({ isActive }) => linkStyle(isActive)}>
+                    Vendor Payment
+                  </NavLink>
+                )}
 
-                <NavLink to="/vendor-payments" style={({ isActive }) => linkStyle(isActive)}>
-                  Payments
-                </NavLink>
+                {canViewDocuments(currentUser) && (
+                  <NavLink to="/vendor-payments" style={({ isActive }) => linkStyle(isActive)}>
+                    Payments
+                  </NavLink>
+                )}
 
                 <div style={divider} />
               </>
