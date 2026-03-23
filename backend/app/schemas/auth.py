@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class LoginIn(BaseModel):
-    user_id: str
+    login_id: str
     password: str
     remember_session: bool = True
 

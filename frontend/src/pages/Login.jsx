@@ -6,7 +6,7 @@ export default function Login({ refreshAuth }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [userId, setUserId] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -20,16 +20,16 @@ export default function Login({ refreshAuth }) {
     e.preventDefault();
     setErr("");
 
-    const uid = userId.trim();
+    const loginValue = loginId.trim();
 
-    if (!uid) return setErr("User ID is required.");
+    if (!loginValue) return setErr("User ID or Email is required.");
     if (!password) return setErr("Password is required.");
 
     try {
       setLoading(true);
 
       await apiPost("/auth/login", {
-        user_id: uid,
+        login_id: loginValue,
         password,
         remember_session: remember,
       });
@@ -76,19 +76,19 @@ export default function Login({ refreshAuth }) {
         <div style={card}>
           <div style={cardTop}>
             <h2 style={title}>Sign in</h2>
-            <p style={subtitle}>Enter your user ID and password to continue.</p>
+            <p style={subtitle}>Enter your user ID or email and password to continue.</p>
           </div>
 
           {err ? <div style={msgErr}>{err}</div> : null}
 
           <form onSubmit={onSubmit}>
             <div style={fieldWrap}>
-              <label style={label}>User ID</label>
+              <label style={label}>User ID / Email</label>
               <input
                 type="text"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="Enter user ID"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                placeholder="Enter user ID or email"
                 autoComplete="username"
                 style={input}
               />

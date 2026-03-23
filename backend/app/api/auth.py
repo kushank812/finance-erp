@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.core.database import get_db
 from app.models.user import User, UserSession
@@ -177,7 +178,20 @@ def login(
 ):
     delete_expired_sessions(db)
 
-    user = db.get(User, payload.user_id.strip().upper())
+    login_value = payload.login_id.strip()
+    login_upper = login_value.upper()
+    login_lower = login_value.lower()
+
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                User.user_id == login_upper,
+                User.email == login_lower,
+            )
+        )
+        .first()
+    )
 
     invalid_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
