@@ -5,8 +5,9 @@ import {
   NavLink,
   Navigate,
   useLocation,
+  useNavigate,
 } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { apiGet, apiPost } from "./api/client";
 
@@ -796,19 +797,32 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
   );
 }
 
-export default function App() {
+function AppShell() {
+  const navigate = useNavigate();
+
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  async function refreshAuth() {
+  const bootstrapped = useRef(false);
+
+  async function refreshAuth(options = {}) {
+    const { silent = false } = options;
+
+    if (!silent) {
+      setAuthReady(false);
+    }
+
     try {
       const me = await apiGet("/auth/me");
+
       setAuthenticated(true);
       setCurrentUser(me);
+      return true;
     } catch {
       setAuthenticated(false);
       setCurrentUser(null);
+      return false;
     } finally {
       setAuthReady(true);
     }
@@ -822,23 +836,32 @@ export default function App() {
     } finally {
       setAuthenticated(false);
       setCurrentUser(null);
-      window.location.href = "/login";
+      setAuthReady(true);
+      navigate("/login", { replace: true });
     }
   }
 
   useEffect(() => {
+    if (bootstrapped.current) return;
+    bootstrapped.current = true;
     refreshAuth();
   }, []);
 
   return (
+    <AppRoutes
+      authReady={authReady}
+      authenticated={authenticated}
+      currentUser={currentUser}
+      logout={logout}
+      refreshAuth={refreshAuth}
+    />
+  );
+}
+
+export default function App() {
+  return (
     <Router>
-      <AppRoutes
-        authReady={authReady}
-        authenticated={authenticated}
-        currentUser={currentUser}
-        logout={logout}
-        refreshAuth={refreshAuth}
-      />
+      <AppShell />
     </Router>
   );
 }
