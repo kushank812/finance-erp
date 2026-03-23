@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -120,6 +121,20 @@ def update_user(
     if obj.user_id == current_user.user_id and role != "ADMIN":
         raise HTTPException(status_code=400, detail="You cannot change your own role from ADMIN")
 
+    if obj.role == "ADMIN" and role != "ADMIN":
+        admin_count = (
+            db.query(func.count())
+            .select_from(User)
+            .filter(User.role == "ADMIN", User.is_active.is_(True))
+            .scalar()
+        ) or 0
+
+        if obj.is_active and admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="You cannot remove ADMIN role from the last active admin",
+            )
+
     old_values = {
         "full_name": obj.full_name,
         "role": obj.role,
@@ -129,6 +144,20 @@ def update_user(
     obj.full_name = payload.full_name.strip().upper()
     obj.role = role
     obj.is_active = payload.is_active
+
+    if old_values["role"] == "ADMIN" and old_values["is_active"] and not obj.is_active:
+        active_admin_count = (
+            db.query(func.count())
+            .select_from(User)
+            .filter(User.role == "ADMIN", User.is_active.is_(True))
+            .scalar()
+        ) or 0
+
+        if active_admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="You cannot deactivate the last active admin",
+            )
 
     action = AuditAction.DEACTIVATE if old_values["is_active"] and not obj.is_active else AuditAction.UPDATE
     details = (
@@ -220,8 +249,19 @@ def delete_user(
     if obj.user_id == current_user.user_id:
         raise HTTPException(status_code=400, detail="You cannot delete yourself")
 
-    if obj.user_id == "ADMIN":
-        raise HTTPException(status_code=400, detail='Primary "ADMIN" user cannot be deleted')
+    if obj.role == "ADMIN":
+        admin_count = (
+            db.query(func.count())
+            .select_from(User)
+            .filter(User.role == "ADMIN")
+            .scalar()
+        ) or 0
+
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="You cannot delete the last admin user",
+            )
 
     old_values = {
         "user_id": obj.user_id,

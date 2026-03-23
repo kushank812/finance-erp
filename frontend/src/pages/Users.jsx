@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiDelete, apiGet, apiPost, apiPut } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
@@ -52,6 +52,11 @@ export default function Users() {
 
   const [resetPwdUser, setResetPwdUser] = useState("");
   const [resetPwdValue, setResetPwdValue] = useState("");
+
+  const adminCount = useMemo(() => {
+    return rows.filter((r) => String(r.role || "").toUpperCase() === "ADMIN")
+      .length;
+  }, [rows]);
 
   async function load(showLoader = true) {
     if (showLoader) setLoading(true);
@@ -209,8 +214,12 @@ export default function Users() {
     setErr("");
     setOk("");
 
-    if (String(userId).toUpperCase() === "ADMIN") {
-      setErr('The primary "ADMIN" user cannot be deleted.');
+    const target = rows.find((r) => r.user_id === userId);
+    const isAdminUser =
+      String(target?.role || "").trim().toUpperCase() === "ADMIN";
+
+    if (isAdminUser && adminCount <= 1) {
+      setErr("You cannot delete the last admin user.");
       return;
     }
 
@@ -367,8 +376,9 @@ export default function Users() {
 
             <tbody>
               {rows.map((r) => {
-                const isPrimaryAdmin =
-                  String(r.user_id || "").toUpperCase() === "ADMIN";
+                const isAdminUser =
+                  String(r.role || "").toUpperCase() === "ADMIN";
+                const isLastRemainingAdmin = isAdminUser && adminCount <= 1;
 
                 return (
                   <tr key={r.user_id} style={tr}>
@@ -411,10 +421,10 @@ export default function Users() {
                         onChange={(e) =>
                           setRowField(r.user_id, "is_active", e.target.checked)
                         }
-                        disabled={saving || isPrimaryAdmin}
+                        disabled={saving || isLastRemainingAdmin}
                         title={
-                          isPrimaryAdmin
-                            ? "Primary ADMIN user cannot be deactivated here."
+                          isLastRemainingAdmin
+                            ? "The last remaining admin cannot be deactivated."
                             : ""
                         }
                       />
@@ -458,16 +468,12 @@ export default function Users() {
                     <td style={tdCenter}>
                       <button
                         onClick={() => deleteUser(r.user_id)}
-                        style={
-                          isPrimaryAdmin
-                            ? disabledDeleteBtn
-                            : deleteBtn
-                        }
-                        disabled={saving || isPrimaryAdmin}
+                        style={isLastRemainingAdmin ? disabledDeleteBtn : deleteBtn}
+                        disabled={saving || isLastRemainingAdmin}
                         type="button"
                         title={
-                          isPrimaryAdmin
-                            ? "Primary ADMIN user cannot be deleted."
+                          isLastRemainingAdmin
+                            ? "The last remaining admin cannot be deleted."
                             : "Delete user"
                         }
                       >
