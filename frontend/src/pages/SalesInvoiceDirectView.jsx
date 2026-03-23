@@ -108,10 +108,9 @@ function actionDisabledStyle(baseStyle) {
   };
 }
 
-export default function SalesInvoiceDirectView() {
+export default function SalesInvoiceDirectView({ currentUser }) {
   const nav = useNavigate();
-  const role = (localStorage.getItem("role") || "").toUpperCase();
-  const isViewer = role === "VIEWER";
+  const isViewer = currentUser?.role === "VIEWER";
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);

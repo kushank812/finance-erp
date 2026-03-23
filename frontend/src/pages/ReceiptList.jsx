@@ -17,10 +17,9 @@ function buildQuery(params) {
   return s ? `?${s}` : "";
 }
 
-export default function ReceiptList() {
+export default function ReceiptList({ currentUser }) {
   const nav = useNavigate();
-  const role = (localStorage.getItem("role") || "").toUpperCase();
-  const isViewer = role === "VIEWER";
+  const isViewer = currentUser?.role === "VIEWER";
 
   const [rows, setRows] = useState([]);
   const [filters, setFilters] = useState({

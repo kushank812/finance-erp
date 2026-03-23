@@ -611,7 +611,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <SalesInvoiceDirectView />
+              <SalesInvoiceDirectView currentUser={currentUser} />
             </DocumentViewRoute>
           }
         />
@@ -650,7 +650,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <ReceiptList />
+              <ReceiptList currentUser={currentUser} />
             </DocumentViewRoute>
           }
         />
@@ -702,7 +702,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <PurchaseBillView />
+              <PurchaseBillView currentUser={currentUser} />
             </DocumentViewRoute>
           }
         />
@@ -741,7 +741,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <VendorPaymentList />
+              <VendorPaymentList currentUser={currentUser} />
             </DocumentViewRoute>
           }
         />
