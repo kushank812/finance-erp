@@ -24,6 +24,13 @@ router = APIRouter(
 VALID_ROLES = {"ADMIN", "OPERATOR", "VIEWER"}
 
 
+def normalize_email(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip().lower()
+    return cleaned or None
+
+
 @router.get("/", response_model=list[UserOut])
 def list_users(
     db: Session = Depends(get_db),
@@ -41,6 +48,7 @@ def create_user(
 ):
     user_id = payload.user_id.strip().upper()
     full_name = payload.full_name.strip().upper()
+    email = normalize_email(getattr(payload, "email", None))
     role = payload.role.strip().upper()
 
     if role not in VALID_ROLES:
@@ -50,9 +58,15 @@ def create_user(
     if existing:
         raise HTTPException(status_code=409, detail="User ID already exists")
 
+    if email:
+        email_exists = db.query(User).filter(User.email == email).first()
+        if email_exists:
+            raise HTTPException(status_code=409, detail="Email already exists")
+
     obj = User(
         user_id=user_id,
         full_name=full_name,
+        email=email,
         password_hash=hash_password(payload.password),
         is_active=True,
         role=role,
@@ -72,6 +86,7 @@ def create_user(
         new_values={
             "user_id": obj.user_id,
             "full_name": obj.full_name,
+            "email": obj.email,
             "role": obj.role,
             "is_active": obj.is_active,
         },
@@ -86,13 +101,19 @@ def create_user(
         if "USER_ID" in error_text and ("UNIQUE" in error_text or "DUPLICATE" in error_text):
             raise HTTPException(status_code=409, detail="User ID already exists")
 
+        if "EMAIL" in error_text and ("UNIQUE" in error_text or "DUPLICATE" in error_text):
+            raise HTTPException(status_code=409, detail="Email already exists")
+
         if "ROLE" in error_text or "CHECK" in error_text or "ENUM" in error_text:
             raise HTTPException(
                 status_code=400,
                 detail=f"Database rejected role '{role}'. Update database constraint to allow VIEWER.",
             )
 
-        raise HTTPException(status_code=500, detail=f"Database error: {str(getattr(e, 'orig', e))}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(getattr(e, 'orig', e))}",
+        )
 
     db.refresh(obj)
     return obj
@@ -112,6 +133,8 @@ def update_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     role = payload.role.strip().upper()
+    email = normalize_email(getattr(payload, "email", None))
+
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role")
 
@@ -120,6 +143,15 @@ def update_user(
 
     if obj.user_id == current_user.user_id and role != "ADMIN":
         raise HTTPException(status_code=400, detail="You cannot change your own role from ADMIN")
+
+    if email:
+        email_exists = (
+            db.query(User)
+            .filter(User.email == email, User.user_id != obj.user_id)
+            .first()
+        )
+        if email_exists:
+            raise HTTPException(status_code=409, detail="Email already exists")
 
     if obj.role == "ADMIN" and role != "ADMIN":
         admin_count = (
@@ -137,11 +169,13 @@ def update_user(
 
     old_values = {
         "full_name": obj.full_name,
+        "email": obj.email,
         "role": obj.role,
         "is_active": obj.is_active,
     }
 
     obj.full_name = payload.full_name.strip().upper()
+    obj.email = email
     obj.role = role
     obj.is_active = payload.is_active
 
@@ -159,7 +193,11 @@ def update_user(
                 detail="You cannot deactivate the last active admin",
             )
 
-    action = AuditAction.DEACTIVATE if old_values["is_active"] and not obj.is_active else AuditAction.UPDATE
+    action = (
+        AuditAction.DEACTIVATE
+        if old_values["is_active"] and not obj.is_active
+        else AuditAction.UPDATE
+    )
     details = (
         f"User deactivated: {obj.user_id}"
         if action == AuditAction.DEACTIVATE
@@ -178,6 +216,7 @@ def update_user(
         old_values=old_values,
         new_values={
             "full_name": obj.full_name,
+            "email": obj.email,
             "role": obj.role,
             "is_active": obj.is_active,
         },
@@ -187,6 +226,11 @@ def update_user(
         db.commit()
     except IntegrityError as e:
         db.rollback()
+        error_text = str(getattr(e, "orig", e)).upper()
+
+        if "EMAIL" in error_text and ("UNIQUE" in error_text or "DUPLICATE" in error_text):
+            raise HTTPException(status_code=409, detail="Email already exists")
+
         raise HTTPException(
             status_code=409,
             detail=f"Could not update user due to database error: {str(getattr(e, 'orig', e))}",
@@ -266,6 +310,7 @@ def delete_user(
     old_values = {
         "user_id": obj.user_id,
         "full_name": obj.full_name,
+        "email": obj.email,
         "role": obj.role,
         "is_active": obj.is_active,
     }

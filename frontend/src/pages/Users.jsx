@@ -10,7 +10,6 @@ import {
   cardHeader,
   cardTitle,
   cardSubtitle,
-  formGrid4,
   actionBar,
   saveActions,
   tableWrap,
@@ -36,9 +35,20 @@ const ROLES = ["ADMIN", "OPERATOR", "VIEWER"];
 const emptyForm = {
   user_id: "",
   full_name: "",
+  email: "",
   password: "",
   role: "OPERATOR",
 };
+
+function normalizeEmail(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return v || "";
+}
+
+function isValidEmail(value) {
+  if (!value) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 export default function Users() {
   const [rows, setRows] = useState([]);
@@ -62,7 +72,14 @@ export default function Users() {
     if (showLoader) setLoading(true);
     try {
       const data = await apiGet("/users/");
-      setRows(Array.isArray(data) ? data : []);
+      setRows(
+        Array.isArray(data)
+          ? data.map((row) => ({
+              ...row,
+              email: row.email || "",
+            }))
+          : []
+      );
       return true;
     } catch (e) {
       setErr(String(e.message || e));
@@ -101,9 +118,12 @@ export default function Users() {
     setErr("");
     setOk("");
 
+    const emailValue = normalizeEmail(form.email);
+
     const payload = {
       user_id: String(form.user_id || "").trim().toUpperCase(),
       full_name: String(form.full_name || "").trim().toUpperCase(),
+      email: emailValue || null,
       password: form.password,
       role: String(form.role || "").trim().toUpperCase(),
     };
@@ -115,6 +135,11 @@ export default function Users() {
 
     if (!payload.full_name) {
       setErr("Full name is required.");
+      return;
+    }
+
+    if (emailValue && !isValidEmail(emailValue)) {
+      setErr("Please enter a valid email address.");
       return;
     }
 
@@ -151,14 +176,22 @@ export default function Users() {
     setErr("");
     setOk("");
 
+    const emailValue = normalizeEmail(row.email);
+
     const payload = {
       full_name: String(row.full_name || "").trim().toUpperCase(),
+      email: emailValue || null,
       role: String(row.role || "").trim().toUpperCase(),
       is_active: !!row.is_active,
     };
 
     if (!payload.full_name) {
       setErr("Full name cannot be empty.");
+      return;
+    }
+
+    if (emailValue && !isValidEmail(emailValue)) {
+      setErr(`Please enter a valid email for user "${row.user_id}".`);
       return;
     }
 
@@ -257,7 +290,7 @@ export default function Users() {
       <PageHeaderBlock
         eyebrowText="ADMINISTRATION"
         title="User Management"
-        subtitle="Admin-only access. Create users, update roles, activate or deactivate accounts, reset passwords, and delete users."
+        subtitle="Admin-only access. Create users, update roles, activate or deactivate accounts, optionally store email for login, reset passwords, and delete users."
         actions={
           <button
             onClick={() => {
@@ -286,13 +319,15 @@ export default function Users() {
             <h2 style={cardTitle}>Create User</h2>
             <p style={cardSubtitle}>
               Add new login accounts for administrators, operators, and viewers.
+              Email is optional, but users with email can sign in using either User
+              ID or Email.
             </p>
           </div>
           <div style={badgeGreen}>CREATE</div>
         </div>
 
         <form onSubmit={createUser}>
-          <div style={{ ...formGrid4, marginBottom: 32 }}>
+          <div style={createGrid}>
             <FormField
               label="User ID *"
               value={form.user_id}
@@ -306,6 +341,15 @@ export default function Users() {
               value={form.full_name}
               onChange={(e) => setFormField("full_name", e.target.value)}
               placeholder="e.g. CASHIER 1"
+              disabled={saving}
+            />
+
+            <FormField
+              label="Email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setFormField("email", e.target.value)}
+              placeholder="e.g. user@example.com"
               disabled={saving}
             />
 
@@ -352,7 +396,8 @@ export default function Users() {
           <div>
             <h2 style={cardTitle}>Existing Users</h2>
             <p style={cardSubtitle}>
-              Edit full name, role, active status, reset passwords, and delete users.
+              Edit full name, optional email, role, active status, reset passwords,
+              and delete users.
             </p>
           </div>
           <div style={badgeBlue}>
@@ -361,11 +406,12 @@ export default function Users() {
         </div>
 
         <div style={tableWrap}>
-          <table style={{ ...table, minWidth: 1180 }}>
+          <table style={{ ...table, minWidth: 1380 }}>
             <thead>
               <tr>
                 <th style={th}>User ID</th>
                 <th style={th}>Full Name</th>
+                <th style={th}>Email</th>
                 <th style={th}>Role</th>
                 <th style={thCenter}>Active</th>
                 <th style={th}>Reset Password</th>
@@ -392,6 +438,19 @@ export default function Users() {
                         onChange={(e) =>
                           setRowField(r.user_id, "full_name", e.target.value)
                         }
+                        style={input}
+                        disabled={saving}
+                      />
+                    </td>
+
+                    <td style={td}>
+                      <input
+                        type="email"
+                        value={r.email || ""}
+                        onChange={(e) =>
+                          setRowField(r.user_id, "email", e.target.value)
+                        }
+                        placeholder="Optional email"
                         style={input}
                         disabled={saving}
                       />
@@ -486,7 +545,7 @@ export default function Users() {
 
               {rows.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan="7" style={emptyTd}>
+                  <td colSpan="8" style={emptyTd}>
                     No users found.
                   </td>
                 </tr>
@@ -494,7 +553,7 @@ export default function Users() {
 
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={emptyTd}>
+                  <td colSpan="8" style={emptyTd}>
                     Loading users...
                   </td>
                 </tr>
@@ -506,6 +565,13 @@ export default function Users() {
     </div>
   );
 }
+
+const createGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(5, minmax(180px, 1fr))",
+  gap: 16,
+  marginBottom: 32,
+};
 
 const resetWrap = {
   display: "flex",
