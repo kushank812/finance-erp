@@ -91,7 +91,7 @@ function canCancelInvoice(row) {
 }
 
 function canDeleteInvoice(row) {
-  return !isCancelled(row) && !hasReceipt(row);
+  return !isCancelled(row) && Number(row?.balance || 0) === 0;
 }
 
 function getEditMode(row) {
@@ -117,7 +117,10 @@ function sortInvoicesLatestFirst(rows) {
 
     const noA = String(a?.invoice_no || "");
     const noB = String(b?.invoice_no || "");
-    return noB.localeCompare(noA, undefined, { numeric: true, sensitivity: "base" });
+    return noB.localeCompare(noA, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
   });
 }
 
@@ -227,7 +230,7 @@ export default function SalesInvoiceDirectView({ currentUser }) {
 
   async function onDeleteInvoice(invoiceNo) {
     const ok = window.confirm(
-      `Are you sure you want to delete invoice ${invoiceNo}?\n\nDelete is allowed only when no receipt exists.\nUse delete only for wrong entry / mistaken invoice.\nThis action cannot be undone.`
+      `Are you sure you want to delete invoice ${invoiceNo}?\n\nDelete is allowed only when balance is 0.\nAll linked receipts will be automatically deleted.\nThis action cannot be undone.`
     );
     if (!ok) return;
 
@@ -369,7 +372,8 @@ export default function SalesInvoiceDirectView({ currentUser }) {
           Latest invoices are shown first. PENDING / OVERDUE invoices can be fully
           edited. PARTIAL invoices can be edited in restricted mode only. PAID and
           CANCELLED invoices are view-only. Cancel is allowed only when no receipt
-          exists. Delete is allowed only for ADMIN when no receipt exists.
+          exists. Delete is allowed only for ADMIN when balance is 0, and linked
+          receipts will be deleted automatically.
         </div>
       </div>
 
@@ -444,10 +448,16 @@ export default function SalesInvoiceDirectView({ currentUser }) {
                     cancelTitle = "Reverse receipt(s) first before cancelling";
 
                   let deleteTitle = "Delete invoice";
-                  if (!isAdmin) deleteTitle = "Only ADMIN can delete invoices";
-                  else if (cancelled) deleteTitle = "Cancelled invoice cannot be deleted";
-                  else if (receiptExists)
-                    deleteTitle = "Reverse receipt(s) first before deleting";
+                  if (!isAdmin) {
+                    deleteTitle = "Only ADMIN can delete invoices";
+                  } else if (cancelled) {
+                    deleteTitle = "Cancelled invoice cannot be deleted";
+                  } else if (Number(row.balance || 0) !== 0) {
+                    deleteTitle = "Invoice can be deleted only when balance is 0";
+                  } else {
+                    deleteTitle =
+                      "Delete allowed. Linked receipts will be automatically deleted.";
+                  }
 
                   return (
                     <tr key={invoiceNo} style={tr}>

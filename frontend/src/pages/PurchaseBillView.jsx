@@ -91,7 +91,7 @@ function canCancelBill(row) {
 }
 
 function canDeleteBill(row) {
-  return !isCancelled(row) && !hasPayment(row);
+  return !isCancelled(row) && Number(row?.balance || 0) === 0;
 }
 
 function getEditMode(row) {
@@ -117,7 +117,10 @@ function sortBillsLatestFirst(rows) {
 
     const noA = String(a?.bill_no || "");
     const noB = String(b?.bill_no || "");
-    return noB.localeCompare(noA, undefined, { numeric: true, sensitivity: "base" });
+    return noB.localeCompare(noA, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
   });
 }
 
@@ -227,7 +230,7 @@ export default function PurchaseBillView({ currentUser }) {
 
   async function onDeleteBill(billNo) {
     const ok = window.confirm(
-      `Are you sure you want to delete bill ${billNo}?\n\nDelete is allowed only when no payment exists.\nUse delete only for wrong entry / mistaken bill.\nThis action cannot be undone.`
+      `Are you sure you want to delete bill ${billNo}?\n\nDelete is allowed only when balance is 0.\nAll linked vendor payments will be automatically deleted.\nThis action cannot be undone.`
     );
     if (!ok) return;
 
@@ -375,7 +378,8 @@ export default function PurchaseBillView({ currentUser }) {
           Latest bills are shown first. PENDING / OVERDUE bills can be fully edited.
           PARTIAL bills can be edited in restricted mode only. PAID and CANCELLED
           bills are view-only. Cancel is allowed only when no payment exists. Delete
-          is allowed only for ADMIN when no payment exists.
+          is allowed only for ADMIN when balance is 0, and linked vendor payments
+          will be deleted automatically.
         </div>
       </div>
 
@@ -450,10 +454,16 @@ export default function PurchaseBillView({ currentUser }) {
                     cancelTitle = "Reverse payment(s) first before cancelling";
 
                   let deleteTitle = "Delete bill";
-                  if (!isAdmin) deleteTitle = "Only ADMIN can delete bills";
-                  else if (cancelled) deleteTitle = "Cancelled bill cannot be deleted";
-                  else if (paymentExists)
-                    deleteTitle = "Reverse payment(s) first before deleting";
+                  if (!isAdmin) {
+                    deleteTitle = "Only ADMIN can delete bills";
+                  } else if (cancelled) {
+                    deleteTitle = "Cancelled bill cannot be deleted";
+                  } else if (Number(row.balance || 0) !== 0) {
+                    deleteTitle = "Bill can be deleted only when balance is 0";
+                  } else {
+                    deleteTitle =
+                      "Delete allowed. Linked vendor payments will be automatically deleted.";
+                  }
 
                   return (
                     <tr key={billNo} style={tr}>
