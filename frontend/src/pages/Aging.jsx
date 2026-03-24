@@ -1,6 +1,5 @@
 // src/pages/Aging.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
 
 import AlertBox from "../components/ui/AlertBox";
@@ -93,8 +92,6 @@ function downloadCSV(filename, rows) {
 }
 
 export default function Aging() {
-  const location = useLocation();
-
   const [tab, setTab] = useState("AR");
   const [asOf, setAsOf] = useState(todayISO());
   const [q, setQ] = useState("");
@@ -119,8 +116,6 @@ export default function Aging() {
       setAp(Array.isArray(apData) ? apData : []);
     } catch (e) {
       setErr(String(e.message || e));
-      setAr([]);
-      setAp([]);
     } finally {
       setLoading(false);
     }
@@ -128,7 +123,7 @@ export default function Aging() {
 
   useEffect(() => {
     load();
-  }, [location.key]);
+  }, []);
 
   const rows = useMemo(() => {
     const src = tab === "AR" ? ar : ap;
