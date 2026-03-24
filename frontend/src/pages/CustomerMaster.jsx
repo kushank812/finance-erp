@@ -97,6 +97,53 @@ const empty = {
   gst_no: "",
 };
 
+function upper(value) {
+  return String(value || "").toUpperCase();
+}
+
+function digitsOnly(value, maxLength = null) {
+  const cleaned = String(value || "").replace(/\D/g, "");
+  return maxLength ? cleaned.slice(0, maxLength) : cleaned;
+}
+
+function lettersSpacesOnly(value, maxLength = null) {
+  const cleaned = String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z\s]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trimStart();
+  return maxLength ? cleaned.slice(0, maxLength) : cleaned;
+}
+
+function alphaNumericBasic(value, maxLength = null) {
+  const cleaned = String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s&/.,()-]/g, "");
+  return maxLength ? cleaned.slice(0, maxLength) : cleaned;
+}
+
+function emailClean(value, maxLength = null) {
+  const cleaned = String(value || "").trim().toLowerCase().replace(/\s/g, "");
+  return maxLength ? cleaned.slice(0, maxLength) : cleaned;
+}
+
+function gstClean(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 15);
+}
+
+function isValidEmail(value) {
+  if (!value) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidGST(value) {
+  if (!value) return true;
+  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/.test(value);
+}
+
 export default function CustomerMaster() {
   const [form, setForm] = useState({ ...empty });
   const [rows, setRows] = useState([]);
@@ -168,6 +215,38 @@ export default function CustomerMaster() {
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
+  function handleCustomerNameChange(value) {
+    update("customer_name", alphaNumericBasic(value, 200));
+  }
+
+  function handleAddressChange(key, value) {
+    update(key, alphaNumericBasic(value, 200));
+  }
+
+  function handleCityChange(value) {
+    update("city", lettersSpacesOnly(value, 100));
+  }
+
+  function handlePinCodeChange(value) {
+    update("pincode", digitsOnly(value, 6));
+  }
+
+  function handleMobileChange(value) {
+    update("mobile_no", digitsOnly(value, 10));
+  }
+
+  function handlePhoneChange(value) {
+    update("ph_no", digitsOnly(value, 15));
+  }
+
+  function handleEmailChange(value) {
+    update("email_id", emailClean(value, 200));
+  }
+
+  function handleGSTChange(value) {
+    update("gst_no", gstClean(value));
+  }
+
   function resetForm() {
     setForm({ ...empty });
     setMode(isViewer ? "view" : "create");
@@ -176,36 +255,70 @@ export default function CustomerMaster() {
     setOk("");
   }
 
-  function buildCreatePayload() {
+  function normalizePayloadValues(source) {
     return {
-      customer_name: form.customer_name,
-      customer_address_line1: form.customer_address_line1,
-      customer_address_line2: form.customer_address_line2,
-      customer_address_line3: form.customer_address_line3,
-      city: form.city,
-      state: form.state,
-      pincode: form.pincode,
-      mobile_no: form.mobile_no,
-      ph_no: form.ph_no,
-      email_id: form.email_id,
-      gst_no: form.gst_no,
+      customer_name: upper(source.customer_name).trim(),
+      customer_address_line1: upper(source.customer_address_line1).trim(),
+      customer_address_line2: upper(source.customer_address_line2).trim(),
+      customer_address_line3: upper(source.customer_address_line3).trim(),
+      city: upper(source.city).trim(),
+      state: upper(source.state).trim(),
+      pincode: digitsOnly(source.pincode, 6),
+      mobile_no: digitsOnly(source.mobile_no, 10),
+      ph_no: digitsOnly(source.ph_no, 15),
+      email_id: String(source.email_id || "").trim().toLowerCase(),
+      gst_no: gstClean(source.gst_no),
     };
   }
 
+  function buildCreatePayload() {
+    return normalizePayloadValues(form);
+  }
+
   function buildUpdatePayload() {
-    return {
-      customer_name: form.customer_name,
-      customer_address_line1: form.customer_address_line1,
-      customer_address_line2: form.customer_address_line2,
-      customer_address_line3: form.customer_address_line3,
-      city: form.city,
-      state: form.state,
-      pincode: form.pincode,
-      mobile_no: form.mobile_no,
-      ph_no: form.ph_no,
-      email_id: form.email_id,
-      gst_no: form.gst_no,
-    };
+    return normalizePayloadValues(form);
+  }
+
+  function validateForm() {
+    const cleaned = normalizePayloadValues(form);
+
+    if (!cleaned.customer_name) {
+      return "Customer Name is required.";
+    }
+
+    if (!cleaned.city) {
+      return "City is required.";
+    }
+
+    if (!cleaned.state) {
+      return "State is required.";
+    }
+
+    if (cleaned.pincode && cleaned.pincode.length !== 6) {
+      return "Pin Code must be exactly 6 digits.";
+    }
+
+    if (cleaned.mobile_no && cleaned.mobile_no.length !== 10) {
+      return "Mobile No must be exactly 10 digits.";
+    }
+
+    if (cleaned.ph_no && cleaned.ph_no.length < 6) {
+      return "Phone No must contain at least 6 digits.";
+    }
+
+    if (cleaned.email_id && !isValidEmail(cleaned.email_id)) {
+      return "Enter a valid Email ID.";
+    }
+
+    if (cleaned.gst_no && cleaned.gst_no.length !== 15) {
+      return "GST No must be exactly 15 characters.";
+    }
+
+    if (cleaned.gst_no && !isValidGST(cleaned.gst_no)) {
+      return "Enter a valid GST No.";
+    }
+
+    return "";
   }
 
   async function save() {
@@ -217,8 +330,9 @@ export default function CustomerMaster() {
     setErr("");
     setOk("");
 
-    if (!form.customer_name?.trim()) {
-      setErr("Customer Name is required.");
+    const validationError = validateForm();
+    if (validationError) {
+      setErr(validationError);
       return;
     }
 
@@ -256,6 +370,17 @@ export default function CustomerMaster() {
       ...empty,
       ...row,
       customer_code: row.customer_code ?? "",
+      customer_name: upper(row.customer_name ?? ""),
+      customer_address_line1: upper(row.customer_address_line1 ?? ""),
+      customer_address_line2: upper(row.customer_address_line2 ?? ""),
+      customer_address_line3: upper(row.customer_address_line3 ?? ""),
+      city: upper(row.city ?? ""),
+      state: upper(row.state ?? ""),
+      pincode: digitsOnly(row.pincode ?? "", 6),
+      mobile_no: digitsOnly(row.mobile_no ?? "", 10),
+      ph_no: digitsOnly(row.ph_no ?? "", 15),
+      email_id: String(row.email_id ?? "").toLowerCase(),
+      gst_no: gstClean(row.gst_no ?? ""),
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -423,9 +548,10 @@ export default function CustomerMaster() {
             <FormField
               label="Customer Name *"
               value={form.customer_name}
-              onChange={(e) => update("customer_name", e.target.value)}
+              onChange={(e) => handleCustomerNameChange(e.target.value)}
               placeholder="Customer Name"
               readOnly={!canWrite}
+              hint="Letters and numbers allowed."
             />
           </div>
         </div>
@@ -436,19 +562,25 @@ export default function CustomerMaster() {
             <FormField
               label="Address Line 1"
               value={form.customer_address_line1}
-              onChange={(e) => update("customer_address_line1", e.target.value)}
+              onChange={(e) =>
+                handleAddressChange("customer_address_line1", e.target.value)
+              }
               readOnly={!canWrite}
             />
             <FormField
               label="Address Line 2"
               value={form.customer_address_line2}
-              onChange={(e) => update("customer_address_line2", e.target.value)}
+              onChange={(e) =>
+                handleAddressChange("customer_address_line2", e.target.value)
+              }
               readOnly={!canWrite}
             />
             <FormField
               label="Address Line 3"
               value={form.customer_address_line3}
-              onChange={(e) => update("customer_address_line3", e.target.value)}
+              onChange={(e) =>
+                handleAddressChange("customer_address_line3", e.target.value)
+              }
               readOnly={!canWrite}
             />
           </div>
@@ -458,15 +590,16 @@ export default function CustomerMaster() {
           <div style={sectionTitle}>Location Details</div>
           <div style={formGrid3}>
             <FormField
-              label="City"
+              label="City *"
               value={form.city}
-              onChange={(e) => update("city", e.target.value)}
+              onChange={(e) => handleCityChange(e.target.value)}
               readOnly={!canWrite}
+              hint="Only letters and spaces allowed."
             />
             <FormSelect
-              label="State"
+              label="State *"
               value={form.state}
-              onChange={(e) => update("state", e.target.value)}
+              onChange={(e) => update("state", upper(e.target.value))}
               options={INDIAN_STATES}
               placeholder="-- Select State --"
               disabled={!canWrite}
@@ -474,9 +607,10 @@ export default function CustomerMaster() {
             <FormField
               label="Pin Code"
               value={form.pincode}
-              onChange={(e) => update("pincode", e.target.value)}
+              onChange={(e) => handlePinCodeChange(e.target.value)}
               placeholder="560001"
               readOnly={!canWrite}
+              hint="Only 6 digits allowed."
             />
           </div>
         </div>
@@ -487,21 +621,23 @@ export default function CustomerMaster() {
             <FormField
               label="Mobile No"
               value={form.mobile_no}
-              onChange={(e) => update("mobile_no", e.target.value)}
+              onChange={(e) => handleMobileChange(e.target.value)}
               placeholder="9999999999"
               readOnly={!canWrite}
+              hint="Only 10 digits allowed."
             />
             <FormField
               label="Phone No"
               value={form.ph_no}
-              onChange={(e) => update("ph_no", e.target.value)}
-              placeholder="080-xxxxxxx"
+              onChange={(e) => handlePhoneChange(e.target.value)}
+              placeholder="0801234567"
               readOnly={!canWrite}
+              hint="Digits only."
             />
             <FormField
               label="Email ID"
               value={form.email_id}
-              onChange={(e) => update("email_id", e.target.value)}
+              onChange={(e) => handleEmailChange(e.target.value)}
               placeholder="name@email.com"
               type="email"
               readOnly={!canWrite}
@@ -509,9 +645,10 @@ export default function CustomerMaster() {
             <FormField
               label="GST No"
               value={form.gst_no}
-              onChange={(e) => update("gst_no", e.target.value)}
+              onChange={(e) => handleGSTChange(e.target.value)}
               placeholder="29ABCDE1234F1Z5"
               readOnly={!canWrite}
+              hint="Must be 15 characters."
             />
           </div>
         </div>

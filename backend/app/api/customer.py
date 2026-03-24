@@ -15,6 +15,46 @@ from app.utils.text import normalize_upper
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
 
+INDIAN_STATES = {
+    "ANDHRA PRADESH",
+    "ARUNACHAL PRADESH",
+    "ASSAM",
+    "BIHAR",
+    "CHHATTISGARH",
+    "GOA",
+    "GUJARAT",
+    "HARYANA",
+    "HIMACHAL PRADESH",
+    "JHARKHAND",
+    "KARNATAKA",
+    "KERALA",
+    "MADHYA PRADESH",
+    "MAHARASHTRA",
+    "MANIPUR",
+    "MEGHALAYA",
+    "MIZORAM",
+    "NAGALAND",
+    "ODISHA",
+    "PUNJAB",
+    "RAJASTHAN",
+    "SIKKIM",
+    "TAMIL NADU",
+    "TELANGANA",
+    "TRIPURA",
+    "UTTAR PRADESH",
+    "UTTARAKHAND",
+    "WEST BENGAL",
+    "ANDAMAN AND NICOBAR ISLANDS",
+    "CHANDIGARH",
+    "DADRA AND NAGAR HAVELI AND DAMAN AND DIU",
+    "DELHI",
+    "JAMMU AND KASHMIR",
+    "LADAKH",
+    "LAKSHADWEEP",
+    "PUDUCHERRY",
+}
+
+
 def customer_snapshot(obj: Customer) -> dict:
     return {
         "customer_code": obj.customer_code,
@@ -30,6 +70,149 @@ def customer_snapshot(obj: Customer) -> dict:
         "email_id": getattr(obj, "email_id", None),
         "gst_no": getattr(obj, "gst_no", None),
     }
+
+
+def _clean_str(value) -> str:
+    return str(value or "").strip()
+
+
+def _digits_only(value, max_len: int | None = None) -> str:
+    cleaned = "".join(ch for ch in _clean_str(value) if ch.isdigit())
+    if max_len is not None:
+        cleaned = cleaned[:max_len]
+    return cleaned
+
+
+def _email_clean(value) -> str:
+    return _clean_str(value).lower().replace(" ", "")
+
+
+def _gst_clean(value) -> str:
+    cleaned = "".join(ch for ch in _clean_str(value).upper() if ch.isalnum())
+    return cleaned[:15]
+
+
+def _is_valid_email(value: str) -> bool:
+    if not value:
+        return True
+    if "@" not in value:
+        return False
+    local, _, domain = value.partition("@")
+    if not local or not domain or "." not in domain:
+        return False
+    if value.startswith("@") or value.endswith("@"):
+        return False
+    return True
+
+
+def _is_valid_gst(value: str) -> bool:
+    if not value:
+        return True
+    if len(value) != 15:
+        return False
+
+    if not value[:2].isdigit():
+        return False
+    if not value[2:7].isalpha():
+        return False
+    if not value[7:11].isdigit():
+        return False
+    if not value[11].isalpha():
+        return False
+    if not value[12].isalnum():
+        return False
+    if value[13] != "Z":
+        return False
+    if not value[14].isalnum():
+        return False
+
+    return True
+
+
+def _validate_customer_data(data: dict, *, partial: bool = False) -> dict:
+    cleaned = dict(data)
+
+    for key in [
+        "customer_name",
+        "customer_address_line1",
+        "customer_address_line2",
+        "customer_address_line3",
+        "city",
+        "state",
+    ]:
+        if key in cleaned and cleaned[key] is not None:
+            cleaned[key] = _clean_str(cleaned[key]).upper()
+
+    if "email_id" in cleaned and cleaned["email_id"] is not None:
+        cleaned["email_id"] = _email_clean(cleaned["email_id"])
+
+    if "pincode" in cleaned and cleaned["pincode"] is not None:
+        cleaned["pincode"] = _digits_only(cleaned["pincode"], 6)
+
+    if "mobile_no" in cleaned and cleaned["mobile_no"] is not None:
+        cleaned["mobile_no"] = _digits_only(cleaned["mobile_no"], 10)
+
+    if "ph_no" in cleaned and cleaned["ph_no"] is not None:
+        cleaned["ph_no"] = _digits_only(cleaned["ph_no"], 15)
+
+    if "gst_no" in cleaned and cleaned["gst_no"] is not None:
+        cleaned["gst_no"] = _gst_clean(cleaned["gst_no"])
+
+    if not partial:
+        if not cleaned.get("customer_name"):
+            raise HTTPException(status_code=400, detail="Customer name is required")
+        if not cleaned.get("city"):
+            raise HTTPException(status_code=400, detail="City is required")
+        if not cleaned.get("state"):
+            raise HTTPException(status_code=400, detail="State is required")
+
+    if "customer_name" in cleaned and cleaned["customer_name"] == "":
+        raise HTTPException(status_code=400, detail="Customer name is required")
+
+    if "city" in cleaned and cleaned["city"] == "":
+        raise HTTPException(status_code=400, detail="City is required")
+
+    if "state" in cleaned:
+        if cleaned["state"] == "":
+            raise HTTPException(status_code=400, detail="State is required")
+        if cleaned["state"] not in INDIAN_STATES:
+            raise HTTPException(status_code=400, detail="Invalid state selected")
+
+    if "pincode" in cleaned and cleaned["pincode"]:
+        if len(cleaned["pincode"]) != 6:
+            raise HTTPException(
+                status_code=400,
+                detail="Pin Code must be exactly 6 digits",
+            )
+
+    if "mobile_no" in cleaned and cleaned["mobile_no"]:
+        if len(cleaned["mobile_no"]) != 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Mobile No must be exactly 10 digits",
+            )
+
+    if "ph_no" in cleaned and cleaned["ph_no"]:
+        if len(cleaned["ph_no"]) < 6:
+            raise HTTPException(
+                status_code=400,
+                detail="Phone No must contain at least 6 digits",
+            )
+
+    if "email_id" in cleaned and cleaned["email_id"]:
+        if not _is_valid_email(cleaned["email_id"]):
+            raise HTTPException(status_code=400, detail="Enter a valid Email ID")
+
+    if "gst_no" in cleaned and cleaned["gst_no"]:
+        if len(cleaned["gst_no"]) != 15:
+            raise HTTPException(
+                status_code=400,
+                detail="GST No must be exactly 15 characters",
+            )
+        if not _is_valid_gst(cleaned["gst_no"]):
+            raise HTTPException(status_code=400, detail="Enter a valid GST No")
+
+    return cleaned
 
 
 @router.get("/", response_model=list[CustomerOut])
@@ -59,10 +242,8 @@ def create_customer(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    data = normalize_upper(payload.model_dump())
-
-    if not data.get("customer_name"):
-        raise HTTPException(status_code=400, detail="Customer name is required")
+    raw_data = normalize_upper(payload.model_dump())
+    data = _validate_customer_data(raw_data, partial=False)
 
     try:
         customer_code = get_next_number(db, "CUSTOMER", "CUST")
@@ -112,9 +293,10 @@ def update_customer(
         raise HTTPException(status_code=404, detail="Customer not found")
 
     old_values = customer_snapshot(obj)
-    data = normalize_upper(payload.model_dump(exclude_unset=True))
+    raw_data = normalize_upper(payload.model_dump(exclude_unset=True))
+    raw_data.pop("customer_code", None)
 
-    data.pop("customer_code", None)
+    data = _validate_customer_data(raw_data, partial=True)
 
     for k, v in data.items():
         setattr(obj, k, v)
