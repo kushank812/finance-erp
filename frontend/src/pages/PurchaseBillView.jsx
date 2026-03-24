@@ -108,9 +108,23 @@ function actionDisabledStyle(baseStyle) {
   };
 }
 
+function sortBillsLatestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const dateA = a?.bill_date ? new Date(a.bill_date).getTime() : 0;
+    const dateB = b?.bill_date ? new Date(b.bill_date).getTime() : 0;
+
+    if (dateB !== dateA) return dateB - dateA;
+
+    const noA = String(a?.bill_no || "");
+    const noB = String(b?.bill_no || "");
+    return noB.localeCompare(noA, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
 export default function PurchaseBillView({ currentUser }) {
   const nav = useNavigate();
   const isViewer = currentUser?.role === "VIEWER";
+  const isAdmin = currentUser?.role === "ADMIN";
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -140,7 +154,8 @@ export default function PurchaseBillView({ currentUser }) {
     try {
       const query = buildQuery(activeFilters);
       const data = await apiGet(`/purchase-invoices${query}`);
-      setRows(Array.isArray(data) ? data : []);
+      const safeRows = Array.isArray(data) ? data : [];
+      setRows(sortBillsLatestFirst(safeRows));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -357,9 +372,10 @@ export default function PurchaseBillView({ currentUser }) {
       <div style={infoCard}>
         <div style={infoTitle}>Rules</div>
         <div style={infoText}>
-          PENDING / OVERDUE bills can be fully edited. PARTIAL bills can be edited
-          in restricted mode only. PAID and CANCELLED bills are view-only. Cancel
-          and Delete are allowed only when no payment exists.
+          Latest bills are shown first. PENDING / OVERDUE bills can be fully edited.
+          PARTIAL bills can be edited in restricted mode only. PAID and CANCELLED
+          bills are view-only. Cancel is allowed only when no payment exists. Delete
+          is allowed only for ADMIN when no payment exists.
         </div>
       </div>
 
@@ -434,7 +450,8 @@ export default function PurchaseBillView({ currentUser }) {
                     cancelTitle = "Reverse payment(s) first before cancelling";
 
                   let deleteTitle = "Delete bill";
-                  if (cancelled) deleteTitle = "Cancelled bill cannot be deleted";
+                  if (!isAdmin) deleteTitle = "Only ADMIN can delete bills";
+                  else if (cancelled) deleteTitle = "Cancelled bill cannot be deleted";
                   else if (paymentExists)
                     deleteTitle = "Reverse payment(s) first before deleting";
 
@@ -492,19 +509,21 @@ export default function PurchaseBillView({ currentUser }) {
                                 {busy ? "Working..." : "Cancel"}
                               </button>
 
-                              <button
-                                type="button"
-                                style={
-                                  deleteAllowed
-                                    ? btnDangerMini
-                                    : actionDisabledStyle(btnDangerMini)
-                                }
-                                disabled={!deleteAllowed || busy}
-                                title={deleteTitle}
-                                onClick={() => onDeleteBill(billNo)}
-                              >
-                                {busy ? "Working..." : "Delete"}
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  style={
+                                    deleteAllowed
+                                      ? btnDangerMini
+                                      : actionDisabledStyle(btnDangerMini)
+                                  }
+                                  disabled={!deleteAllowed || busy}
+                                  title={deleteTitle}
+                                  onClick={() => onDeleteBill(billNo)}
+                                >
+                                  {busy ? "Working..." : "Delete"}
+                                </button>
+                              )}
                             </>
                           )}
                         </div>

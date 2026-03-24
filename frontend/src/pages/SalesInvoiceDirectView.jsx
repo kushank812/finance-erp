@@ -108,9 +108,23 @@ function actionDisabledStyle(baseStyle) {
   };
 }
 
+function sortInvoicesLatestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const dateA = a?.invoice_date ? new Date(a.invoice_date).getTime() : 0;
+    const dateB = b?.invoice_date ? new Date(b.invoice_date).getTime() : 0;
+
+    if (dateB !== dateA) return dateB - dateA;
+
+    const noA = String(a?.invoice_no || "");
+    const noB = String(b?.invoice_no || "");
+    return noB.localeCompare(noA, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
 export default function SalesInvoiceDirectView({ currentUser }) {
   const nav = useNavigate();
   const isViewer = currentUser?.role === "VIEWER";
+  const isAdmin = currentUser?.role === "ADMIN";
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -140,7 +154,8 @@ export default function SalesInvoiceDirectView({ currentUser }) {
     try {
       const query = buildQuery(activeFilters);
       const data = await apiGet(`/sales-invoices${query}`);
-      setRows(Array.isArray(data) ? data : []);
+      const safeRows = Array.isArray(data) ? data : [];
+      setRows(sortInvoicesLatestFirst(safeRows));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -351,9 +366,10 @@ export default function SalesInvoiceDirectView({ currentUser }) {
       <div style={infoCard}>
         <div style={infoTitle}>Rules</div>
         <div style={infoText}>
-          PENDING / OVERDUE invoices can be fully edited. PARTIAL invoices can be
-          edited in restricted mode only. PAID and CANCELLED invoices are view-only.
-          Cancel and Delete are allowed only when no receipt exists.
+          Latest invoices are shown first. PENDING / OVERDUE invoices can be fully
+          edited. PARTIAL invoices can be edited in restricted mode only. PAID and
+          CANCELLED invoices are view-only. Cancel is allowed only when no receipt
+          exists. Delete is allowed only for ADMIN when no receipt exists.
         </div>
       </div>
 
@@ -428,7 +444,8 @@ export default function SalesInvoiceDirectView({ currentUser }) {
                     cancelTitle = "Reverse receipt(s) first before cancelling";
 
                   let deleteTitle = "Delete invoice";
-                  if (cancelled) deleteTitle = "Cancelled invoice cannot be deleted";
+                  if (!isAdmin) deleteTitle = "Only ADMIN can delete invoices";
+                  else if (cancelled) deleteTitle = "Cancelled invoice cannot be deleted";
                   else if (receiptExists)
                     deleteTitle = "Reverse receipt(s) first before deleting";
 
@@ -486,19 +503,21 @@ export default function SalesInvoiceDirectView({ currentUser }) {
                                 {busy ? "Working..." : "Cancel"}
                               </button>
 
-                              <button
-                                type="button"
-                                style={
-                                  deleteAllowed
-                                    ? btnDangerMini
-                                    : actionDisabledStyle(btnDangerMini)
-                                }
-                                disabled={!deleteAllowed || busy}
-                                title={deleteTitle}
-                                onClick={() => onDeleteInvoice(invoiceNo)}
-                              >
-                                {busy ? "Working..." : "Delete"}
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  style={
+                                    deleteAllowed
+                                      ? btnDangerMini
+                                      : actionDisabledStyle(btnDangerMini)
+                                  }
+                                  disabled={!deleteAllowed || busy}
+                                  title={deleteTitle}
+                                  onClick={() => onDeleteInvoice(invoiceNo)}
+                                >
+                                  {busy ? "Working..." : "Delete"}
+                                </button>
+                              )}
                             </>
                           )}
                         </div>

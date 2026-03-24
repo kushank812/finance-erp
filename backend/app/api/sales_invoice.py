@@ -7,7 +7,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.auth import require_operator_or_admin, require_viewer_or_above
+from app.api.auth import (
+    require_admin,
+    require_operator_or_admin,
+    require_viewer_or_above,
+)
 from app.core.database import get_db
 from app.models.sales_invoice import SalesInvoiceDtl, SalesInvoiceHdr, SalesReceipt
 from app.models.user import User
@@ -636,7 +640,7 @@ def delete_sales_invoice(
     invoice_no: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
+    current_user: User = Depends(require_admin),
 ):
     invoice_no = invoice_no.strip().upper()
 
