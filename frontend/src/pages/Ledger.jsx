@@ -1,6 +1,6 @@
 // src/pages/Ledger.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
 
 import AlertBox from "../components/ui/AlertBox";
@@ -55,8 +55,38 @@ function buildStatusOptions() {
   return ["", "PENDING", "PARTIAL", "PAID", "OVERDUE", "CANCELLED"];
 }
 
+function getDocNo(row, tab) {
+  return tab === "AR" ? row.invoice_no : row.bill_no;
+}
+
+function getPartyCode(row, tab) {
+  return tab === "AR" ? row.customer_code : row.vendor_code;
+}
+
+function getDocDate(row, tab) {
+  return tab === "AR" ? row.invoice_date : row.bill_date;
+}
+
+function getSettledAmount(row, tab) {
+  return tab === "AR" ? row.amount_received : row.amount_paid;
+}
+
+function sortLatestFirst(rows, tab) {
+  return [...rows].sort((a, b) => {
+    const dateA = getDocDate(a, tab) ? new Date(getDocDate(a, tab)).getTime() : 0;
+    const dateB = getDocDate(b, tab) ? new Date(getDocDate(b, tab)).getTime() : 0;
+
+    if (dateB !== dateA) return dateB - dateA;
+
+    const noA = String(getDocNo(a, tab) || "");
+    const noB = String(getDocNo(b, tab) || "");
+    return noB.localeCompare(noA, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
 export default function Ledger() {
   const nav = useNavigate();
+  const location = useLocation();
 
   const [arRows, setArRows] = useState([]);
   const [apRows, setApRows] = useState([]);
@@ -86,10 +116,15 @@ export default function Ledger() {
         apiGet("/purchase-invoices/"),
       ]);
 
-      setArRows(Array.isArray(ar) ? ar : []);
-      setApRows(Array.isArray(ap) ? ap : []);
+      const safeAr = Array.isArray(ar) ? ar : [];
+      const safeAp = Array.isArray(ap) ? ap : [];
+
+      setArRows(sortLatestFirst(safeAr, "AR"));
+      setApRows(sortLatestFirst(safeAp, "AP"));
     } catch (e) {
       setErr(String(e.message || e));
+      setArRows([]);
+      setApRows([]);
     } finally {
       setLoading(false);
     }
@@ -97,7 +132,7 @@ export default function Ledger() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [location.key]);
 
   const activeFilters = tab === "AR" ? arFilters : apFilters;
   const setActiveFilters = tab === "AR" ? setArFilters : setApFilters;
@@ -107,17 +142,9 @@ export default function Ledger() {
     const q = String(activeFilters.q || "").trim().toLowerCase();
     const status = String(activeFilters.status || "").toUpperCase();
 
-    return rawRows.filter((r) => {
-      const numberText =
-        tab === "AR"
-          ? String(r.invoice_no || "").toLowerCase()
-          : String(r.bill_no || "").toLowerCase();
-
-      const partyCode =
-        tab === "AR"
-          ? String(r.customer_code || "").toLowerCase()
-          : String(r.vendor_code || "").toLowerCase();
-
+    const rows = rawRows.filter((r) => {
+      const numberText = String(getDocNo(r, tab) || "").toLowerCase();
+      const partyCode = String(getPartyCode(r, tab) || "").toLowerCase();
       const rowStatus = getStatus(r);
 
       const qMatch =
@@ -131,6 +158,8 @@ export default function Ledger() {
 
       return qMatch && statusMatch;
     });
+
+    return sortLatestFirst(rows, tab);
   }, [rawRows, activeFilters, tab]);
 
   const summary = useMemo(() => {
@@ -138,10 +167,7 @@ export default function Ledger() {
       (acc, r) => {
         const grand = Number(r.grand_total || 0);
         const balance = Number(r.balance || 0);
-        const settled =
-          tab === "AR"
-            ? Number(r.amount_received || 0)
-            : Number(r.amount_paid || 0);
+        const settled = Number(getSettledAmount(r, tab) || 0);
 
         acc.totalDocs += 1;
         acc.activeDocs += isCancelled(r) ? 0 : 1;
@@ -368,13 +394,10 @@ export default function Ledger() {
                 </tr>
               ) : (
                 filteredRows.map((row) => {
-                  const docNo = tab === "AR" ? row.invoice_no : row.bill_no;
-                  const partyCode =
-                    tab === "AR" ? row.customer_code : row.vendor_code;
-                  const dateValue =
-                    tab === "AR" ? row.invoice_date : row.bill_date;
-                  const settled =
-                    tab === "AR" ? row.amount_received : row.amount_paid;
+                  const docNo = getDocNo(row, tab);
+                  const partyCode = getPartyCode(row, tab);
+                  const dateValue = getDocDate(row, tab);
+                  const settled = getSettledAmount(row, tab);
                   const status = getStatus(row);
 
                   return (

@@ -1,5 +1,6 @@
 // src/pages/Statement.jsx
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
 
 import AlertBox from "../components/ui/AlertBox";
@@ -37,13 +38,18 @@ function sortRowsByDate(list) {
     const da = new Date(a?.date || 0).getTime();
     const db = new Date(b?.date || 0).getTime();
 
-    if (da !== db) return da - db;
+    if (db !== da) return db - da;
 
     const docA = String(a?.doc_no || "");
     const docB = String(b?.doc_no || "");
-    if (docA !== docB) return docA.localeCompare(docB);
+    if (docA !== docB) {
+      return docB.localeCompare(docA, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    }
 
-    return String(a?.type || "").localeCompare(String(b?.type || ""));
+    return String(b?.type || "").localeCompare(String(a?.type || ""));
   });
 }
 
@@ -70,6 +76,8 @@ function getVendorAddress(vendor) {
 }
 
 export default function Statement() {
+  const location = useLocation();
+
   const [mode, setMode] = useState("CUSTOMER");
 
   const [customerCode, setCustomerCode] = useState("");
@@ -251,7 +259,7 @@ export default function Statement() {
 
   useEffect(() => {
     loadMasters();
-  }, []);
+  }, [location.key]);
 
   useEffect(() => {
     if (!mastersLoaded) return;

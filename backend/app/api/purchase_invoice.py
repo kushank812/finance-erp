@@ -387,10 +387,6 @@ def update_purchase_invoice(
         and "lines" not in data
     )
 
-    # -----------------------------
-    # RESTRICTED EDIT
-    # Only due_date and remark
-    # -----------------------------
     if restricted_only:
         obj.due_date = data.get("due_date", obj.due_date)
         obj.remark = data.get("remark", obj.remark)
@@ -439,10 +435,6 @@ def update_purchase_invoice(
         normalize_bill_status(obj)
         return obj
 
-    # -----------------------------
-    # FULL EDIT
-    # Allowed only when no payment exists
-    # -----------------------------
     if payment_exists or amount_paid > 0:
         raise HTTPException(
             status_code=400,
@@ -628,6 +620,9 @@ def cancel_purchase_invoice(
 
 # -----------------------------
 # DELETE PURCHASE INVOICE
+# ADMIN ONLY
+# ALLOW ONLY WHEN BALANCE = 0
+# AUTO DELETE LINKED PAYMENTS
 # -----------------------------
 @router.delete("/{bill_no}")
 def delete_purchase_invoice(
@@ -648,11 +643,19 @@ def delete_purchase_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
-    if has_any_payment(db, bill_no) or to_decimal(obj.amount_paid) > 0:
+    balance = to_decimal(obj.balance)
+    if balance != Decimal("0"):
         raise HTTPException(
             status_code=400,
-            detail="Bill has payment(s). Reverse payment(s) first before deleting",
+            detail="Delete allowed only when bill balance is 0",
         )
+
+    payments = (
+        db.query(VendorPayment)
+        .filter(VendorPayment.bill_no == bill_no)
+        .all()
+    )
+    payment_count = len(payments)
 
     old_values = {
         "bill_no": obj.bill_no,
@@ -668,7 +671,11 @@ def delete_purchase_invoice(
         "status": obj.status,
         "remark": obj.remark,
         "line_count": len(obj.lines or []),
+        "payment_count_deleted": payment_count,
     }
+
+    for payment in payments:
+        db.delete(payment)
 
     db.query(PurchaseInvoiceDtl).filter(
         PurchaseInvoiceDtl.bill_no == obj.bill_no
@@ -684,7 +691,7 @@ def delete_purchase_invoice(
         module=AuditModule.PURCHASE_INVOICE,
         record_id=bill_no,
         record_name=bill_no,
-        details=f"Purchase invoice deleted: {bill_no}",
+        details=f"Purchase invoice deleted with {payment_count} payment(s): {bill_no}",
         old_values=old_values,
         new_values=None,
     )
@@ -700,7 +707,7 @@ def delete_purchase_invoice(
 
     return {
         "ok": True,
-        "message": f"Purchase invoice {bill_no} deleted successfully",
+        "message": f"Purchase invoice {bill_no} deleted successfully with {payment_count} payment(s)",
     }
 
 

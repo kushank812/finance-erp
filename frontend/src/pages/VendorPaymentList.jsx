@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { apiDelete, apiGet } from "../api/client";
 
 function money(n) {
@@ -19,6 +19,7 @@ function buildQuery(params) {
 
 export default function VendorPaymentList({ currentUser }) {
   const nav = useNavigate();
+  const location = useLocation();
   const isViewer = currentUser?.role === "VIEWER";
 
   const [rows, setRows] = useState([]);
@@ -51,8 +52,9 @@ export default function VendorPaymentList({ currentUser }) {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   async function onSearch(e) {
     e.preventDefault();
@@ -72,6 +74,8 @@ export default function VendorPaymentList({ currentUser }) {
     if (!ok) return;
 
     setBusy(paymentNo);
+    setErr("");
+    setMsg("");
 
     try {
       await apiDelete(`/purchase-invoices/payments/${encodeURIComponent(paymentNo)}`);
@@ -136,10 +140,10 @@ export default function VendorPaymentList({ currentUser }) {
         </div>
 
         <div style={{ marginTop: 10 }}>
-          <button style={btnPrimary} disabled={loading}>
+          <button type="submit" style={btnPrimary} disabled={loading}>
             {loading ? "Loading..." : "Search"}
           </button>
-          <button type="button" style={btnGhost} onClick={onReset}>
+          <button type="button" style={btnGhost} onClick={onReset} disabled={loading}>
             Reset
           </button>
         </div>

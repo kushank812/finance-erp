@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { apiGet, apiDelete } from "../api/client";
 
 function money(n) {
@@ -19,6 +19,7 @@ function buildQuery(params) {
 
 export default function ReceiptList({ currentUser }) {
   const nav = useNavigate();
+  const location = useLocation();
   const isViewer = currentUser?.role === "VIEWER";
 
   const [rows, setRows] = useState([]);
@@ -51,8 +52,9 @@ export default function ReceiptList({ currentUser }) {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   async function onSearch(e) {
     e.preventDefault();
@@ -72,6 +74,8 @@ export default function ReceiptList({ currentUser }) {
     if (!ok) return;
 
     setBusy(receiptNo);
+    setErr("");
+    setMsg("");
 
     try {
       await apiDelete(`/receipts/${encodeURIComponent(receiptNo)}`);
@@ -136,10 +140,10 @@ export default function ReceiptList({ currentUser }) {
         </div>
 
         <div style={{ marginTop: 10 }}>
-          <button style={btnPrimary} disabled={loading}>
+          <button type="submit" style={btnPrimary} disabled={loading}>
             {loading ? "Loading..." : "Search"}
           </button>
-          <button type="button" style={btnGhost} onClick={onReset}>
+          <button type="button" style={btnGhost} onClick={onReset} disabled={loading}>
             Reset
           </button>
         </div>
@@ -216,6 +220,17 @@ export default function ReceiptList({ currentUser }) {
   );
 }
 
+function Card({ title, value }) {
+  return (
+    <div style={card}>
+      <div style={{ fontSize: 12, color: "#111", fontWeight: 900 }}>{title}</div>
+      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6, color: "#111" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 const header = {
   marginBottom: 14,
 };
@@ -283,17 +298,6 @@ const summaryGrid = {
   gap: 12,
   marginBottom: 14,
 };
-
-function Card({ title, value }) {
-  return (
-    <div style={card}>
-      <div style={{ fontSize: 12, color: "#111", fontWeight: 900 }}>{title}</div>
-      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6, color: "#111" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
 
 const btnPrimary = {
   marginRight: 10,

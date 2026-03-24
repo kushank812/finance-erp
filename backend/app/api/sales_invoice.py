@@ -48,7 +48,6 @@ class SalesInvoiceLineUpdateIn(BaseModel):
 
 
 class SalesInvoiceUpdateIn(BaseModel):
-    # Full-edit fields
     invoice_date: date | None = None
     due_date: date | None = None
     customer_code: str | None = None
@@ -58,7 +57,6 @@ class SalesInvoiceUpdateIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_update_payload(self):
-        # Restricted update is allowed with only due_date / remark
         restricted_only = (
             self.invoice_date is None
             and self.customer_code is None
@@ -67,12 +65,9 @@ class SalesInvoiceUpdateIn(BaseModel):
         )
         if restricted_only:
             if self.due_date is None and self.remark is None:
-                raise ValueError(
-                    "Provide at least one allowed field to update"
-                )
+                raise ValueError("Provide at least one allowed field to update")
             return self
 
-        # Otherwise treat as full update and require all core fields
         missing = []
         if self.invoice_date is None:
             missing.append("invoice_date")
@@ -143,20 +138,6 @@ def has_any_receipt(db: Session, invoice_no: str) -> bool:
     return receipt is not None
 
 
-def can_only_do_restricted_edit(obj: SalesInvoiceHdr) -> bool:
-    if str(obj.status or "").upper() in {STATUS_PARTIAL}:
-        return True
-
-    if to_decimal(obj.amount_received) > 0:
-        return True
-
-    if has_any_receipt is not None:
-        # actual receipt rows are a stronger source of truth
-        return False
-
-    return False
-
-
 # -----------------------------
 # LIST INVOICES
 # -----------------------------
@@ -196,10 +177,8 @@ def list_sales_invoices(
     result = []
     for r in rows:
         normalize_invoice_status(r)
-
         if final_status and r.status != final_status:
             continue
-
         result.append(r)
 
     return result
@@ -402,10 +381,6 @@ def update_sales_invoice(
         and "lines" not in data
     )
 
-    # -----------------------------
-    # RESTRICTED EDIT
-    # Only due_date and remark
-    # -----------------------------
     if restricted_only:
         obj.due_date = data.get("due_date", obj.due_date)
         obj.remark = data.get("remark", obj.remark)
@@ -451,10 +426,6 @@ def update_sales_invoice(
         normalize_invoice_status(obj)
         return obj
 
-    # -----------------------------
-    # FULL EDIT
-    # Allowed only when no receipt/payment exists
-    # -----------------------------
     if receipt_exists or amount_received > 0:
         raise HTTPException(
             status_code=400,
@@ -634,6 +605,9 @@ def cancel_sales_invoice(
 
 # -----------------------------
 # DELETE INVOICE
+# ADMIN ONLY
+# ALLOW ONLY WHEN BALANCE = 0
+# AUTO DELETE LINKED RECEIPTS
 # -----------------------------
 @router.delete("/{invoice_no}")
 def delete_sales_invoice(
@@ -654,11 +628,19 @@ def delete_sales_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
-    if has_any_receipt(db, invoice_no) or to_decimal(obj.amount_received) > 0:
+    balance = to_decimal(obj.balance)
+    if balance != Decimal("0"):
         raise HTTPException(
             status_code=400,
-            detail="Invoice has receipt(s). Reverse receipt(s) first before deleting",
+            detail="Delete allowed only when invoice balance is 0",
         )
+
+    receipts = (
+        db.query(SalesReceipt)
+        .filter(SalesReceipt.invoice_no == invoice_no)
+        .all()
+    )
+    receipt_count = len(receipts)
 
     old_values = {
         "invoice_no": obj.invoice_no,
@@ -674,7 +656,11 @@ def delete_sales_invoice(
         "status": obj.status,
         "remark": obj.remark,
         "line_count": len(obj.lines or []),
+        "receipt_count_deleted": receipt_count,
     }
+
+    for receipt in receipts:
+        db.delete(receipt)
 
     db.query(SalesInvoiceDtl).filter(
         SalesInvoiceDtl.invoice_no == obj.invoice_no
@@ -690,7 +676,7 @@ def delete_sales_invoice(
         module=AuditModule.SALES_INVOICE,
         record_id=invoice_no,
         record_name=invoice_no,
-        details=f"Sales invoice deleted: {invoice_no}",
+        details=f"Sales invoice deleted with {receipt_count} receipt(s): {invoice_no}",
         old_values=old_values,
         new_values=None,
     )
@@ -703,7 +689,7 @@ def delete_sales_invoice(
 
     return {
         "ok": True,
-        "message": f"Sales invoice {invoice_no} deleted successfully",
+        "message": f"Sales invoice {invoice_no} deleted successfully with {receipt_count} receipt(s)",
     }
 
 
