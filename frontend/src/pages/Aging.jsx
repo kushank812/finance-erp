@@ -66,6 +66,27 @@ function normalizeStatus(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function sortRowsByOverdueDays(list) {
+  return [...list].sort((a, b) => {
+    const overdueA = Number(a?.daysOverdue || 0);
+    const overdueB = Number(b?.daysOverdue || 0);
+
+    if (overdueB !== overdueA) return overdueB - overdueA;
+
+    const dueA = a?.dueDate ? new Date(a.dueDate).getTime() : 0;
+    const dueB = b?.dueDate ? new Date(b.dueDate).getTime() : 0;
+
+    if (dueA !== dueB) return dueA - dueB;
+
+    const docA = String(a?.docNo || "");
+    const docB = String(b?.docNo || "");
+    return docA.localeCompare(docB, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
+}
+
 function downloadCSV(filename, rows) {
   const esc = (v) => {
     const s = String(v ?? "");
@@ -160,7 +181,7 @@ export default function Aging() {
       };
     });
 
-    return mapped.filter((r) => {
+    const filtered = mapped.filter((r) => {
       if (onlyOpen && !(r.balance > 0)) return false;
       if (wantedStatus !== "ALL" && r.status !== wantedStatus) return false;
 
@@ -172,6 +193,8 @@ export default function Aging() {
 
       return matches;
     });
+
+    return sortRowsByOverdueDays(filtered);
   }, [tab, ar, ap, q, status, onlyOpen, asOf]);
 
   const totals = useMemo(() => {
@@ -433,7 +456,8 @@ export default function Aging() {
 
         <div style={footNote}>
           Rule: Aging uses <b>Due Date</b>. If Due Date is missing, it falls back to
-          Doc Date. Only open balances are shown by default.
+          Doc Date. Rows are sorted by <b>Days Overdue</b> in descending order. Only
+          open balances are shown by default.
         </div>
       </section>
 
