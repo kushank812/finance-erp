@@ -2,6 +2,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
@@ -89,7 +98,7 @@ function sortRowsByOverdueDays(list) {
     if (dueA !== dueB) return dueA - dueB;
 
     const docA = String(a?.docNo || "");
-    const docB = String(b?.docNo || "");
+    const docB = String(a?.docNo || "");
     return docA.localeCompare(docB, undefined, {
       numeric: true,
       sensitivity: "base",
@@ -224,6 +233,16 @@ export default function Aging() {
 
     return t;
   }, [rows]);
+
+  const chartData = useMemo(() => {
+    return [
+      { name: "Not Due", value: Number(totals["Not Due"] || 0) },
+      { name: "0-30", value: Number(totals["0-30"] || 0) },
+      { name: "31-60", value: Number(totals["31-60"] || 0) },
+      { name: "61-90", value: Number(totals["61-90"] || 0) },
+      { name: "90+", value: Number(totals["90+"] || 0) },
+    ];
+  }, [totals]);
 
   function exportCSV() {
     const out = rows.map((r) => ({
@@ -395,6 +414,29 @@ export default function Aging() {
       <section style={card}>
         <div style={cardHeader}>
           <div>
+            <h2 style={cardTitle}>Aging Analysis Chart</h2>
+            <p style={cardSubtitle}>
+              Visual distribution of outstanding balances across aging buckets.
+            </p>
+          </div>
+        </div>
+
+        <div style={chartWrap}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip formatter={(v) => `₹ ${money(v)}`} />
+              <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
             <h2 style={cardTitle}>
               {tab === "AR" ? "Accounts Receivable Aging" : "Accounts Payable Aging"}
             </h2>
@@ -420,10 +462,7 @@ export default function Aging() {
 
             <tbody>
               {rows.map((r) => (
-                <tr
-                  key={`${r.docNo}-${r.party}-${r.docDate}`}
-                  style={tr}
-                >
+                <tr key={`${r.docNo}-${r.party}-${r.docDate}`} style={tr}>
                   <td style={tdCode}>{r.docNo}</td>
                   <td style={td}>{r.party}</td>
                   <td style={td}>{isoToDisplay(r.docDate)}</td>
@@ -612,6 +651,7 @@ const filterActions = {
   gap: 10,
   justifyContent: "flex-end",
   flexWrap: "wrap",
+  marginTop: 14,
 };
 
 const summaryGrid = {
@@ -638,6 +678,11 @@ const bucketTitle = {
   fontSize: 12,
   color: "#666",
   fontWeight: 800,
+};
+
+const chartWrap = {
+  width: "100%",
+  height: 320,
 };
 
 const footNote = {
