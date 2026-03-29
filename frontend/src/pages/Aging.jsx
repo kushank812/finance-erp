@@ -10,6 +10,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  LineChart,
+  Line,
+  Legend,
 } from "recharts";
 
 import AlertBox from "../components/ui/AlertBox";
@@ -46,6 +49,15 @@ import {
 
 function money(n) {
   return Number(n || 0).toFixed(2);
+}
+
+function compactMoney(n) {
+  const x = Number(n || 0);
+
+  if (Math.abs(x) >= 10000000) return `${(x / 10000000).toFixed(2)} Cr`;
+  if (Math.abs(x) >= 100000) return `${(x / 100000).toFixed(2)} L`;
+  if (Math.abs(x) >= 1000) return `${(x / 1000).toFixed(1)} K`;
+  return `${x.toFixed(0)}`;
 }
 
 function isoToDisplay(iso) {
@@ -98,7 +110,7 @@ function sortRowsByOverdueDays(list) {
     if (dueA !== dueB) return dueA - dueB;
 
     const docA = String(a?.docNo || "");
-    const docB = String(a?.docNo || "");
+    const docB = String(b?.docNo || "");
     return docA.localeCompare(docB, undefined, {
       numeric: true,
       sensitivity: "base",
@@ -224,11 +236,20 @@ export default function Aging() {
       "61-90": 0,
       "90+": 0,
       total: 0,
+      overdueTotal: 0,
+      recordCount: rows.length,
+      overdueCount: 0,
     };
 
     for (const r of rows) {
-      t[r.bucket] += Number(r.balance || 0);
-      t.total += Number(r.balance || 0);
+      const bal = Number(r.balance || 0);
+      t[r.bucket] += bal;
+      t.total += bal;
+
+      if (r.daysOverdue > 0) {
+        t.overdueTotal += bal;
+        t.overdueCount += 1;
+      }
     }
 
     return t;
@@ -241,6 +262,18 @@ export default function Aging() {
       { name: "31-60", value: Number(totals["31-60"] || 0) },
       { name: "61-90", value: Number(totals["61-90"] || 0) },
       { name: "90+", value: Number(totals["90+"] || 0) },
+    ];
+  }, [totals]);
+
+  const bucketPercentData = useMemo(() => {
+    const total = Number(totals.total || 0);
+
+    return [
+      { name: "Not Due", percent: total ? (Number(totals["Not Due"]) / total) * 100 : 0 },
+      { name: "0-30", percent: total ? (Number(totals["0-30"]) / total) * 100 : 0 },
+      { name: "31-60", percent: total ? (Number(totals["31-60"]) / total) * 100 : 0 },
+      { name: "61-90", percent: total ? (Number(totals["61-90"]) / total) * 100 : 0 },
+      { name: "90+", percent: total ? (Number(totals["90+"]) / total) * 100 : 0 },
     ];
   }, [totals]);
 
@@ -411,26 +444,80 @@ export default function Aging() {
         <Bucket title="Total" value={money(totals.total)} strong />
       </div>
 
+      <div style={{ height: 14 }} />
+
+      <div style={summaryGrid}>
+        <Bucket title="Open Records" value={totals.recordCount} />
+        <Bucket title="Overdue Records" value={totals.overdueCount} danger />
+        <Bucket title="Overdue Amount" value={money(totals.overdueTotal)} danger />
+      </div>
+
       <section style={card}>
         <div style={cardHeader}>
           <div>
-            <h2 style={cardTitle}>Aging Analysis Chart</h2>
+            <h2 style={cardTitle}>Aging Analysis</h2>
             <p style={cardSubtitle}>
               Visual distribution of outstanding balances across aging buckets.
             </p>
           </div>
         </div>
 
-        <div style={chartWrap}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip formatter={(v) => `₹ ${money(v)}`} />
-              <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div style={chartGrid}>
+          <div style={chartCard}>
+            <div style={chartHeading}>Outstanding Amount by Bucket</div>
+            <div style={chartSubHeading}>
+              Compare total open amount across each aging bucket.
+            </div>
+
+            <div style={chartWrap}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis tickFormatter={(v) => compactMoney(v)} />
+                  <Tooltip formatter={(v) => `₹ ${money(v)}`} />
+                  <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div style={chartCard}>
+            <div style={chartHeading}>Bucket Contribution %</div>
+            <div style={chartSubHeading}>
+              Understand how much each bucket contributes to total open balance.
+            </div>
+
+            <div style={chartWrap}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={bucketPercentData}
+                  margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `${Number(v || 0).toFixed(0)}%`}
+                  />
+                  <Tooltip formatter={(v) => `${Number(v || 0).toFixed(2)}%`} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="percent"
+                    name="Share of Total"
+                    stroke="#7c3aed"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -678,6 +765,31 @@ const bucketTitle = {
   fontSize: 12,
   color: "#666",
   fontWeight: 800,
+};
+
+const chartGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 14,
+};
+
+const chartCard = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  padding: 14,
+};
+
+const chartHeading = {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#111",
+};
+
+const chartSubHeading = {
+  fontSize: 12,
+  color: "#64748b",
+  marginTop: 4,
 };
 
 const chartWrap = {
