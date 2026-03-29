@@ -25,6 +25,8 @@ import {
   tdRight,
   emptyTd,
   btnGhost,
+  btnPrimary,
+  btnSecondary,
   badgeBlue,
   badgeGreen,
 } from "../components/ui/uiStyles";
@@ -43,23 +45,38 @@ function isoToDisplay(iso) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-function sortRowsByDate(list) {
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function firstDayOfMonthISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}-01`;
+}
+
+function sortRowsByDateAsc(list) {
   return [...list].sort((a, b) => {
     const da = new Date(a?.date || 0).getTime();
     const db = new Date(b?.date || 0).getTime();
 
-    if (db !== da) return db - da;
+    if (da !== db) return da - db;
 
     const docA = String(a?.doc_no || "");
     const docB = String(b?.doc_no || "");
     if (docA !== docB) {
-      return docB.localeCompare(docA, undefined, {
+      return docA.localeCompare(docB, undefined, {
         numeric: true,
         sensitivity: "base",
       });
     }
 
-    return String(b?.type || "").localeCompare(String(a?.type || ""));
+    return String(a?.type || "").localeCompare(String(b?.type || ""));
   });
 }
 
@@ -85,6 +102,32 @@ function getVendorAddress(vendor) {
   );
 }
 
+function downloadCSV(filename, rows) {
+  const esc = (v) => {
+    const s = String(v ?? "");
+    if (s.includes(",") || s.includes("\n") || s.includes('"')) {
+      return `"${s.replaceAll('"', '""')}"`;
+    }
+    return s;
+  };
+
+  const header = Object.keys(rows[0] || {});
+  const lines = [
+    header.join(","),
+    ...rows.map((r) => header.map((h) => esc(r[h])).join(",")),
+  ];
+
+  const blob = new Blob([lines.join("\n")], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Statement() {
   const location = useLocation();
 
@@ -97,6 +140,9 @@ export default function Statement() {
   const [vendors, setVendors] = useState([]);
 
   const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState(firstDayOfMonthISO());
+  const [toDate, setToDate] = useState(todayISO());
+
   const [rows, setRows] = useState([]);
 
   const [err, setErr] = useState("");
@@ -169,7 +215,7 @@ export default function Statement() {
 
         const failures = results.filter((r) => r.status === "rejected");
 
-        setRows(sortRowsByDate(successRows));
+        setRows(sortRowsByDateAsc(successRows));
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
@@ -215,7 +261,7 @@ export default function Statement() {
 
         const failures = results.filter((r) => r.status === "rejected");
 
-        setRows(sortRowsByDate(successRows));
+        setRows(sortRowsByDateAsc(successRows));
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
@@ -258,7 +304,7 @@ export default function Statement() {
           : `/vendors/${encodeURIComponent(code)}/statement`;
 
       const data = await apiGet(url);
-      setRows(sortRowsByDate(Array.isArray(data) ? data : []));
+      setRows(sortRowsByDateAsc(Array.isArray(data) ? data : []));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -336,18 +382,6 @@ export default function Statement() {
     });
   }, [vendors, search]);
 
-  const totals = useMemo(() => {
-    return rows.reduce(
-      (a, r) => {
-        a.debit += Number(r.debit || 0);
-        a.credit += Number(r.credit || 0);
-        a.balance = Number(r.balance || 0);
-        return a;
-      },
-      { debit: 0, credit: 0, balance: 0 }
-    );
-  }, [rows]);
-
   const selectedCustomer = useMemo(() => {
     return customers.find((c) => c.customer_code === customerCode) || null;
   }, [customers, customerCode]);
@@ -355,6 +389,47 @@ export default function Statement() {
   const selectedVendor = useMemo(() => {
     return vendors.find((v) => v.vendor_code === vendorCode) || null;
   }, [vendors, vendorCode]);
+
+  const filteredRows = useMemo(() => {
+    const fromTs = fromDate ? new Date(fromDate).getTime() : null;
+    const toTs = toDate ? new Date(toDate).getTime() : null;
+
+    return rows.filter((r) => {
+      const rowTs = r?.date ? new Date(r.date).getTime() : null;
+      if (rowTs == null || Number.isNaN(rowTs)) return false;
+
+      if (fromTs != null && !Number.isNaN(fromTs) && rowTs < fromTs) return false;
+      if (toTs != null && !Number.isNaN(toTs) && rowTs > toTs) return false;
+
+      return true;
+    });
+  }, [rows, fromDate, toDate]);
+
+  const totals = useMemo(() => {
+    let debit = 0;
+    let credit = 0;
+    let closing = 0;
+
+    for (const r of filteredRows) {
+      debit += Number(r.debit || 0);
+      credit += Number(r.credit || 0);
+      closing = Number(r.balance || 0);
+    }
+
+    const opening =
+      filteredRows.length > 0
+        ? Number(filteredRows[0].balance || 0) -
+          Number(filteredRows[0].debit || 0) +
+          Number(filteredRows[0].credit || 0)
+        : 0;
+
+    return {
+      opening,
+      debit,
+      credit,
+      closing,
+    };
+  }, [filteredRows]);
 
   const pageTitle =
     mode === "CUSTOMER" ? "Customer Statement" : "Vendor Statement";
@@ -370,6 +445,27 @@ export default function Statement() {
     } else {
       await loadStatement("VENDOR", vendorCode);
     }
+  }
+
+  function handleExportCSV() {
+    if (filteredRows.length === 0) return;
+
+    const selectedCode =
+      mode === "CUSTOMER" ? customerCode || "ALL_CUSTOMERS" : vendorCode || "ALL_VENDORS";
+
+    const out = filteredRows.map((r) => ({
+      Date: isoToDisplay(r.date),
+      DocNo: r.doc_no,
+      Type: r.type,
+      Debit: money(r.debit),
+      Credit: money(r.credit),
+      Balance: money(r.balance),
+    }));
+
+    downloadCSV(
+      `${mode}_STATEMENT_${selectedCode}_${fromDate || "START"}_${toDate || "END"}.csv`,
+      out
+    );
   }
 
   return (
@@ -415,7 +511,7 @@ export default function Statement() {
           <div>
             <h2 style={cardTitle}>Filters</h2>
             <p style={cardSubtitle}>
-              Search and select a customer or vendor to narrow the statement view.
+              Search, select, and filter the statement by date range.
             </p>
           </div>
 
@@ -477,6 +573,41 @@ export default function Statement() {
               </select>
             )}
           </div>
+
+          <div style={field}>
+            <label style={labelStyle}>From Date</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              style={input}
+            />
+          </div>
+
+          <div style={field}>
+            <label style={labelStyle}>To Date</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              style={input}
+            />
+          </div>
+        </div>
+
+        <div style={actionRow}>
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            style={filteredRows.length === 0 ? disabledLike(btnPrimary) : btnPrimary}
+            disabled={filteredRows.length === 0}
+          >
+            Export CSV
+          </button>
+
+          <button type="button" onClick={() => window.print()} style={btnSecondary}>
+            Print
+          </button>
         </div>
 
         <div style={infoStrip}>
@@ -513,17 +644,19 @@ export default function Statement() {
               />
             </>
           )}
+
+          <InfoMini
+            title="Date Range"
+            value={`${isoToDisplay(fromDate)} to ${isoToDisplay(toDate)}`}
+          />
         </div>
       </section>
 
       <div style={statGrid}>
+        <Stat title="Opening Balance" value={money(totals.opening)} badge={badgeBlue} />
         <Stat title="Total Debit" value={money(totals.debit)} badge={badgeBlue} />
         <Stat title="Total Credit" value={money(totals.credit)} badge={badgeGreen} />
-        <Stat
-          title="Closing Balance"
-          value={money(totals.balance)}
-          strong
-        />
+        <Stat title="Closing Balance" value={money(totals.closing)} strong />
       </div>
 
       <section style={card}>
@@ -532,7 +665,7 @@ export default function Statement() {
             <h2 style={cardTitle}>
               {mode === "CUSTOMER" ? "Customer Statement Rows" : "Vendor Statement Rows"}
             </h2>
-            <p style={cardSubtitle}>Rows: {rows.length}</p>
+            <p style={cardSubtitle}>Rows: {filteredRows.length}</p>
           </div>
         </div>
 
@@ -550,7 +683,7 @@ export default function Statement() {
             </thead>
 
             <tbody>
-              {rows.map((r, i) => (
+              {filteredRows.map((r, i) => (
                 <tr key={`${r.doc_no}-${r.type}-${i}`} style={tr}>
                   <td style={td}>{isoToDisplay(r.date)}</td>
                   <td style={tdCode}>{r.doc_no}</td>
@@ -563,7 +696,7 @@ export default function Statement() {
                 </tr>
               ))}
 
-              {rows.length === 0 && !loading && (
+              {filteredRows.length === 0 && !loading && (
                 <tr>
                   <td colSpan="6" style={emptyTd}>
                     No statement rows found.
@@ -573,7 +706,14 @@ export default function Statement() {
             </tbody>
           </table>
         </div>
+
+        <div style={footNote}>
+          Statement is shown in date order with running balance. Opening balance is
+          derived from the first row in the filtered range.
+        </div>
       </section>
+
+      <style>{printCss}</style>
     </div>
   );
 }
@@ -611,6 +751,14 @@ function InfoMini({ title, value, badge = null }) {
   );
 }
 
+function disabledLike(base) {
+  return {
+    ...base,
+    opacity: 0.6,
+    cursor: "not-allowed",
+  };
+}
+
 const tabButton = {
   padding: "10px 14px",
   borderRadius: 12,
@@ -638,14 +786,23 @@ const tabActiveGreen = {
 
 const filterGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
   gap: 12,
+};
+
+const actionRow = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 10,
+  flexWrap: "wrap",
+  marginTop: 14,
 };
 
 const infoStrip = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
   gap: 12,
+  marginTop: 14,
 };
 
 const statGrid = {
@@ -697,4 +854,20 @@ const miniValue = {
   fontWeight: 800,
   color: "#111",
   marginTop: 4,
+  wordBreak: "break-word",
 };
+
+const footNote = {
+  marginTop: 12,
+  fontSize: 12,
+  color: "#666",
+};
+
+const printCss = `
+@media print {
+  body { background: white !important; }
+  nav { display: none !important; }
+  button, input, select, textarea { display: none !important; }
+  #root { padding: 0 !important; }
+}
+`;
