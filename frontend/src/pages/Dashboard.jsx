@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  CartesianGrid,
+} from "recharts";
 
 function moneyINR(n) {
   const x = Number(n || 0);
@@ -13,6 +26,9 @@ function num(n) {
   const x = Number(n || 0);
   return Number.isFinite(x) ? x : 0;
 }
+
+const SALES_COLORS = ["#22c55e", "#f59e0b", "#facc15", "#ef4444"];
+const PURCHASE_COLORS = ["#22c55e", "#f59e0b", "#facc15", "#ef4444"];
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -48,6 +64,48 @@ export default function Dashboard() {
       netPosition: num(data.receivables) - num(data.payables),
       overdueExposure: num(data.overdue_receivables) + num(data.overdue_payables),
     };
+  }, [data]);
+
+  const receivablePayableChart = useMemo(() => {
+    if (!data) return [];
+    return [
+      {
+        name: "Receivables",
+        value: num(data.receivables),
+      },
+      {
+        name: "Payables",
+        value: num(data.payables),
+      },
+      {
+        name: "Overdue AR",
+        value: num(data.overdue_receivables),
+      },
+      {
+        name: "Overdue AP",
+        value: num(data.overdue_payables),
+      },
+    ];
+  }, [data]);
+
+  const salesStatusChart = useMemo(() => {
+    if (!data) return [];
+    return [
+      { name: "Paid", value: num(data.sales_paid_count) },
+      { name: "Pending", value: num(data.sales_pending_count) },
+      { name: "Partial", value: num(data.sales_partial_count) },
+      { name: "Overdue", value: num(data.sales_overdue_count) },
+    ];
+  }, [data]);
+
+  const purchaseStatusChart = useMemo(() => {
+    if (!data) return [];
+    return [
+      { name: "Paid", value: num(data.purchase_paid_count) },
+      { name: "Pending", value: num(data.purchase_pending_count) },
+      { name: "Partial", value: num(data.purchase_partial_count) },
+      { name: "Overdue", value: num(data.purchase_overdue_count) },
+    ];
   }, [data]);
 
   return (
@@ -148,6 +206,79 @@ export default function Dashboard() {
                 <StatTile label="Paid" value={data.purchase_paid_count} ok />
                 <StatTile label="Overdue" value={data.purchase_overdue_count} danger />
                 <StatTile label="Cancelled" value={data.purchase_cancelled_count} muted />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ height: 22 }} />
+
+          <div style={sectionTitle}>Graphical Analysis</div>
+
+          <div style={chartGrid}>
+            <div style={panel}>
+              <div style={panelTitle}>Receivables vs Payables</div>
+              <div style={chartWrap}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={receivablePayableChart}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => `₹ ${moneyINR(value)}`} />
+                    <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div style={panel}>
+              <div style={panelTitle}>Sales Status Distribution</div>
+              <div style={chartWrap}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={salesStatusChart}
+                      dataKey="value"
+                      nameKey="name"
+                      outerRadius={95}
+                      label
+                    >
+                      {salesStatusChart.map((entry, index) => (
+                        <Cell
+                          key={`sales-cell-${entry.name}-${index}`}
+                          fill={SALES_COLORS[index % SALES_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div style={panel}>
+              <div style={panelTitle}>Purchase Status Distribution</div>
+              <div style={chartWrap}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={purchaseStatusChart}
+                      dataKey="value"
+                      nameKey="name"
+                      outerRadius={95}
+                      label
+                    >
+                      {purchaseStatusChart.map((entry, index) => (
+                        <Cell
+                          key={`purchase-cell-${entry.name}-${index}`}
+                          fill={PURCHASE_COLORS[index % PURCHASE_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
@@ -269,6 +400,12 @@ const dualGrid = {
   gap: 14,
 };
 
+const chartGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+  gap: 14,
+};
+
 const panel = {
   background: "#fff",
   border: "1px solid #e6e6e6",
@@ -287,6 +424,11 @@ const statGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
   gap: 10,
+};
+
+const chartWrap = {
+  width: "100%",
+  height: 280,
 };
 
 const card = {
