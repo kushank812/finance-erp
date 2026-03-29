@@ -2,6 +2,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  CartesianGrid,
+} from "recharts";
 
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
@@ -37,6 +50,15 @@ import {
 
 function money(n) {
   return Number(n || 0).toFixed(2);
+}
+
+function moneyCompact(n) {
+  const x = Number(n || 0);
+
+  if (Math.abs(x) >= 10000000) return `${(x / 10000000).toFixed(2)} Cr`;
+  if (Math.abs(x) >= 100000) return `${(x / 100000).toFixed(2)} L`;
+  if (Math.abs(x) >= 1000) return `${(x / 1000).toFixed(1)} K`;
+  return `${x.toFixed(0)}`;
 }
 
 function isoToDisplay(iso) {
@@ -96,6 +118,12 @@ function sortLatestFirst(rows, tab) {
     });
   });
 }
+
+const PIE_COLORS = {
+  Active: "#22c55e",
+  Overdue: "#ef4444",
+  Cancelled: "#9ca3af",
+};
 
 export default function Ledger() {
   const nav = useNavigate();
@@ -206,6 +234,31 @@ export default function Ledger() {
       }
     );
   }, [filteredRows, tab]);
+
+  const barData = useMemo(() => {
+    return [
+      {
+        name: "Total",
+        value: Number(summary.totalAmount || 0),
+      },
+      {
+        name: tab === "AR" ? "Received" : "Paid",
+        value: Number(summary.settledAmount || 0),
+      },
+      {
+        name: "Balance",
+        value: Number(summary.balanceAmount || 0),
+      },
+    ];
+  }, [summary, tab]);
+
+  const pieData = useMemo(() => {
+    return [
+      { name: "Active", value: Number(summary.activeDocs || 0) },
+      { name: "Overdue", value: Number(summary.overdueDocs || 0) },
+      { name: "Cancelled", value: Number(summary.cancelledDocs || 0) },
+    ].filter((x) => x.value > 0);
+  }, [summary]);
 
   function onResetFilters() {
     if (tab === "AR") {
@@ -367,6 +420,71 @@ export default function Ledger() {
           value={money(summary.overdueBalance)}
         />
       </div>
+
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
+            <h2 style={cardTitle}>Ledger Analysis</h2>
+            <p style={cardSubtitle}>
+              Visual overview of totals, settlements, and document distribution.
+            </p>
+          </div>
+        </div>
+
+        <div style={chartGrid}>
+          <div style={chartCard}>
+            <div style={chartHeading}>Amount Distribution</div>
+            <div style={chartSubHeading}>
+              Compare total amount, settled amount, and outstanding balance.
+            </div>
+
+            <div style={chartWrap}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis tickFormatter={(v) => moneyCompact(v)} />
+                  <Tooltip formatter={(v) => `₹ ${money(v)}`} />
+                  <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div style={chartCard}>
+            <div style={chartHeading}>Document Status Distribution</div>
+            <div style={chartSubHeading}>
+              See how many documents are active, overdue, or cancelled.
+            </div>
+
+            <div style={chartWrap}>
+              {pieData.length === 0 ? (
+                <div style={emptyChartText}>No status data available.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={58}
+                      outerRadius={96}
+                      paddingAngle={3}
+                      label
+                    >
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={PIE_COLORS[entry.name]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section style={card}>
         <div style={cardHeader}>
@@ -592,6 +710,46 @@ const summaryValue = {
   fontSize: 22,
   fontWeight: 900,
   color: "#111",
+};
+
+const chartGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 14,
+};
+
+const chartCard = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  padding: 14,
+};
+
+const chartHeading = {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#111",
+};
+
+const chartSubHeading = {
+  fontSize: 12,
+  color: "#64748b",
+  marginTop: 4,
+};
+
+const chartWrap = {
+  width: "100%",
+  height: 300,
+  marginTop: 10,
+};
+
+const emptyChartText = {
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#64748b",
+  fontWeight: 700,
 };
 
 const footNote = {
