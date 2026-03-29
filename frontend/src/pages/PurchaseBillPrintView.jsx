@@ -11,6 +11,16 @@ function fmt(value) {
   return String(value);
 }
 
+function fmtDate(value) {
+  if (!value) return "-";
+  const s = String(value).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function getStatusText(status) {
   return String(status || "").toUpperCase();
 }
@@ -131,8 +141,8 @@ export default function PurchaseBillPrintView() {
             <div style={metaGrid}>
               <Info label="Bill No" value={fmt(bill.bill_no)} />
               <Info label="Vendor Code" value={fmt(bill.vendor_code)} />
-              <Info label="Bill Date" value={fmt(bill.bill_date)} />
-              <Info label="Due Date" value={fmt(bill.due_date)} />
+              <Info label="Bill Date" value={fmtDate(bill.bill_date)} />
+              <Info label="Due Date" value={fmtDate(bill.due_date)} />
               <Info label="Remark" value={fmt(bill.remark)} />
             </div>
 
