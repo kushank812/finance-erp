@@ -14,6 +14,8 @@ import {
   Cell,
   Legend,
   CartesianGrid,
+  LineChart,
+  Line,
 } from "recharts";
 
 import AlertBox from "../components/ui/AlertBox";
@@ -260,6 +262,35 @@ export default function Ledger() {
     ].filter((x) => x.value > 0);
   }, [summary]);
 
+  const monthlyTrend = useMemo(() => {
+    const map = {};
+
+    filteredRows.forEach((r) => {
+      const d = getDocDate(r, tab);
+      if (!d) return;
+
+      const date = new Date(d);
+      if (Number.isNaN(date.getTime())) return;
+
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+      if (!map[key]) {
+        map[key] = {
+          month: key,
+          total: 0,
+          settled: 0,
+          balance: 0,
+        };
+      }
+
+      map[key].total += Number(r.grand_total || 0);
+      map[key].settled += Number(getSettledAmount(r, tab) || 0);
+      map[key].balance += Number(r.balance || 0);
+    });
+
+    return Object.values(map).sort((a, b) => a.month.localeCompare(b.month));
+  }, [filteredRows, tab]);
+
   function onResetFilters() {
     if (tab === "AR") {
       setArFilters({ q: "", status: "" });
@@ -426,12 +457,65 @@ export default function Ledger() {
           <div>
             <h2 style={cardTitle}>Ledger Analysis</h2>
             <p style={cardSubtitle}>
-              Visual overview of totals, settlements, and document distribution.
+              Visual overview of totals, settlements, balances, and document distribution.
             </p>
           </div>
         </div>
 
         <div style={chartGrid}>
+          <div style={chartCard}>
+            <div style={chartHeading}>Monthly Movement</div>
+            <div style={chartSubHeading}>
+              Track billed value, settled value, and balance trend over time.
+            </div>
+
+            <div style={chartWrap}>
+              {monthlyTrend.length === 0 ? (
+                <div style={emptyChartText}>No trend data available.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={monthlyTrend}
+                    margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis tickFormatter={(v) => moneyCompact(v)} />
+                    <Tooltip formatter={(v) => `₹ ${money(v)}`} />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="total"
+                      name="Total"
+                      stroke="#2563eb"
+                      strokeWidth={3}
+                      dot={{ r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="settled"
+                      name={tab === "AR" ? "Received" : "Paid"}
+                      stroke="#16a34a"
+                      strokeWidth={3}
+                      dot={{ r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="balance"
+                      name="Balance"
+                      stroke="#f59e0b"
+                      strokeWidth={3}
+                      dot={{ r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
           <div style={chartCard}>
             <div style={chartHeading}>Amount Distribution</div>
             <div style={chartSubHeading}>
@@ -440,7 +524,10 @@ export default function Ledger() {
 
             <div style={chartWrap}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                <BarChart
+                  data={barData}
+                  margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis tickFormatter={(v) => moneyCompact(v)} />
