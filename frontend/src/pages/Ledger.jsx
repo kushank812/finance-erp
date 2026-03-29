@@ -39,6 +39,16 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function getStatus(row) {
   return String(row?.status || "").toUpperCase();
 }
@@ -80,7 +90,10 @@ function sortLatestFirst(rows, tab) {
 
     const noA = String(getDocNo(a, tab) || "");
     const noB = String(getDocNo(b, tab) || "");
-    return noB.localeCompare(noA, undefined, { numeric: true, sensitivity: "base" });
+    return noB.localeCompare(noA, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
   });
 }
 
@@ -404,8 +417,8 @@ export default function Ledger() {
                     <tr key={docNo} style={tr}>
                       <td style={tdCode}>{docNo}</td>
                       <td style={td}>{partyCode || "-"}</td>
-                      <td style={td}>{dateValue || "-"}</td>
-                      <td style={td}>{row.due_date || "-"}</td>
+                      <td style={td}>{isoToDisplay(dateValue)}</td>
+                      <td style={td}>{isoToDisplay(row.due_date)}</td>
                       <td style={tdRight}>{money(row.grand_total)}</td>
                       <td style={tdRight}>{money(settled)}</td>
                       <td style={tdRight}>{money(row.balance)}</td>

@@ -31,6 +31,16 @@ function num(v) {
   return Number.isFinite(x) ? x : 0;
 }
 
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 export default function VendorPaymentNew() {
   const navigate = useNavigate();
 
@@ -120,13 +130,15 @@ export default function VendorPaymentNew() {
       ).toUpperCase();
       const total = String(r.grand_total || "");
       const balance = String(r.balance || "");
+      const billDate = String(r.bill_date || "").toUpperCase();
 
       return (
         bill.includes(q) ||
         vendorCode.includes(q) ||
         vendorName.includes(q) ||
         total.includes(q) ||
-        balance.includes(q)
+        balance.includes(q) ||
+        billDate.includes(q)
       );
     });
   }, [bills, billSearch, vendorNameByCode]);
@@ -311,6 +323,9 @@ export default function VendorPaymentNew() {
                             Vendor: {vendorName || r.vendor_code}
                           </div>
                           <div style={dropdownSub}>
+                            Bill Date: {r.bill_date ? isoToDisplay(r.bill_date) : "-"}
+                          </div>
+                          <div style={dropdownSub}>
                             Total: {money(r.grand_total)} | Balance: {money(r.balance)}
                           </div>
                         </button>
@@ -362,6 +377,10 @@ export default function VendorPaymentNew() {
               }
             />
             <InfoMini
+              label="Bill Date"
+              value={selected?.bill_date ? isoToDisplay(selected.bill_date) : "-"}
+            />
+            <InfoMini
               label="Bill Total"
               value={selected ? money(selected.grand_total) : "-"}
             />
@@ -382,6 +401,10 @@ export default function VendorPaymentNew() {
           <div style={summaryCard}>
             <div style={summaryTitle}>Payment Summary</div>
             <SummaryRow label="Bill No" value={selected?.bill_no || "-"} />
+            <SummaryRow
+              label="Bill Date"
+              value={selected?.bill_date ? isoToDisplay(selected.bill_date) : "-"}
+            />
             <SummaryRow
               label="Open Balance"
               value={selected ? money(maxPayable) : "-"}

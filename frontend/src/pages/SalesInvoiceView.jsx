@@ -6,6 +6,15 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+// ✅ DATE FIX
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const parts = String(iso).split("-");
+  if (parts.length !== 3) return iso;
+  const [yyyy, mm, dd] = parts;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 export default function SalesInvoiceView() {
   const { invoiceNo } = useParams();
   const nav = useNavigate();
@@ -31,7 +40,6 @@ export default function SalesInvoiceView() {
 
   useEffect(() => {
     loadDoc(invoiceNo);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceNo]);
 
   const totals = useMemo(() => {
@@ -56,7 +64,7 @@ export default function SalesInvoiceView() {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => nav(-1)} style={btnGhost}>Back</button>
           <button
             onClick={() => window.print()}
@@ -70,7 +78,6 @@ export default function SalesInvoiceView() {
 
       {err && <div style={msgErr}>{err}</div>}
 
-      {/* Printable area */}
       <div id="print-area" style={paper}>
         {loading ? (
           <div style={{ color: "#111" }}>Loading invoice…</div>
@@ -94,8 +101,13 @@ export default function SalesInvoiceView() {
 
             <div style={metaGrid}>
               <Info label="Customer Code" value={doc.customer_code} />
-              <Info label="Invoice Date" value={String(doc.invoice_date || "")} />
-              <Info label="Due Date" value={doc.due_date ? String(doc.due_date) : "-"} />
+
+              {/* ✅ FIXED */}
+              <Info label="Invoice Date" value={isoToDisplay(doc.invoice_date)} />
+
+              {/* ✅ FIXED */}
+              <Info label="Due Date" value={isoToDisplay(doc.due_date)} />
+
               <Info label="Remark" value={doc.remark || "-"} />
             </div>
 
@@ -105,8 +117,8 @@ export default function SalesInvoiceView() {
               <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 700 }}>
                 <thead>
                   <tr style={{ background: "#f6f7f9" }}>
-                    <th align="left">#</th>
-                    <th align="left">Item Code</th>
+                    <th>#</th>
+                    <th>Item Code</th>
                     <th align="right">Qty</th>
                     <th align="right">Rate</th>
                     <th align="right">Line Total</th>
@@ -114,20 +126,16 @@ export default function SalesInvoiceView() {
                 </thead>
                 <tbody>
                   {(doc.lines || []).map((ln, idx) => (
-                    <tr key={ln.id ?? idx} style={{ borderTop: "1px solid #eee" }}>
-                      <td style={{ color: "#111" }}>{idx + 1}</td>
-                      <td style={{ color: "#111" }}>{ln.item_code}</td>
-                      <td style={{ color: "#111" }} align="right">{money(ln.qty)}</td>
-                      <td style={{ color: "#111" }} align="right">{money(ln.rate)}</td>
-                      <td style={{ color: "#111", fontWeight: 800 }} align="right">{money(ln.line_total)}</td>
+                    <tr key={idx} style={{ borderTop: "1px solid #eee" }}>
+                      <td>{idx + 1}</td>
+                      <td>{ln.item_code}</td>
+                      <td align="right">{money(ln.qty)}</td>
+                      <td align="right">{money(ln.rate)}</td>
+                      <td align="right" style={{ fontWeight: 800 }}>
+                        {money(ln.line_total)}
+                      </td>
                     </tr>
                   ))}
-
-                  {(doc.lines || []).length === 0 && (
-                    <tr>
-                      <td colSpan="5" style={{ padding: 12, color: "#666" }}>No line items.</td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -141,11 +149,6 @@ export default function SalesInvoiceView() {
               <div style={hr} />
               <TotalRow label="Amount Received" value={totals.received} />
               <TotalRow label="Balance" value={totals.balance} strong />
-            </div>
-
-            <div style={{ height: 16 }} />
-            <div style={{ color: "#666", fontSize: 12 }}>
-              Note: Use “Create Receipt (AR)” to update Amount Received and Balance.
             </div>
           </>
         )}
@@ -167,43 +170,35 @@ function Info({ label, value }) {
 
 function TotalRow({ label, value, strong }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <div style={{ color: "#111", fontWeight: strong ? 900 : 700 }}>{label}</div>
-      <div style={{ color: "#111", fontWeight: strong ? 900 : 800 }}>{value}</div>
+    <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <span style={{ fontWeight: strong ? 900 : 700 }}>{label}</span>
+      <span style={{ fontWeight: strong ? 900 : 800 }}>{value}</span>
     </div>
   );
 }
 
 /* styles */
-const paper = { background: "white", border: "1px solid #e6e6e6", borderRadius: 16, padding: 16 };
-const docHeader = { display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
+const paper = { background: "white", padding: 16, borderRadius: 14 };
+const docHeader = { display: "flex", justifyContent: "space-between" };
 const companyName = { fontSize: 18, fontWeight: 900, color: "#111" };
-const muted = { fontSize: 12, color: "#666", marginTop: 2 };
+const muted = { fontSize: 12, color: "#666" };
 const bigId = { fontSize: 18, fontWeight: 900, color: "#111" };
 const hr = { height: 1, background: "#eee", margin: "12px 0" };
 
 const metaGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 };
-const infoBox = { background: "#f7f8fa", border: "1px solid #eee", borderRadius: 14, padding: 12 };
+const infoBox = { background: "#f7f8fa", padding: 12, borderRadius: 10 };
 const infoLabel = { fontSize: 12, color: "#666" };
-const infoValue = { fontSize: 14, fontWeight: 800, color: "#111", marginTop: 4 };
+const infoValue = { fontSize: 14, fontWeight: 800, color: "#111" };
 
-const totalsWrap = { marginLeft: "auto", maxWidth: 380, border: "1px solid #eee", borderRadius: 14, padding: 12, background: "#fafafa" };
+const totalsWrap = { marginLeft: "auto", maxWidth: 350 };
 
-const btnPrimary = { padding: "10px 14px", borderRadius: 12, border: "1px solid #0b5cff", background: "#0b5cff", color: "white", cursor: "pointer", fontWeight: 800 };
-const btnGhost = { padding: "10px 14px", borderRadius: 12, border: "1px solid #ccc", background: "white", color: "#111", cursor: "pointer", fontWeight: 800 };
+const btnPrimary = { padding: 10, background: "#0b5cff", color: "#fff", borderRadius: 10 };
+const btnGhost = { padding: 10, background: "#eee", borderRadius: 10 };
 
-const msgErr = { background: "#ffecec", border: "1px solid #ffb3b3", padding: 10, borderRadius: 12, color: "#a40000", marginTop: 12 };
+const msgErr = { color: "red", marginTop: 10 };
 
 const printCss = `
 @media print {
-  body { background: white !important; }
-  nav { display: none !important; }
-  #root { padding: 0 !important; }
-  #print-area {
-    border: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-  }
   button { display: none !important; }
 }
 `;

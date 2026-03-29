@@ -39,6 +39,16 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -220,8 +230,8 @@ export default function Aging() {
       Type: tab,
       DocNo: r.docNo,
       Party: r.party,
-      DocDate: r.docDate,
-      DueDate: r.dueDate,
+      DocDate: isoToDisplay(r.docDate),
+      DueDate: isoToDisplay(r.dueDate),
       DaysOverdue: r.daysOverdue,
       Bucket: r.bucket,
       Balance: money(r.balance),
@@ -416,8 +426,8 @@ export default function Aging() {
                 >
                   <td style={tdCode}>{r.docNo}</td>
                   <td style={td}>{r.party}</td>
-                  <td style={td}>{r.docDate}</td>
-                  <td style={td}>{r.dueDate}</td>
+                  <td style={td}>{isoToDisplay(r.docDate)}</td>
+                  <td style={td}>{isoToDisplay(r.dueDate)}</td>
 
                   <td
                     style={{

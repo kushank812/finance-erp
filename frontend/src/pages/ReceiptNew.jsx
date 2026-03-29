@@ -26,6 +26,16 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 export default function ReceiptNew() {
   const navigate = useNavigate();
 
@@ -99,11 +109,16 @@ export default function ReceiptNew() {
       const customer = String(r.customer_code || "").toUpperCase();
       const total = String(r.grand_total || "");
       const balance = String(r.balance || "");
+      const invoiceDate = String(r.invoice_date || "").toUpperCase();
+      const dueDate = String(r.due_date || "").toUpperCase();
+
       return (
         invoice.includes(q) ||
         customer.includes(q) ||
         total.includes(q) ||
-        balance.includes(q)
+        balance.includes(q) ||
+        invoiceDate.includes(q) ||
+        dueDate.includes(q)
       );
     });
   }, [rows, invoiceSearch]);
@@ -281,6 +296,10 @@ export default function ReceiptNew() {
                             Customer: {r.customer_code || "-"}
                           </div>
                           <div style={dropdownSub}>
+                            Invoice Date: {isoToDisplay(r.invoice_date)} | Due Date:{" "}
+                            {r.due_date ? isoToDisplay(r.due_date) : "-"}
+                          </div>
+                          <div style={dropdownSub}>
                             Total: {money(r.grand_total)} | Balance: {money(r.balance)}
                           </div>
                         </button>
@@ -320,6 +339,14 @@ export default function ReceiptNew() {
             <InfoMini label="Selected Invoice" value={selected?.invoice_no || "-"} />
             <InfoMini label="Customer" value={selected?.customer_code || "-"} />
             <InfoMini
+              label="Invoice Date"
+              value={selected?.invoice_date ? isoToDisplay(selected.invoice_date) : "-"}
+            />
+            <InfoMini
+              label="Due Date"
+              value={selected?.due_date ? isoToDisplay(selected.due_date) : "-"}
+            />
+            <InfoMini
               label="Invoice Total"
               value={selected ? money(selected.grand_total) : "-"}
             />
@@ -339,6 +366,10 @@ export default function ReceiptNew() {
           <div style={summaryCard}>
             <div style={summaryTitle}>Receipt Summary</div>
             <SummaryRow label="Invoice No" value={selected?.invoice_no || "-"} />
+            <SummaryRow
+              label="Invoice Date"
+              value={selected?.invoice_date ? isoToDisplay(selected.invoice_date) : "-"}
+            />
             <SummaryRow
               label="Open Balance"
               value={selected ? money(selectedBalance) : "-"}

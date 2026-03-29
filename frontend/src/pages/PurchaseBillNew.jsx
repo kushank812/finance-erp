@@ -41,12 +41,68 @@ function num(n) {
   return Number.isFinite(x) ? x : 0;
 }
 
+function pad2(v) {
+  return String(v).padStart(2, "0");
+}
+
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function isoToDisplay(iso) {
+  if (!iso) return "";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function displayToISO(display) {
+  if (!display) return "";
+  const s = String(display).trim();
+  const parts = s.split("/");
+  if (parts.length !== 3) return "";
+  const [dd, mm, yyyy] = parts.map((x) => x.trim());
+  if (!dd || !mm || !yyyy) return "";
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function isValidISODate(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return false;
+  const [yyyy, mm, dd] = String(iso).split("-").map(Number);
+  const dt = new Date(yyyy, mm - 1, dd);
+  return (
+    dt.getFullYear() === yyyy &&
+    dt.getMonth() === mm - 1 &&
+    dt.getDate() === dd
+  );
+}
+
+function isValidDisplayDate(display) {
+  const s = String(display || "").trim();
+  if (!s) return false;
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return false;
+  return isValidISODate(displayToISO(s));
+}
+
+function normalizeDateInput(value) {
+  const raw = String(value || "").replace(/[^\d]/g, "").slice(0, 8);
+
+  if (raw.length <= 2) return raw;
+  if (raw.length <= 4) return `${raw.slice(0, 2)}/${raw.slice(2)}`;
+  return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4)}`;
+}
+
+function handleDateTyping(setter) {
+  return (e) => {
+    setter(normalizeDateInput(e.target.value));
+  };
 }
 
 function round2(n) {
@@ -59,7 +115,7 @@ function getStatusValue(bill) {
 
 const emptyHdr = {
   vendor_code: "",
-  bill_date: todayISO(),
+  bill_date: isoToDisplay(todayISO()),
   due_date: "",
   tax_percent: 0,
   remark: "",
@@ -71,8 +127,10 @@ function normalizeBillToForm(bill) {
   return {
     hdr: {
       vendor_code: bill?.vendor_code || "",
-      bill_date: bill?.bill_date ? String(bill.bill_date) : todayISO(),
-      due_date: bill?.due_date ? String(bill.due_date) : "",
+      bill_date: bill?.bill_date
+        ? isoToDisplay(String(bill.bill_date))
+        : isoToDisplay(todayISO()),
+      due_date: bill?.due_date ? isoToDisplay(String(bill.due_date)) : "",
       tax_percent: Number(bill?.tax_percent || 0),
       remark: bill?.remark || "",
     },
@@ -424,7 +482,10 @@ export default function PurchaseBillNew() {
   }, [lines, hdr.tax_percent]);
 
   function clearAll() {
-    setHdr({ ...emptyHdr, bill_date: todayISO() });
+    setHdr({
+      ...emptyHdr,
+      bill_date: isoToDisplay(todayISO()),
+    });
     setLines([{ ...emptyLine }]);
     setVendorSearch("");
     setItemSearches([""]);
@@ -440,8 +501,13 @@ export default function PurchaseBillNew() {
       return null;
     }
 
-    if (!hdr.bill_date) {
-      setErr("Bill Date is required.");
+    if (!hdr.bill_date || !isValidDisplayDate(hdr.bill_date)) {
+      setErr("Bill Date must be in DD/MM/YYYY format.");
+      return null;
+    }
+
+    if (hdr.due_date && !isValidDisplayDate(hdr.due_date)) {
+      setErr("Due Date must be in DD/MM/YYYY format.");
       return null;
     }
 
@@ -468,8 +534,8 @@ export default function PurchaseBillNew() {
 
     return {
       vendor_code: hdr.vendor_code,
-      bill_date: hdr.bill_date,
-      due_date: hdr.due_date || null,
+      bill_date: displayToISO(hdr.bill_date),
+      due_date: hdr.due_date ? displayToISO(hdr.due_date) : null,
       tax_percent: num(hdr.tax_percent || 0),
       remark: hdr.remark?.trim() || null,
       lines: validLines.map((l) => ({
@@ -481,8 +547,13 @@ export default function PurchaseBillNew() {
   }
 
   function validateRestrictedPayload() {
+    if (hdr.due_date && !isValidDisplayDate(hdr.due_date)) {
+      setErr("Due Date must be in DD/MM/YYYY format.");
+      return null;
+    }
+
     return {
-      due_date: hdr.due_date || null,
+      due_date: hdr.due_date ? displayToISO(hdr.due_date) : null,
       remark: hdr.remark?.trim() || null,
     };
   }
@@ -524,6 +595,16 @@ export default function PurchaseBillNew() {
         if (updated?.amount_paid != null) {
           setAmountPaid(Number(updated.amount_paid || 0));
         }
+
+        setHdr((prev) => ({
+          ...prev,
+          bill_date: updated?.bill_date
+            ? isoToDisplay(String(updated.bill_date))
+            : prev.bill_date,
+          due_date: updated?.due_date
+            ? isoToDisplay(String(updated.due_date))
+            : "",
+        }));
       } else {
         const created = await apiPost("/purchase-invoices/", payload);
         setOk(`✅ Purchase Bill "${created?.bill_no || ""}" saved. Payables updated.`);
@@ -634,21 +715,31 @@ export default function PurchaseBillNew() {
             disabled={disableFullEditFields}
           />
 
-          <FormField
-            label="Bill Date"
-            type="date"
-            value={hdr.bill_date}
-            onChange={(e) => setHdrField("bill_date", e.target.value)}
-            disabled={disableFullEditFields}
-          />
+          <div style={field}>
+            <label style={labelStyle}>Bill Date</label>
+            <input
+              type="text"
+              value={hdr.bill_date}
+              onChange={handleDateTyping((value) => setHdrField("bill_date", value))}
+              placeholder="dd/mm/yyyy"
+              maxLength={10}
+              style={disableFullEditFields ? disabledInput : input}
+              disabled={disableFullEditFields}
+            />
+          </div>
 
-          <FormField
-            label="Due Date"
-            type="date"
-            value={hdr.due_date}
-            onChange={(e) => setHdrField("due_date", e.target.value)}
-            disabled={!canChangeDueDateRemark}
-          />
+          <div style={field}>
+            <label style={labelStyle}>Due Date</label>
+            <input
+              type="text"
+              value={hdr.due_date}
+              onChange={handleDateTyping((value) => setHdrField("due_date", value))}
+              placeholder="dd/mm/yyyy"
+              maxLength={10}
+              style={!canChangeDueDateRemark ? disabledInput : input}
+              disabled={!canChangeDueDateRemark}
+            />
+          </div>
 
           <FormField
             label="Tax %"

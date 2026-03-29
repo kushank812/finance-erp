@@ -33,6 +33,16 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function sortRowsByDate(list) {
   return [...list].sort((a, b) => {
     const da = new Date(a?.date || 0).getTime();
@@ -542,7 +552,7 @@ export default function Statement() {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={`${r.doc_no}-${r.type}-${i}`} style={tr}>
-                  <td style={td}>{String(r.date || "")}</td>
+                  <td style={td}>{isoToDisplay(r.date)}</td>
                   <td style={tdCode}>{r.doc_no}</td>
                   <td style={td}>{r.type}</td>
                   <td style={tdRight}>{money(r.debit)}</td>

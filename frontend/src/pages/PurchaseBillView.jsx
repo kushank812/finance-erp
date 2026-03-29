@@ -39,7 +39,12 @@ function money(n) {
 
 function fmtDate(value) {
   if (!value) return "-";
-  return String(value);
+  const s = String(value).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 function buildQuery(params) {

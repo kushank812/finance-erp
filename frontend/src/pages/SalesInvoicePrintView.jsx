@@ -6,6 +6,16 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 export default function SalesInvoicePrintView() {
   const { invoiceNo } = useParams();
   const nav = useNavigate();
@@ -108,8 +118,8 @@ export default function SalesInvoicePrintView() {
 
             <div style={metaGrid}>
               <Info label="Customer Code" value={inv.customer_code} />
-              <Info label="Invoice Date" value={String(inv.invoice_date || "")} />
-              <Info label="Due Date" value={inv.due_date ? String(inv.due_date) : "-"} />
+              <Info label="Invoice Date" value={isoToDisplay(inv.invoice_date)} />
+              <Info label="Due Date" value={isoToDisplay(inv.due_date)} />
               <Info label="Remark" value={inv.remark || "-"} />
             </div>
 

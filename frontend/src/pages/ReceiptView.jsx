@@ -6,12 +6,6 @@ import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import {
   page,
   stack,
-  card,
-  cardHeader,
-  cardTitle,
-  cardSubtitle,
-  actionBar,
-  saveActions,
   btnPrimary,
   btnSecondary,
   btnDangerMini,
@@ -22,9 +16,14 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function fmt(value) {
-  if (value === null || value === undefined || value === "") return "-";
-  return String(value);
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 export default function ReceiptView() {
@@ -203,10 +202,16 @@ export default function ReceiptView() {
 
             <div style={metaGrid}>
               <Info label="Receipt No" value={receipt.receipt_no || "-"} />
-              <Info label="Receipt Date" value={String(receipt.receipt_date || "-")} />
+              <Info
+                label="Receipt Date"
+                value={receipt?.receipt_date ? isoToDisplay(receipt.receipt_date) : "-"}
+              />
               <Info label="Invoice No" value={linkedInvoiceNo} />
               <Info label="Customer Code" value={invoice?.customer_code || "-"} />
-              <Info label="Invoice Date" value={String(invoice?.invoice_date || "-")} />
+              <Info
+                label="Invoice Date"
+                value={invoice?.invoice_date ? isoToDisplay(invoice.invoice_date) : "-"}
+              />
               <Info label="Receipt Remark" value={receipt.remark || "-"} />
             </div>
 
@@ -218,6 +223,10 @@ export default function ReceiptView() {
                   <div style={linkedGrid}>
                     <InfoMini label="Invoice No" value={invoice.invoice_no || "-"} />
                     <InfoMini label="Status" value={invoice.status || "-"} />
+                    <InfoMini
+                      label="Invoice Date"
+                      value={invoice?.invoice_date ? isoToDisplay(invoice.invoice_date) : "-"}
+                    />
                     <InfoMini label="Grand Total" value={money(invoice.grand_total)} />
                     <InfoMini label="Received" value={money(invoice.amount_received)} />
                     <InfoMini label="Balance" value={money(invoice.balance)} />

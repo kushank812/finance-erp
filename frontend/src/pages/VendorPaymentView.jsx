@@ -23,6 +23,16 @@ function fmt(value) {
   return String(value);
 }
 
+function isoToDisplay(iso) {
+  if (!iso) return "-";
+  const s = String(iso).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 export default function VendorPaymentView() {
   const { paymentNo } = useParams();
   const nav = useNavigate();
@@ -167,7 +177,9 @@ export default function VendorPaymentView() {
 
               <div style={{ textAlign: "right" }}>
                 <div style={bigId}>{fmt(doc.payment_no)}</div>
-                <div style={muted}>Payment Date: {fmt(doc.payment_date)}</div>
+                <div style={muted}>
+                  Payment Date: {isoToDisplay(doc.payment_date)}
+                </div>
               </div>
             </div>
 
@@ -180,7 +192,10 @@ export default function VendorPaymentView() {
                 label="Vendor Code"
                 value={fmt(bill?.vendor_code || doc.vendor_code)}
               />
-              <Info label="Payment Date" value={fmt(doc.payment_date)} />
+              <Info
+                label="Payment Date"
+                value={isoToDisplay(doc.payment_date)}
+              />
               <Info label="Amount Paid" value={money(doc.amount)} />
               <Info label="Remark" value={fmt(doc.remark)} />
             </div>
@@ -192,6 +207,10 @@ export default function VendorPaymentView() {
                   <div style={linkedTitle}>Linked Purchase Bill</div>
                   <div style={linkedGrid}>
                     <InfoMini label="Bill No" value={fmt(bill.bill_no)} />
+                    <InfoMini
+                      label="Bill Date"
+                      value={isoToDisplay(bill.bill_date)}
+                    />
                     <InfoMini label="Status" value={fmt(bill.status)} />
                     <InfoMini
                       label="Grand Total"
