@@ -12,6 +12,8 @@ import {
   Cell,
   Legend,
   CartesianGrid,
+  LineChart,
+  Line,
 } from "recharts";
 
 function moneyINR(n) {
@@ -47,6 +49,7 @@ const STATUS_COLORS = {
   Pending: "#f59e0b",
   Partial: "#facc15",
   Overdue: "#ef4444",
+  Cancelled: "#94a3b8",
 };
 
 export default function Dashboard() {
@@ -59,7 +62,7 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const res = await apiGet("/dashboard/summary");
-      setData(res);
+      setData(res || {});
     } catch (e) {
       setErr(String(e?.message || e));
     } finally {
@@ -76,16 +79,18 @@ export default function Dashboard() {
       return {
         netPosition: 0,
         overdueExposure: 0,
+        totalTodayMovement: 0,
       };
     }
 
     return {
       netPosition: num(data.receivables) - num(data.payables),
       overdueExposure: num(data.overdue_receivables) + num(data.overdue_payables),
+      totalTodayMovement: num(data.today_receipts) + num(data.today_vendor_payments),
     };
   }, [data]);
 
-  const receivablePayableChart = useMemo(() => {
+  const exposureChart = useMemo(() => {
     if (!data) return [];
     return [
       { name: "Receivables", value: num(data.receivables) },
@@ -102,26 +107,89 @@ export default function Dashboard() {
       { name: "Pending", value: num(data.sales_pending_count) },
       { name: "Partial", value: num(data.sales_partial_count) },
       { name: "Overdue", value: num(data.sales_overdue_count) },
+      { name: "Cancelled", value: num(data.sales_cancelled_count) },
     ].filter((x) => x.value > 0);
   }, [data]);
 
-  const purchaseStatusChart = useMemo(() => {
+  const purchaseStatusSummary = useMemo(() => {
     if (!data) return [];
     return [
-      { name: "Paid", value: num(data.purchase_paid_count) },
-      { name: "Pending", value: num(data.purchase_pending_count) },
-      { name: "Partial", value: num(data.purchase_partial_count) },
-      { name: "Overdue", value: num(data.purchase_overdue_count) },
-    ].filter((x) => x.value > 0);
+      { label: "Bills", value: num(data.purchase_bill_count) },
+      { label: "Pending", value: num(data.purchase_pending_count) },
+      { label: "Partial", value: num(data.purchase_partial_count) },
+      { label: "Paid", value: num(data.purchase_paid_count) },
+      { label: "Overdue", value: num(data.purchase_overdue_count) },
+      { label: "Cancelled", value: num(data.purchase_cancelled_count) },
+    ];
+  }, [data]);
+
+  const agingChart = useMemo(() => {
+    if (data?.aging_buckets) {
+      return [
+        { name: "Not Due", value: num(data.aging_buckets.not_due) },
+        { name: "0-30", value: num(data.aging_buckets.b0_30) },
+        { name: "31-60", value: num(data.aging_buckets.b31_60) },
+        { name: "61-90", value: num(data.aging_buckets.b61_90) },
+        { name: "90+", value: num(data.aging_buckets.b90_plus) },
+      ];
+    }
+
+    const overdue = num(data?.overdue_receivables);
+    const current = Math.max(num(data?.receivables) - overdue, 0);
+
+    return [
+      { name: "Not Due", value: current },
+      { name: "0-30", value: 0 },
+      { name: "31-60", value: 0 },
+      { name: "61-90", value: 0 },
+      { name: "90+", value: overdue },
+    ];
+  }, [data]);
+
+  const monthlyTrend = useMemo(() => {
+    if (Array.isArray(data?.monthly_trend) && data.monthly_trend.length > 0) {
+      return data.monthly_trend.map((m) => ({
+        month: m.month,
+        receivables: num(m.receivables),
+        payables: num(m.payables),
+        receipts: num(m.receipts),
+        payments: num(m.payments),
+      }));
+    }
+
+    return [
+      {
+        month: "Current",
+        receivables: num(data?.receivables),
+        payables: num(data?.payables),
+        receipts: num(data?.today_receipts),
+        payments: num(data?.today_vendor_payments),
+      },
+    ];
+  }, [data]);
+
+  const topCustomers = useMemo(() => {
+    if (Array.isArray(data?.top_customers) && data.top_customers.length > 0) {
+      return data.top_customers.slice(0, 7).map((c) => ({
+        name:
+          c.customer_name ||
+          c.customer_code ||
+          c.name ||
+          "Customer",
+        value: num(c.balance || c.outstanding || c.amount),
+      }));
+    }
+
+    return [];
   }, [data]);
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 18 }}>
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: 18 }}>
       <div style={topWrap}>
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Dashboard</h2>
           <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            Summary of receivables, payables, collections, payments and overdue exposure.
+            Real-time summary of receivables, payables, collections, payments and risk exposure.
           </p>
         </div>
 
@@ -139,7 +207,8 @@ export default function Dashboard() {
       ) : (
         <>
           <div style={sectionTitle}>Financial Summary</div>
-          <div style={grid}>
+
+          <div style={kpiGrid}>
             <Card
               title="Total Receivables (AR)"
               value={`₹ ${moneyINR(data.receivables)}`}
@@ -187,9 +256,14 @@ export default function Dashboard() {
               value={`₹ ${moneyINR(data.today_vendor_payments)}`}
               hint="Supplier payments posted today"
             />
+            <MiniCard
+              title="Total Today Movement"
+              value={`₹ ${moneyINR(computed.totalTodayMovement)}`}
+              hint="Receipts plus vendor payments"
+            />
           </div>
 
-          <div style={{ height: 18 }} />
+          <div style={{ height: 20 }} />
 
           <div style={dualGrid}>
             <div style={panel}>
@@ -217,19 +291,83 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={{ height: 22 }} />
+          <div style={{ height: 24 }} />
 
           <div style={sectionTitle}>Graphical Analysis</div>
 
           <div style={chartGrid}>
             <ChartCard
-              title="Receivables vs Payables"
+              title="Monthly Financial Trend"
+              subtitle="Receivables, payables, collections and supplier payments"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={monthlyTrend}
+                  margin={{ top: 12, right: 16, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                    axisLine={{ stroke: "#cbd5e1" }}
+                    tickLine={{ stroke: "#cbd5e1" }}
+                  />
+                  <YAxis
+                    tickFormatter={(v) => compactINR(v)}
+                    tick={{ fill: "#475569", fontSize: 12 }}
+                    axisLine={{ stroke: "#cbd5e1" }}
+                    tickLine={{ stroke: "#cbd5e1" }}
+                  />
+                  <Tooltip content={<CustomTrendTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="receivables"
+                    name="AR"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="payables"
+                    name="AP"
+                    stroke="#dc2626"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="receipts"
+                    name="Receipts"
+                    stroke="#16a34a"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="payments"
+                    name="Payments"
+                    stroke="#f59e0b"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Financial Exposure"
               subtitle="Overall financial exposure and overdue comparison"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={receivablePayableChart}
-                  margin={{ top: 10, right: 15, left: 0, bottom: 0 }}
+                  data={exposureChart}
+                  margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
@@ -246,6 +384,34 @@ export default function Dashboard() {
                   />
                   <Tooltip content={<CustomMoneyTooltip />} />
                   <Bar dataKey="value" fill="#2563eb" radius={[10, 10, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Aging Distribution"
+              subtitle="Outstanding receivables grouped by aging bucket"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={agingChart}
+                  margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                    axisLine={{ stroke: "#cbd5e1" }}
+                    tickLine={{ stroke: "#cbd5e1" }}
+                  />
+                  <YAxis
+                    tickFormatter={(v) => compactINR(v)}
+                    tick={{ fill: "#475569", fontSize: 12 }}
+                    axisLine={{ stroke: "#cbd5e1" }}
+                    tickLine={{ stroke: "#cbd5e1" }}
+                  />
+                  <Tooltip content={<CustomMoneyTooltip />} />
+                  <Bar dataKey="value" fill="#7c3aed" radius={[10, 10, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -270,7 +436,10 @@ export default function Dashboard() {
                       strokeWidth={2}
                     >
                       {salesStatusChart.map((entry) => (
-                        <Cell key={entry.name} fill={STATUS_COLORS[entry.name]} />
+                        <Cell
+                          key={entry.name}
+                          fill={STATUS_COLORS[entry.name] || "#94a3b8"}
+                        />
                       ))}
                     </Pie>
                     <Tooltip content={<CustomCountTooltip />} />
@@ -285,37 +454,66 @@ export default function Dashboard() {
             </ChartCard>
 
             <ChartCard
-              title="Purchase Status Distribution"
-              subtitle="Current bill mix by payment status"
+              title="Top Outstanding Customers"
+              subtitle="Highest pending customer balances"
             >
-              {purchaseStatusChart.length === 0 ? (
-                <EmptyChartState text="No purchase status data available." />
+              {topCustomers.length === 0 ? (
+                <EmptyChartState text="Top customer outstanding data not available." />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={purchaseStatusChart}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={62}
-                      outerRadius={102}
-                      paddingAngle={3}
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                    >
-                      {purchaseStatusChart.map((entry) => (
-                        <Cell key={entry.name} fill={STATUS_COLORS[entry.name]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomCountTooltip />} />
-                    <Legend
-                      verticalAlign="bottom"
-                      iconType="circle"
-                      wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
+                  <BarChart
+                    data={topCustomers}
+                    layout="vertical"
+                    margin={{ top: 10, right: 20, left: 20, bottom: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis
+                      type="number"
+                      tickFormatter={(v) => compactINR(v)}
+                      tick={{ fill: "#475569", fontSize: 12 }}
+                      axisLine={{ stroke: "#cbd5e1" }}
+                      tickLine={{ stroke: "#cbd5e1" }}
                     />
-                  </PieChart>
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={120}
+                      tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                      axisLine={{ stroke: "#cbd5e1" }}
+                      tickLine={{ stroke: "#cbd5e1" }}
+                    />
+                    <Tooltip content={<CustomMoneyTooltip />} />
+                    <Bar dataKey="value" fill="#ef4444" radius={[0, 10, 10, 0]} />
+                  </BarChart>
                 </ResponsiveContainer>
               )}
+            </ChartCard>
+
+            <ChartCard
+              title="Purchase Status Snapshot"
+              subtitle="Quick AP operational count summary"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={purchaseStatusSummary}
+                  margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                    axisLine={{ stroke: "#cbd5e1" }}
+                    tickLine={{ stroke: "#cbd5e1" }}
+                  />
+                  <YAxis
+                    tick={{ fill: "#475569", fontSize: 12 }}
+                    axisLine={{ stroke: "#cbd5e1" }}
+                    tickLine={{ stroke: "#cbd5e1" }}
+                  />
+                  <Tooltip content={<CustomCountTooltipLabel />} />
+                  <Bar dataKey="value" fill="#0f766e" radius={[10, 10, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </ChartCard>
           </div>
         </>
@@ -329,60 +527,60 @@ function Card({ title, value, hint, danger }) {
     <div
       style={{
         ...card,
-        borderColor: danger ? "#ffb3b3" : "#e6e6e6",
+        borderColor: danger ? "#fecaca" : "#e5e7eb",
         background: danger ? "#fff7f7" : "#fff",
       }}
     >
-      <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>{title}</div>
+      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>{title}</div>
       <div
         style={{
           fontSize: 26,
           fontWeight: 900,
-          color: danger ? "#a40000" : "#111",
+          color: danger ? "#b91c1c" : "#111827",
           marginTop: 6,
           lineHeight: 1.2,
         }}
       >
         {value}
       </div>
-      <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>{hint}</div>
+      <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>{hint}</div>
     </div>
   );
 }
 
 function MiniCard({ title, value, hint }) {
   return (
-    <div style={{ ...card, background: "#f8f9fb" }}>
-      <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>{title}</div>
-      <div style={{ fontSize: 22, fontWeight: 900, color: "#111", marginTop: 6 }}>
+    <div style={{ ...card, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>{title}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color: "#111827", marginTop: 6 }}>
         {value}
       </div>
-      <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>{hint}</div>
+      <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>{hint}</div>
     </div>
   );
 }
 
 function StatTile({ label, value, ok, warn, danger, muted }) {
   let bg = "#fff";
-  let border = "#e6e6e6";
-  let color = "#111";
+  let border = "#e5e7eb";
+  let color = "#111827";
 
   if (ok) {
-    bg = "#ecfff1";
-    border = "#a6e0b8";
-    color = "#116b2f";
+    bg = "#ecfdf5";
+    border = "#86efac";
+    color = "#166534";
   } else if (warn) {
-    bg = "#fff8e8";
-    border = "#edd28a";
-    color = "#8a5a00";
+    bg = "#fffbeb";
+    border = "#fcd34d";
+    color = "#92400e";
   } else if (danger) {
-    bg = "#fff2f2";
-    border = "#efb0b0";
-    color = "#c40000";
+    bg = "#fef2f2";
+    border = "#fca5a5";
+    color = "#b91c1c";
   } else if (muted) {
-    bg = "#f0f0f0";
-    border = "#d5d5d5";
-    color = "#555";
+    bg = "#f1f5f9";
+    border = "#cbd5e1";
+    color = "#475569";
   }
 
   return (
@@ -394,7 +592,7 @@ function StatTile({ label, value, ok, warn, danger, muted }) {
         padding: 12,
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 800, color: "#666" }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>{label}</div>
       <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color }}>{value ?? 0}</div>
     </div>
   );
@@ -423,6 +621,8 @@ function EmptyChartState({ text }) {
         color: "#64748b",
         fontWeight: 700,
         fontSize: 14,
+        textAlign: "center",
+        padding: 16,
       }}
     >
       {text}
@@ -433,10 +633,39 @@ function EmptyChartState({ text }) {
 function CustomMoneyTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null;
 
+  const value = payload[0]?.value;
+
   return (
     <div style={tooltipBox}>
       <div style={tooltipTitle}>{label}</div>
-      <div style={tooltipValue}>₹ {moneyINR(payload[0].value)}</div>
+      <div style={tooltipValue}>₹ {moneyINR(value)}</div>
+    </div>
+  );
+}
+
+function CustomTrendTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+
+  return (
+    <div style={tooltipBox}>
+      <div style={tooltipTitle}>{label}</div>
+      {payload.map((item) => (
+        <div
+          key={item.dataKey}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            marginTop: 4,
+            fontSize: 13,
+            color: "#111827",
+            fontWeight: 700,
+          }}
+        >
+          <span>{item.name}:</span>
+          <span>₹ {moneyINR(item.value)}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -445,6 +674,7 @@ function CustomCountTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
 
   const item = payload[0];
+
   return (
     <div style={tooltipBox}>
       <div style={tooltipTitle}>{item.name}</div>
@@ -453,7 +683,18 @@ function CustomCountTooltip({ active, payload }) {
   );
 }
 
-/* ---- styles ---- */
+function CustomCountTooltipLabel({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+
+  const item = payload[0];
+
+  return (
+    <div style={tooltipBox}>
+      <div style={tooltipTitle}>{label}</div>
+      <div style={tooltipValue}>{item.value}</div>
+    </div>
+  );
+}
 
 const topWrap = {
   display: "flex",
@@ -471,7 +712,7 @@ const sectionTitle = {
   marginBottom: 10,
 };
 
-const grid = {
+const kpiGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
   gap: 12,
@@ -479,7 +720,7 @@ const grid = {
 
 const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 12,
 };
 
@@ -491,20 +732,21 @@ const dualGrid = {
 
 const chartGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
   gap: 14,
 };
 
 const panel = {
   background: "#fff",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
+  border: "1px solid #e5e7eb",
+  borderRadius: 18,
   padding: 16,
+  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
 };
 
 const chartPanel = {
   background: "#fff",
-  border: "1px solid #e6e6e6",
+  border: "1px solid #e5e7eb",
   borderRadius: 18,
   padding: 16,
   boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
@@ -512,14 +754,14 @@ const chartPanel = {
 
 const panelTitle = {
   fontSize: 14,
-  color: "#111",
+  color: "#111827",
   fontWeight: 900,
   marginBottom: 12,
 };
 
 const chartTitle = {
   fontSize: 14,
-  color: "#111",
+  color: "#111827",
   fontWeight: 900,
 };
 
@@ -531,7 +773,7 @@ const chartSubtitle = {
 
 const chartBody = {
   width: "100%",
-  height: 300,
+  height: 320,
 };
 
 const statGrid = {
@@ -541,28 +783,29 @@ const statGrid = {
 };
 
 const card = {
-  background: "white",
-  border: "1px solid #e6e6e6",
-  borderRadius: 16,
+  background: "#fff",
+  border: "1px solid #e5e7eb",
+  borderRadius: 18,
   padding: 16,
+  boxShadow: "0 8px 20px rgba(15, 23, 42, 0.05)",
 };
 
 const btnGhost = {
   padding: "10px 14px",
   borderRadius: 12,
-  border: "1px solid #ccc",
-  background: "white",
-  color: "#111",
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111827",
   cursor: "pointer",
   fontWeight: 800,
 };
 
 const msgErr = {
-  background: "#ffecec",
-  border: "1px solid #ffb3b3",
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
   padding: 10,
   borderRadius: 12,
-  color: "#a40000",
+  color: "#b91c1c",
   marginTop: 12,
   marginBottom: 12,
 };
