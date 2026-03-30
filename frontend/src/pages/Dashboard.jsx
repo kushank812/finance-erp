@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
-import AIAssistantPanel from "../components/AIAssistantPanel";
+import AIAssistantPanel from "../components/ui/AIAssistantPanel";
 import {
   BarChart,
   Bar,
