@@ -13,3 +13,4 @@ def get_audit_meta(current_user: User = Depends(require_operator_or_admin)):
         "modules": [m.value for m in AuditModule],
         "actions": [a.value for a in AuditAction],
     }
+    
