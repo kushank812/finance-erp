@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet } from "../api/client";
+import { apiGet } from "../../api/client";
 
 function nowTime() {
   try {
@@ -28,14 +28,6 @@ function money(n) {
   } catch {
     return `₹${value.toFixed(2)}`;
   }
-}
-
-function compactMoney(n) {
-  const x = Number(n || 0);
-  if (Math.abs(x) >= 10000000) return `${(x / 10000000).toFixed(2)} Cr`;
-  if (Math.abs(x) >= 100000) return `${(x / 100000).toFixed(2)} L`;
-  if (Math.abs(x) >= 1000) return `${(x / 1000).toFixed(1)} K`;
-  return `${x.toFixed(0)}`;
 }
 
 function toDateValue(dateLike) {
@@ -107,7 +99,7 @@ function AssistantCard({ card }) {
       try {
         await navigator.clipboard.writeText(card.message || "");
       } catch {
-        // ignore clipboard failure
+        // ignore
       }
     }
 
@@ -120,9 +112,6 @@ function AssistantCard({ card }) {
         <div style={actionRow}>
           <button type="button" style={secondaryBtn} onClick={copyDraft}>
             Copy Draft
-          </button>
-          <button type="button" style={primaryBtn}>
-            Use Later
           </button>
         </div>
       </div>
@@ -199,13 +188,13 @@ export default function AIAssistantPanel({
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState(() => [
+  const [messages, setMessages] = useState([
     {
       id: uid(),
       role: "assistant",
       time: nowTime(),
       text:
-        "Welcome. I can help with finance actions like overdue customer summary, vendor dues, aging report navigation, statement navigation, ledger navigation, and basic reminder drafting.\n\nStart with one of the quick prompts below.",
+        "Welcome. I can help with finance actions like overdue customer summary, vendor dues, aging report navigation, statement navigation, ledger navigation, and payment reminder drafting.",
       cards: [
         {
           type: "summary",
@@ -235,7 +224,7 @@ export default function AIAssistantPanel({
     if (!query) {
       return {
         reply:
-          "Please type a command like “Show overdue customers”, “Open aging report”, or “Show vendor dues”.",
+          "Please type a command like Show overdue customers, Open aging report, or Show vendor dues.",
         cards: [],
       };
     }
@@ -330,7 +319,6 @@ export default function AIAssistantPanel({
       const rows = Array.isArray(apData) ? apData : [];
 
       const openRows = rows.filter((r) => Number(r.balance || 0) > 0);
-
       const totalPayable = openRows.reduce((sum, r) => sum + Number(r.balance || 0), 0);
 
       const today = new Date();
@@ -373,32 +361,6 @@ export default function AIAssistantPanel({
       };
     }
 
-    if (query.includes("top receivable") || query.includes("top receivables")) {
-      const arData = await apiGet("/sales-invoices/");
-      const rows = Array.isArray(arData) ? arData : [];
-
-      const topRows = rows
-        .filter((r) => Number(r.balance || 0) > 0)
-        .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0))
-        .slice(0, 5);
-
-      return {
-        reply: "Top receivables loaded from live data.",
-        cards: [
-          {
-            type: "list",
-            title: "Top Receivables",
-            items: topRows.length
-              ? topRows.map(
-                  (r) =>
-                    `${r.customer_code || "CUSTOMER"} — ${money(Number(r.balance || 0))}`
-                )
-              : ["No open receivables found."],
-          },
-        ],
-      };
-    }
-
     if (query.includes("overdue")) {
       const arData = await apiGet("/sales-invoices/");
       const rows = Array.isArray(arData) ? arData : [];
@@ -406,10 +368,7 @@ export default function AIAssistantPanel({
       const overdueRows = rows
         .map((r) => {
           const overdueDays = daysOverdueFromDueDate(r.due_date, r.invoice_date);
-          return {
-            ...r,
-            overdueDays,
-          };
+          return { ...r, overdueDays };
         })
         .filter((r) => Number(r.balance || 0) > 0 && Number(r.overdueDays || 0) > 0);
 
@@ -442,10 +401,7 @@ export default function AIAssistantPanel({
             rows: [
               { label: "Invoices overdue", value: String(overdueRows.length) },
               { label: "Total overdue", value: money(overdueTotal) },
-              {
-                label: "Highest overdue",
-                value: highest?.customer_code || "-",
-              },
+              { label: "Highest overdue", value: highest?.customer_code || "-" },
               {
                 label: "Largest balance",
                 value: highest ? money(Number(highest.balance || 0)) : money(0),
@@ -476,10 +432,7 @@ export default function AIAssistantPanel({
       const overdueRows = rows
         .map((r) => {
           const overdueDays = daysOverdueFromDueDate(r.due_date, r.invoice_date);
-          return {
-            ...r,
-            overdueDays,
-          };
+          return { ...r, overdueDays };
         })
         .filter((r) => Number(r.balance || 0) > 0 && Number(r.overdueDays || 0) > 0)
         .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
@@ -539,7 +492,6 @@ Accounts Team`;
     setLoading(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
       const result = await buildRealResponse(userText);
 
       setMessages((prev) => [
@@ -884,16 +836,6 @@ const actionRow = {
   gap: 8,
   flexWrap: "wrap",
   marginTop: 10,
-};
-
-const primaryBtn = {
-  border: "none",
-  borderRadius: 12,
-  padding: "9px 12px",
-  fontWeight: 800,
-  cursor: "pointer",
-  color: "#06111f",
-  background: "linear-gradient(135deg, #67f0d5, #61c3ff)",
 };
 
 const secondaryBtn = {
