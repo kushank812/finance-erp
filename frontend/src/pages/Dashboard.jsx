@@ -183,8 +183,15 @@ export default function Dashboard() {
   return (
     <>
       <div style={pageWrap}>
-        <div style={dashboardArea}>
-          <div style={mainArea}>
+        <div className="dashboard-grid" style={dashboardGrid}>
+          <aside className="dashboard-ai" style={aiCol}>
+            <AIAssistantPanel
+              title="AI Finance Assistant"
+              height="calc(100vh - 108px)"
+            />
+          </aside>
+
+          <main className="dashboard-main" style={mainCol}>
             <div style={topWrap}>
               <div>
                 <h2 style={{ margin: 0, color: "#fff" }}>Dashboard</h2>
@@ -531,14 +538,7 @@ export default function Dashboard() {
                 </div>
               </>
             )}
-          </div>
-
-          <div style={aiArea}>
-            <AIAssistantPanel
-              title="AI Finance Assistant"
-              height="calc(100vh - 108px)"
-            />
-          </div>
+          </main>
         </div>
       </div>
 
@@ -722,24 +722,29 @@ function CustomCountTooltipLabel({ active, payload, label }) {
 }
 
 const pageWrap = {
+  width: "100%",
   maxWidth: 1700,
   margin: "0 auto",
   padding: "0 12px 18px",
+  boxSizing: "border-box",
 };
 
-const dashboardArea = {
+const dashboardGrid = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) 420px",
   gap: 18,
   alignItems: "start",
 };
 
-const mainArea = {
+const mainCol = {
   minWidth: 0,
   padding: 18,
+  boxSizing: "border-box",
 };
 
-const aiArea = {
+const aiCol = {
+  width: "100%",
+  maxWidth: 420,
   position: "sticky",
   top: 86,
   alignSelf: "start",
@@ -881,22 +886,21 @@ const tooltipValue = {
 };
 
 const responsiveCss = `
-@media (max-width: 1280px) {
-  .dashboard-ai-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 1280px) {
-  div[style*="grid-template-columns: minmax(0, 1fr) 420px"] {
+@media (max-width: 1100px) {
+  .dashboard-grid {
     grid-template-columns: 1fr !important;
   }
-}
 
-@media (max-width: 1280px) {
-  div[style*="position: sticky"] {
+  .dashboard-ai {
     position: static !important;
     top: auto !important;
+    max-width: 100% !important;
+    order: -1 !important;
+    margin-bottom: 14px !important;
+  }
+
+  .dashboard-main {
+    padding-top: 0 !important;
   }
 }
 
