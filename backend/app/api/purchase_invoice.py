@@ -20,6 +20,12 @@ from app.schemas.purchase_invoice import PurchaseInvoiceCreate, PurchaseInvoiceO
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
 from app.utils.numbering import get_next_number
+from app.utils.status import (
+    STATUS_CANCELLED,
+    STATUS_PAID,
+    compute_balance,
+    compute_status,
+)
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/purchase-invoices", tags=["Purchase Invoices"])
@@ -92,41 +98,25 @@ class CancelBillIn(BaseModel):
 
 
 # -----------------------------
-# STATUS HELPERS
+# HELPERS
 # -----------------------------
-STATUS_PENDING = "PENDING"
-STATUS_PARTIAL = "PARTIAL"
-STATUS_PAID = "PAID"
-STATUS_OVERDUE = "OVERDUE"
-STATUS_CANCELLED = "CANCELLED"
-
-
-def compute_status(
-    balance: Decimal | float,
-    grand_total: Decimal | float,
-    due_date: date | None,
-) -> str:
-    bal = Decimal(str(balance or 0))
-    total = Decimal(str(grand_total or 0))
-
-    if bal <= 0:
-        return STATUS_PAID
-    if bal < total:
-        return STATUS_PARTIAL
-    if due_date and date.today() > due_date:
-        return STATUS_OVERDUE
-    return STATUS_PENDING
-
-
 def to_decimal(value) -> Decimal:
     return Decimal(str(value or 0))
 
 
 def normalize_bill_status(obj: PurchaseInvoiceHdr) -> PurchaseInvoiceHdr:
-    if str(obj.status or "").upper() == STATUS_CANCELLED:
+    current_status = str(obj.status or "").upper()
+
+    if current_status == STATUS_CANCELLED:
         obj.status = STATUS_CANCELLED
-    else:
-        obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+        return obj
+
+    obj.status = compute_status(
+        grand_total=obj.grand_total,
+        balance=obj.balance,
+        due_date=obj.due_date,
+        cancelled=False,
+    )
     return obj
 
 
@@ -267,8 +257,13 @@ def create_purchase_invoice(
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
     amount_paid = Decimal("0.00")
-    balance = grand_total
-    status = compute_status(balance, grand_total, due_date)
+    balance = compute_balance(grand_total, amount_paid)
+    status = compute_status(
+        grand_total=grand_total,
+        balance=balance,
+        due_date=due_date,
+        cancelled=False,
+    )
 
     hdr = PurchaseInvoiceHdr(
         bill_no=bill_no,
@@ -351,6 +346,7 @@ def update_purchase_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
+    normalize_bill_status(obj)
     current_status = str(obj.status or "").upper()
 
     if current_status == STATUS_CANCELLED:
@@ -391,10 +387,16 @@ def update_purchase_invoice(
         obj.due_date = data.get("due_date", obj.due_date)
         obj.remark = data.get("remark", obj.remark)
 
+        current_status = str(obj.status or "").upper()
         if current_status == STATUS_CANCELLED:
             obj.status = STATUS_CANCELLED
         else:
-            obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+            obj.status = compute_status(
+                grand_total=obj.grand_total,
+                balance=obj.balance,
+                due_date=obj.due_date,
+                cancelled=False,
+            )
 
         log_activity(
             db=db,
@@ -475,8 +477,7 @@ def update_purchase_invoice(
     tax_percent = to_decimal(data.get("tax_percent"))
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
-
-    new_balance = grand_total - amount_paid
+    new_balance = compute_balance(grand_total, amount_paid)
 
     if new_balance < 0:
         raise HTTPException(
@@ -493,7 +494,12 @@ def update_purchase_invoice(
     obj.grand_total = grand_total
     obj.balance = new_balance
     obj.remark = data.get("remark")
-    obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+    obj.status = compute_status(
+        grand_total=obj.grand_total,
+        balance=obj.balance,
+        due_date=obj.due_date,
+        cancelled=False,
+    )
 
     obj.lines.clear()
     for ln in new_lines:
@@ -561,6 +567,8 @@ def cancel_purchase_invoice(
 
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
+
+    normalize_bill_status(obj)
 
     if str(obj.status or "").upper() == STATUS_CANCELLED:
         raise HTTPException(status_code=400, detail="Bill is already cancelled")
@@ -736,6 +744,8 @@ def pay_bill(
     if not obj:
         raise HTTPException(status_code=404, detail="Purchase invoice not found")
 
+    normalize_bill_status(obj)
+
     if str(obj.status or "").upper() == STATUS_CANCELLED:
         raise HTTPException(
             status_code=400,
@@ -773,11 +783,16 @@ def pay_bill(
     db.add(payment)
 
     new_amount_paid = Decimal(str(obj.amount_paid or 0)) + amount
-    new_balance = Decimal(str(obj.grand_total or 0)) - new_amount_paid
+    new_balance = compute_balance(obj.grand_total, new_amount_paid)
 
     obj.amount_paid = new_amount_paid
     obj.balance = new_balance
-    obj.status = compute_status(obj.balance, obj.grand_total, obj.due_date)
+    obj.status = compute_status(
+        grand_total=obj.grand_total,
+        balance=obj.balance,
+        due_date=obj.due_date,
+        cancelled=False,
+    )
 
     log_activity(
         db=db,
@@ -867,7 +882,6 @@ def reverse_vendor_payment(
         raise HTTPException(status_code=400, detail="Invalid payment amount for reversal")
 
     current_amount_paid = to_decimal(bill.amount_paid)
-    current_grand_total = to_decimal(bill.grand_total)
 
     if reverse_amount > current_amount_paid:
         raise HTTPException(
@@ -887,7 +901,7 @@ def reverse_vendor_payment(
     }
 
     new_amount_paid = current_amount_paid - reverse_amount
-    new_balance = current_grand_total - new_amount_paid
+    new_balance = compute_balance(bill.grand_total, new_amount_paid)
 
     if new_amount_paid < 0:
         raise HTTPException(
@@ -897,7 +911,12 @@ def reverse_vendor_payment(
 
     bill.amount_paid = new_amount_paid
     bill.balance = new_balance
-    bill.status = compute_status(bill.balance, bill.grand_total, bill.due_date)
+    bill.status = compute_status(
+        grand_total=bill.grand_total,
+        balance=bill.balance,
+        due_date=bill.due_date,
+        cancelled=False,
+    )
 
     db.delete(payment)
 

@@ -2,13 +2,23 @@ from datetime import date
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, extract
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.purchase_invoice import PurchaseInvoiceHdr
 from app.models.sales_invoice import SalesInvoiceHdr, SalesReceipt
 from app.models.vendor_payment import VendorPayment
+from app.utils.status import (
+    STATUS_CANCELLED,
+    STATUS_OVERDUE,
+    STATUS_PAID,
+    STATUS_PARTIAL,
+    STATUS_PENDING,
+    amount_if_overdue,
+    compute_status,
+    status_counts_from_rows,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -19,22 +29,6 @@ def scalar_number(value):
 
 def scalar_count(value):
     return int(value or 0)
-
-
-def classify_status(grand_total, balance, due_date, today):
-    grand_total = float(grand_total or 0)
-    balance = float(balance or 0)
-
-    if balance <= 0:
-        return "PAID"
-
-    if 0 < balance < grand_total:
-        return "PARTIAL"
-
-    if due_date and due_date < today:
-        return "OVERDUE"
-
-    return "PENDING"
 
 
 @router.get("/summary")
@@ -57,67 +51,83 @@ def dashboard_summary(db: Session = Depends(get_db)):
     # SALES / AR STATUS COUNTS
     # ============================
 
-    sales_rows = db.query(
+    sales_rows_raw = db.query(
         SalesInvoiceHdr.invoice_no,
         SalesInvoiceHdr.grand_total,
         SalesInvoiceHdr.balance,
         SalesInvoiceHdr.due_date,
     ).all()
 
+    sales_rows = [
+        {
+            "invoice_no": invoice_no,
+            "grand_total": grand_total,
+            "balance": balance,
+            "due_date": due_date,
+            "cancelled": False,
+        }
+        for invoice_no, grand_total, balance, due_date in sales_rows_raw
+    ]
+
+    sales_counts = status_counts_from_rows(sales_rows, today=today)
+
     sales_invoice_count = len(sales_rows)
-    sales_pending_count = 0
-    sales_partial_count = 0
-    sales_paid_count = 0
-    sales_overdue_count = 0
-    sales_cancelled_count = 0
+    sales_pending_count = sales_counts[STATUS_PENDING]
+    sales_partial_count = sales_counts[STATUS_PARTIAL]
+    sales_paid_count = sales_counts[STATUS_PAID]
+    sales_overdue_count = sales_counts[STATUS_OVERDUE]
+    sales_cancelled_count = sales_counts[STATUS_CANCELLED]
 
-    overdue_receivables_total = 0.0
-
-    for _, grand_total, balance, due_date in sales_rows:
-        status = classify_status(grand_total, balance, due_date, today)
-
-        if status == "PENDING":
-            sales_pending_count += 1
-        elif status == "PARTIAL":
-            sales_partial_count += 1
-        elif status == "PAID":
-            sales_paid_count += 1
-        elif status == "OVERDUE":
-            sales_overdue_count += 1
-            overdue_receivables_total += float(balance or 0)
+    overdue_receivables_total = 0
+    for row in sales_rows:
+        overdue_receivables_total += amount_if_overdue(
+            grand_total=row["grand_total"],
+            balance=row["balance"],
+            due_date=row["due_date"],
+            cancelled=row["cancelled"],
+            today=today,
+        )
 
     # ============================
     # PURCHASE / AP STATUS COUNTS
     # ============================
 
-    purchase_rows = db.query(
+    purchase_rows_raw = db.query(
         PurchaseInvoiceHdr.bill_no,
         PurchaseInvoiceHdr.grand_total,
         PurchaseInvoiceHdr.balance,
         PurchaseInvoiceHdr.due_date,
     ).all()
 
+    purchase_rows = [
+        {
+            "bill_no": bill_no,
+            "grand_total": grand_total,
+            "balance": balance,
+            "due_date": due_date,
+            "cancelled": False,
+        }
+        for bill_no, grand_total, balance, due_date in purchase_rows_raw
+    ]
+
+    purchase_counts = status_counts_from_rows(purchase_rows, today=today)
+
     purchase_bill_count = len(purchase_rows)
-    purchase_pending_count = 0
-    purchase_partial_count = 0
-    purchase_paid_count = 0
-    purchase_overdue_count = 0
-    purchase_cancelled_count = 0
+    purchase_pending_count = purchase_counts[STATUS_PENDING]
+    purchase_partial_count = purchase_counts[STATUS_PARTIAL]
+    purchase_paid_count = purchase_counts[STATUS_PAID]
+    purchase_overdue_count = purchase_counts[STATUS_OVERDUE]
+    purchase_cancelled_count = purchase_counts[STATUS_CANCELLED]
 
-    overdue_payables_total = 0.0
-
-    for _, grand_total, balance, due_date in purchase_rows:
-        status = classify_status(grand_total, balance, due_date, today)
-
-        if status == "PENDING":
-            purchase_pending_count += 1
-        elif status == "PARTIAL":
-            purchase_partial_count += 1
-        elif status == "PAID":
-            purchase_paid_count += 1
-        elif status == "OVERDUE":
-            purchase_overdue_count += 1
-            overdue_payables_total += float(balance or 0)
+    overdue_payables_total = 0
+    for row in purchase_rows:
+        overdue_payables_total += amount_if_overdue(
+            grand_total=row["grand_total"],
+            balance=row["balance"],
+            due_date=row["due_date"],
+            cancelled=row["cancelled"],
+            today=today,
+        )
 
     # ============================
     # TODAY'S MOVEMENT
@@ -202,13 +212,16 @@ def dashboard_summary(db: Session = Depends(get_db)):
     monthly_trend = [{"month": k, **v} for k, v in sorted(trend.items())]
 
     # ============================
-    # AGING BUCKETS
+    # AGING BUCKETS (SALES / AR)
     # ============================
 
     invoice_aging_rows = db.query(
-        SalesInvoiceHdr.due_date,
+        SalesInvoiceHdr.grand_total,
         SalesInvoiceHdr.balance,
-    ).filter(SalesInvoiceHdr.balance > 0).all()
+        SalesInvoiceHdr.due_date,
+    ).filter(
+        SalesInvoiceHdr.balance > 0
+    ).all()
 
     aging = {
         "not_due": 0,
@@ -218,7 +231,18 @@ def dashboard_summary(db: Session = Depends(get_db)):
         "b90_plus": 0,
     }
 
-    for due_date, balance in invoice_aging_rows:
+    for grand_total, balance, due_date in invoice_aging_rows:
+        status = compute_status(
+            grand_total=grand_total,
+            balance=balance,
+            due_date=due_date,
+            cancelled=False,
+            today=today,
+        )
+
+        if status == STATUS_PAID or status == STATUS_CANCELLED:
+            continue
+
         bal = float(balance or 0)
 
         if not due_date:
