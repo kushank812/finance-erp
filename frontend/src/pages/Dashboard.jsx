@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
+import AIAssistantPanel from "../components/AIAssistantPanel";
 import {
   BarChart,
   Bar,
@@ -171,11 +172,7 @@ export default function Dashboard() {
   const topCustomers = useMemo(() => {
     if (Array.isArray(data?.top_customers) && data.top_customers.length > 0) {
       return data.top_customers.slice(0, 7).map((c) => ({
-        name:
-          c.customer_name ||
-          c.customer_code ||
-          c.name ||
-          "Customer",
+        name: c.customer_name || c.customer_code || c.name || "Customer",
         value: num(c.balance || c.outstanding || c.amount),
       }));
     }
@@ -184,341 +181,378 @@ export default function Dashboard() {
   }, [data]);
 
   return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: 18 }}>
-      <div style={topWrap}>
-        <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>Dashboard</h2>
-          <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            Real-time summary of receivables, payables, collections, payments and risk exposure.
-          </p>
+    <>
+      <div style={pageWrap}>
+        <div style={dashboardArea}>
+          <div style={{ maxWidth: 1280, margin: "0 auto", padding: 18 }}>
+            <div style={topWrap}>
+              <div>
+                <h2 style={{ margin: 0, color: "#fff" }}>Dashboard</h2>
+                <p style={{ marginTop: 6, color: "#b8b8b8" }}>
+                  Real-time summary of receivables, payables, collections,
+                  payments and risk exposure.
+                </p>
+              </div>
+
+              <button onClick={load} style={btnGhost} disabled={loading}>
+                {loading ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+
+            {err && <div style={msgErr}>{err}</div>}
+
+            {loading && !data ? (
+              <div style={{ color: "#b8b8b8" }}>Loading dashboard...</div>
+            ) : !data ? (
+              <div style={{ color: "#b8b8b8" }}>No dashboard data available.</div>
+            ) : (
+              <>
+                <div style={sectionTitle}>Financial Summary</div>
+
+                <div style={kpiGrid}>
+                  <Card
+                    title="Total Receivables (AR)"
+                    value={`₹ ${moneyINR(data.receivables)}`}
+                    hint="Total sales invoice value"
+                  />
+                  <Card
+                    title="Total Payables (AP)"
+                    value={`₹ ${moneyINR(data.payables)}`}
+                    hint="Total purchase bill value"
+                  />
+                  <Card
+                    title="Overdue Receivables"
+                    value={`₹ ${moneyINR(data.overdue_receivables)}`}
+                    danger
+                    hint="Outstanding AR marked overdue"
+                  />
+                  <Card
+                    title="Overdue Payables"
+                    value={`₹ ${moneyINR(data.overdue_payables)}`}
+                    danger
+                    hint="Outstanding AP marked overdue"
+                  />
+                </div>
+
+                <div style={{ height: 14 }} />
+
+                <div style={summaryGrid}>
+                  <MiniCard
+                    title="Net Position"
+                    value={`₹ ${moneyINR(computed.netPosition)}`}
+                    hint="Receivables minus payables"
+                  />
+                  <MiniCard
+                    title="Total Overdue Exposure"
+                    value={`₹ ${moneyINR(computed.overdueExposure)}`}
+                    hint="Combined overdue AR + AP"
+                  />
+                  <MiniCard
+                    title="Today's Receipts"
+                    value={`₹ ${moneyINR(data.today_receipts)}`}
+                    hint="Customer collections posted today"
+                  />
+                  <MiniCard
+                    title="Today's Vendor Payments"
+                    value={`₹ ${moneyINR(data.today_vendor_payments)}`}
+                    hint="Supplier payments posted today"
+                  />
+                  <MiniCard
+                    title="Total Today Movement"
+                    value={`₹ ${moneyINR(computed.totalTodayMovement)}`}
+                    hint="Receipts plus vendor payments"
+                  />
+                </div>
+
+                <div style={{ height: 20 }} />
+
+                <div style={dualGrid}>
+                  <div style={panel}>
+                    <div style={panelTitle}>Sales / AR Status</div>
+                    <div style={statGrid}>
+                      <StatTile label="Invoices" value={data.sales_invoice_count} />
+                      <StatTile label="Pending" value={data.sales_pending_count} />
+                      <StatTile
+                        label="Partial"
+                        value={data.sales_partial_count}
+                        warn
+                      />
+                      <StatTile label="Paid" value={data.sales_paid_count} ok />
+                      <StatTile
+                        label="Overdue"
+                        value={data.sales_overdue_count}
+                        danger
+                      />
+                      <StatTile
+                        label="Cancelled"
+                        value={data.sales_cancelled_count}
+                        muted
+                      />
+                    </div>
+                  </div>
+
+                  <div style={panel}>
+                    <div style={panelTitle}>Purchase / AP Status</div>
+                    <div style={statGrid}>
+                      <StatTile label="Bills" value={data.purchase_bill_count} />
+                      <StatTile label="Pending" value={data.purchase_pending_count} />
+                      <StatTile
+                        label="Partial"
+                        value={data.purchase_partial_count}
+                        warn
+                      />
+                      <StatTile label="Paid" value={data.purchase_paid_count} ok />
+                      <StatTile
+                        label="Overdue"
+                        value={data.purchase_overdue_count}
+                        danger
+                      />
+                      <StatTile
+                        label="Cancelled"
+                        value={data.purchase_cancelled_count}
+                        muted
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ height: 24 }} />
+
+                <div style={sectionTitle}>Graphical Analysis</div>
+
+                <div style={chartGrid}>
+                  <ChartCard
+                    title="Monthly Financial Trend"
+                    subtitle="Receivables, payables, collections and supplier payments"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={monthlyTrend}
+                        margin={{ top: 12, right: 16, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis
+                          dataKey="month"
+                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <YAxis
+                          tickFormatter={(v) => compactINR(v)}
+                          tick={{ fill: "#475569", fontSize: 12 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <Tooltip content={<CustomTrendTooltip />} />
+                        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                        <Line
+                          type="monotone"
+                          dataKey="receivables"
+                          name="AR"
+                          stroke="#2563eb"
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="payables"
+                          name="AP"
+                          stroke="#dc2626"
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="receipts"
+                          name="Receipts"
+                          stroke="#16a34a"
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="payments"
+                          name="Payments"
+                          stroke="#f59e0b"
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+
+                  <ChartCard
+                    title="Financial Exposure"
+                    subtitle="Overall financial exposure and overdue comparison"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={exposureChart}
+                        margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <YAxis
+                          tickFormatter={(v) => compactINR(v)}
+                          tick={{ fill: "#475569", fontSize: 12 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <Tooltip content={<CustomMoneyTooltip />} />
+                        <Bar dataKey="value" fill="#2563eb" radius={[10, 10, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+
+                  <ChartCard
+                    title="Aging Distribution"
+                    subtitle="Outstanding receivables grouped by aging bucket"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={agingChart}
+                        margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <YAxis
+                          tickFormatter={(v) => compactINR(v)}
+                          tick={{ fill: "#475569", fontSize: 12 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <Tooltip content={<CustomMoneyTooltip />} />
+                        <Bar dataKey="value" fill="#7c3aed" radius={[10, 10, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+
+                  <ChartCard
+                    title="Sales Status Distribution"
+                    subtitle="Current invoice mix by payment status"
+                  >
+                    {salesStatusChart.length === 0 ? (
+                      <EmptyChartState text="No sales status data available." />
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={salesStatusChart}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={62}
+                            outerRadius={102}
+                            paddingAngle={3}
+                            stroke="#ffffff"
+                            strokeWidth={2}
+                          >
+                            {salesStatusChart.map((entry) => (
+                              <Cell
+                                key={entry.name}
+                                fill={STATUS_COLORS[entry.name] || "#94a3b8"}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<CustomCountTooltip />} />
+                          <Legend
+                            verticalAlign="bottom"
+                            iconType="circle"
+                            wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
+
+                  <ChartCard
+                    title="Top Outstanding Customers"
+                    subtitle="Highest pending customer balances"
+                  >
+                    {topCustomers.length === 0 ? (
+                      <EmptyChartState text="Top customer outstanding data not available." />
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={topCustomers}
+                          layout="vertical"
+                          margin={{ top: 10, right: 20, left: 20, bottom: 8 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            type="number"
+                            tickFormatter={(v) => compactINR(v)}
+                            tick={{ fill: "#475569", fontSize: 12 }}
+                            axisLine={{ stroke: "#cbd5e1" }}
+                            tickLine={{ stroke: "#cbd5e1" }}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            width={120}
+                            tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                            axisLine={{ stroke: "#cbd5e1" }}
+                            tickLine={{ stroke: "#cbd5e1" }}
+                          />
+                          <Tooltip content={<CustomMoneyTooltip />} />
+                          <Bar dataKey="value" fill="#ef4444" radius={[0, 10, 10, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartCard>
+
+                  <ChartCard
+                    title="Purchase Status Snapshot"
+                    subtitle="Quick AP operational count summary"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={purchaseStatusSummary}
+                        margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <YAxis
+                          tick={{ fill: "#475569", fontSize: 12 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <Tooltip content={<CustomCountTooltipLabel />} />
+                        <Bar dataKey="value" fill="#0f766e" radius={[10, 10, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        <button onClick={load} style={btnGhost} disabled={loading}>
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
+        <div style={aiArea}>
+          <AIAssistantPanel title="AI Finance Assistant" height="calc(100vh - 108px)" />
+        </div>
       </div>
 
-      {err && <div style={msgErr}>{err}</div>}
-
-      {loading && !data ? (
-        <div style={{ color: "#b8b8b8" }}>Loading dashboard...</div>
-      ) : !data ? (
-        <div style={{ color: "#b8b8b8" }}>No dashboard data available.</div>
-      ) : (
-        <>
-          <div style={sectionTitle}>Financial Summary</div>
-
-          <div style={kpiGrid}>
-            <Card
-              title="Total Receivables (AR)"
-              value={`₹ ${moneyINR(data.receivables)}`}
-              hint="Total sales invoice value"
-            />
-            <Card
-              title="Total Payables (AP)"
-              value={`₹ ${moneyINR(data.payables)}`}
-              hint="Total purchase bill value"
-            />
-            <Card
-              title="Overdue Receivables"
-              value={`₹ ${moneyINR(data.overdue_receivables)}`}
-              danger
-              hint="Outstanding AR marked overdue"
-            />
-            <Card
-              title="Overdue Payables"
-              value={`₹ ${moneyINR(data.overdue_payables)}`}
-              danger
-              hint="Outstanding AP marked overdue"
-            />
-          </div>
-
-          <div style={{ height: 14 }} />
-
-          <div style={summaryGrid}>
-            <MiniCard
-              title="Net Position"
-              value={`₹ ${moneyINR(computed.netPosition)}`}
-              hint="Receivables minus payables"
-            />
-            <MiniCard
-              title="Total Overdue Exposure"
-              value={`₹ ${moneyINR(computed.overdueExposure)}`}
-              hint="Combined overdue AR + AP"
-            />
-            <MiniCard
-              title="Today's Receipts"
-              value={`₹ ${moneyINR(data.today_receipts)}`}
-              hint="Customer collections posted today"
-            />
-            <MiniCard
-              title="Today's Vendor Payments"
-              value={`₹ ${moneyINR(data.today_vendor_payments)}`}
-              hint="Supplier payments posted today"
-            />
-            <MiniCard
-              title="Total Today Movement"
-              value={`₹ ${moneyINR(computed.totalTodayMovement)}`}
-              hint="Receipts plus vendor payments"
-            />
-          </div>
-
-          <div style={{ height: 20 }} />
-
-          <div style={dualGrid}>
-            <div style={panel}>
-              <div style={panelTitle}>Sales / AR Status</div>
-              <div style={statGrid}>
-                <StatTile label="Invoices" value={data.sales_invoice_count} />
-                <StatTile label="Pending" value={data.sales_pending_count} />
-                <StatTile label="Partial" value={data.sales_partial_count} warn />
-                <StatTile label="Paid" value={data.sales_paid_count} ok />
-                <StatTile label="Overdue" value={data.sales_overdue_count} danger />
-                <StatTile label="Cancelled" value={data.sales_cancelled_count} muted />
-              </div>
-            </div>
-
-            <div style={panel}>
-              <div style={panelTitle}>Purchase / AP Status</div>
-              <div style={statGrid}>
-                <StatTile label="Bills" value={data.purchase_bill_count} />
-                <StatTile label="Pending" value={data.purchase_pending_count} />
-                <StatTile label="Partial" value={data.purchase_partial_count} warn />
-                <StatTile label="Paid" value={data.purchase_paid_count} ok />
-                <StatTile label="Overdue" value={data.purchase_overdue_count} danger />
-                <StatTile label="Cancelled" value={data.purchase_cancelled_count} muted />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ height: 24 }} />
-
-          <div style={sectionTitle}>Graphical Analysis</div>
-
-          <div style={chartGrid}>
-            <ChartCard
-              title="Monthly Financial Trend"
-              subtitle="Receivables, payables, collections and supplier payments"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={monthlyTrend}
-                  margin={{ top: 12, right: 16, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="month"
-                    tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <YAxis
-                    tickFormatter={(v) => compactINR(v)}
-                    tick={{ fill: "#475569", fontSize: 12 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <Tooltip content={<CustomTrendTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                  <Line
-                    type="monotone"
-                    dataKey="receivables"
-                    name="AR"
-                    stroke="#2563eb"
-                    strokeWidth={3}
-                    dot={{ r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="payables"
-                    name="AP"
-                    stroke="#dc2626"
-                    strokeWidth={3}
-                    dot={{ r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="receipts"
-                    name="Receipts"
-                    stroke="#16a34a"
-                    strokeWidth={3}
-                    dot={{ r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="payments"
-                    name="Payments"
-                    stroke="#f59e0b"
-                    strokeWidth={3}
-                    dot={{ r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            <ChartCard
-              title="Financial Exposure"
-              subtitle="Overall financial exposure and overdue comparison"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={exposureChart}
-                  margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <YAxis
-                    tickFormatter={(v) => compactINR(v)}
-                    tick={{ fill: "#475569", fontSize: 12 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <Tooltip content={<CustomMoneyTooltip />} />
-                  <Bar dataKey="value" fill="#2563eb" radius={[10, 10, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            <ChartCard
-              title="Aging Distribution"
-              subtitle="Outstanding receivables grouped by aging bucket"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={agingChart}
-                  margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <YAxis
-                    tickFormatter={(v) => compactINR(v)}
-                    tick={{ fill: "#475569", fontSize: 12 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <Tooltip content={<CustomMoneyTooltip />} />
-                  <Bar dataKey="value" fill="#7c3aed" radius={[10, 10, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            <ChartCard
-              title="Sales Status Distribution"
-              subtitle="Current invoice mix by payment status"
-            >
-              {salesStatusChart.length === 0 ? (
-                <EmptyChartState text="No sales status data available." />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={salesStatusChart}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={62}
-                      outerRadius={102}
-                      paddingAngle={3}
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                    >
-                      {salesStatusChart.map((entry) => (
-                        <Cell
-                          key={entry.name}
-                          fill={STATUS_COLORS[entry.name] || "#94a3b8"}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomCountTooltip />} />
-                    <Legend
-                      verticalAlign="bottom"
-                      iconType="circle"
-                      wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </ChartCard>
-
-            <ChartCard
-              title="Top Outstanding Customers"
-              subtitle="Highest pending customer balances"
-            >
-              {topCustomers.length === 0 ? (
-                <EmptyChartState text="Top customer outstanding data not available." />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={topCustomers}
-                    layout="vertical"
-                    margin={{ top: 10, right: 20, left: 20, bottom: 8 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis
-                      type="number"
-                      tickFormatter={(v) => compactINR(v)}
-                      tick={{ fill: "#475569", fontSize: 12 }}
-                      axisLine={{ stroke: "#cbd5e1" }}
-                      tickLine={{ stroke: "#cbd5e1" }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={120}
-                      tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
-                      axisLine={{ stroke: "#cbd5e1" }}
-                      tickLine={{ stroke: "#cbd5e1" }}
-                    />
-                    <Tooltip content={<CustomMoneyTooltip />} />
-                    <Bar dataKey="value" fill="#ef4444" radius={[0, 10, 10, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </ChartCard>
-
-            <ChartCard
-              title="Purchase Status Snapshot"
-              subtitle="Quick AP operational count summary"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={purchaseStatusSummary}
-                  margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <YAxis
-                    tick={{ fill: "#475569", fontSize: 12 }}
-                    axisLine={{ stroke: "#cbd5e1" }}
-                    tickLine={{ stroke: "#cbd5e1" }}
-                  />
-                  <Tooltip content={<CustomCountTooltipLabel />} />
-                  <Bar dataKey="value" fill="#0f766e" radius={[10, 10, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </div>
-        </>
-      )}
-    </div>
+      <style>{responsiveCss}</style>
+    </>
   );
 }
 
@@ -696,6 +730,24 @@ function CustomCountTooltipLabel({ active, payload, label }) {
   );
 }
 
+const pageWrap = {
+  maxWidth: 1700,
+  margin: "0 auto",
+  padding: "0 12px 18px",
+};
+
+const dashboardArea = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 420px",
+  gap: 18,
+  alignItems: "start",
+};
+
+const aiArea = {
+  position: "sticky",
+  top: 86,
+};
+
 const topWrap = {
   display: "flex",
   justifyContent: "space-between",
@@ -830,3 +882,30 @@ const tooltipValue = {
   fontWeight: 900,
   color: "#111827",
 };
+
+const responsiveCss = `
+@media (max-width: 1280px) {
+  .dashboard-ai-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1280px) {
+  div[style*="grid-template-columns: minmax(0, 1fr) 420px"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 1280px) {
+  div[style*="position: sticky"] {
+    position: static !important;
+    top: auto !important;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    overflow-x: hidden;
+  }
+}
+`;
