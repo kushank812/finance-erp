@@ -184,7 +184,7 @@ export default function Dashboard() {
     <>
       <div style={pageWrap}>
         <div style={dashboardArea}>
-          <div style={{ maxWidth: 1280, margin: "0 auto", padding: 18 }}>
+          <div style={mainArea}>
             <div style={topWrap}>
               <div>
                 <h2 style={{ margin: 0, color: "#fff" }}>Dashboard</h2>
@@ -272,17 +272,9 @@ export default function Dashboard() {
                     <div style={statGrid}>
                       <StatTile label="Invoices" value={data.sales_invoice_count} />
                       <StatTile label="Pending" value={data.sales_pending_count} />
-                      <StatTile
-                        label="Partial"
-                        value={data.sales_partial_count}
-                        warn
-                      />
+                      <StatTile label="Partial" value={data.sales_partial_count} warn />
                       <StatTile label="Paid" value={data.sales_paid_count} ok />
-                      <StatTile
-                        label="Overdue"
-                        value={data.sales_overdue_count}
-                        danger
-                      />
+                      <StatTile label="Overdue" value={data.sales_overdue_count} danger />
                       <StatTile
                         label="Cancelled"
                         value={data.sales_cancelled_count}
@@ -296,11 +288,7 @@ export default function Dashboard() {
                     <div style={statGrid}>
                       <StatTile label="Bills" value={data.purchase_bill_count} />
                       <StatTile label="Pending" value={data.purchase_pending_count} />
-                      <StatTile
-                        label="Partial"
-                        value={data.purchase_partial_count}
-                        warn
-                      />
+                      <StatTile label="Partial" value={data.purchase_partial_count} warn />
                       <StatTile label="Paid" value={data.purchase_paid_count} ok />
                       <StatTile
                         label="Overdue"
@@ -544,10 +532,13 @@ export default function Dashboard() {
               </>
             )}
           </div>
-        </div>
 
-        <div style={aiArea}>
-          <AIAssistantPanel title="AI Finance Assistant" height="calc(100vh - 108px)" />
+          <div style={aiArea}>
+            <AIAssistantPanel
+              title="AI Finance Assistant"
+              height="calc(100vh - 108px)"
+            />
+          </div>
         </div>
       </div>
 
@@ -743,9 +734,15 @@ const dashboardArea = {
   alignItems: "start",
 };
 
+const mainArea = {
+  minWidth: 0,
+  padding: 18,
+};
+
 const aiArea = {
   position: "sticky",
   top: 86,
+  alignSelf: "start",
 };
 
 const topWrap = {
