@@ -2,6 +2,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+} from "recharts";
 
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
@@ -18,21 +28,33 @@ import {
   tableWrap,
   table,
   th,
+  thCenter,
   thRight,
   tr,
   td,
   tdCode,
+  tdCenter,
   tdRight,
   emptyTd,
-  btnGhost,
   btnPrimary,
   btnSecondary,
+  btnGhost,
   badgeBlue,
   badgeGreen,
+  badgeAmber,
+  badgeGray,
 } from "../components/ui/uiStyles";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
+}
+
+function compactMoney(n) {
+  const x = Number(n || 0);
+  if (Math.abs(x) >= 10000000) return `${(x / 10000000).toFixed(2)} Cr`;
+  if (Math.abs(x) >= 100000) return `${(x / 100000).toFixed(2)} L`;
+  if (Math.abs(x) >= 1000) return `${(x / 1000).toFixed(1)} K`;
+  return `${x.toFixed(0)}`;
 }
 
 function isoToDisplay(iso) {
@@ -41,7 +63,6 @@ function isoToDisplay(iso) {
   const parts = s.split("-");
   if (parts.length !== 3) return s;
   const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
   return `${dd}/${mm}/${yyyy}`;
 }
 
@@ -53,53 +74,34 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function firstDayOfMonthISO() {
+function startOfYearISO() {
   const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${yyyy}-${mm}-01`;
+  return `${d.getFullYear()}-01-01`;
 }
 
-function sortRowsByDateAsc(list) {
-  return [...list].sort((a, b) => {
-    const da = new Date(a?.date || 0).getTime();
-    const db = new Date(b?.date || 0).getTime();
-
-    if (da !== db) return da - db;
-
-    const docA = String(a?.doc_no || "");
-    const docB = String(b?.doc_no || "");
-    if (docA !== docB) {
-      return docA.localeCompare(docB, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-    }
-
-    return String(a?.type || "").localeCompare(String(b?.type || ""));
-  });
+function normalize(v) {
+  return String(v || "").trim().toUpperCase();
 }
 
-function getCustomerAddress(customer) {
-  if (!customer) return "-";
-
-  return (
-    customer.customer_address_line1 ||
-    customer.address_line1 ||
-    customer.customer_address ||
-    "-"
-  );
+function safeArray(v) {
+  return Array.isArray(v) ? v : [];
 }
 
-function getVendorAddress(vendor) {
-  if (!vendor) return "-";
+function asDateValue(v) {
+  if (!v) return 0;
+  const d = new Date(v);
+  const t = d.getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
 
-  return (
-    vendor.vendor_address_line1 ||
-    vendor.address_line1 ||
-    vendor.vendor_address ||
-    "-"
-  );
+function inDateRange(iso, fromDate, toDate) {
+  const t = asDateValue(iso);
+  if (!t) return false;
+
+  if (fromDate && t < asDateValue(fromDate)) return false;
+  if (toDate && t > asDateValue(toDate)) return false;
+
+  return true;
 }
 
 function downloadCSV(filename, rows) {
@@ -128,342 +130,299 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+function monthKey(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function Statement() {
   const location = useLocation();
 
-  const [mode, setMode] = useState("CUSTOMER");
-
-  const [customerCode, setCustomerCode] = useState("");
-  const [vendorCode, setVendorCode] = useState("");
+  const [tab, setTab] = useState("AR");
 
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
 
-  const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState(firstDayOfMonthISO());
+  const [salesInvoices, setSalesInvoices] = useState([]);
+  const [purchaseBills, setPurchaseBills] = useState([]);
+  const [receipts, setReceipts] = useState([]);
+  const [vendorPayments, setVendorPayments] = useState([]);
+
+  const [partyCode, setPartyCode] = useState("");
+  const [fromDate, setFromDate] = useState(startOfYearISO());
   const [toDate, setToDate] = useState(todayISO());
+  const [q, setQ] = useState("");
 
-  const [rows, setRows] = useState([]);
-
-  const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mastersLoaded, setMastersLoaded] = useState(false);
+  const [err, setErr] = useState("");
 
-  async function loadMasters() {
+  async function load() {
     setErr("");
+    setLoading(true);
 
     try {
-      const [cData, vData] = await Promise.all([
+      const [
+        customerRes,
+        vendorRes,
+        salesInvoiceRes,
+        purchaseInvoiceRes,
+        receiptRes,
+        vendorPaymentRes,
+      ] = await Promise.all([
         apiGet("/customers/"),
         apiGet("/vendors/"),
+        apiGet("/sales-invoices/"),
+        apiGet("/purchase-invoices/"),
+        apiGet("/receipts/"),
+        apiGet("/vendor-payments/"),
       ]);
 
-      const cList = Array.isArray(cData) ? cData : [];
-      const vList = Array.isArray(vData) ? vData : [];
-
-      setCustomers(cList);
-      setVendors(vList);
-
-      setCustomerCode("");
-      setVendorCode("");
-      setMastersLoaded(true);
+      setCustomers(safeArray(customerRes));
+      setVendors(safeArray(vendorRes));
+      setSalesInvoices(safeArray(salesInvoiceRes));
+      setPurchaseBills(safeArray(purchaseInvoiceRes));
+      setReceipts(safeArray(receiptRes));
+      setVendorPayments(safeArray(vendorPaymentRes));
     } catch (e) {
-      setErr(String(e.message || e));
+      setErr(String(e?.message || e));
       setCustomers([]);
       setVendors([]);
-      setCustomerCode("");
-      setVendorCode("");
-      setRows([]);
-      setMastersLoaded(true);
-    }
-  }
-
-  async function loadAllStatements(
-    type,
-    customerList = customers,
-    vendorList = vendors
-  ) {
-    setErr("");
-    setLoading(true);
-
-    try {
-      if (type === "CUSTOMER") {
-        const codes = customerList.map((c) => c.customer_code).filter(Boolean);
-
-        if (codes.length === 0) {
-          setRows([]);
-          return;
-        }
-
-        const results = await Promise.allSettled(
-          codes.map(async (code) => {
-            const data = await apiGet(
-              `/customers/${encodeURIComponent(code)}/statement`
-            );
-            const list = Array.isArray(data) ? data : [];
-
-            return list.map((row) => ({
-              ...row,
-              customer_code: code,
-            }));
-          })
-        );
-
-        const successRows = results
-          .filter((r) => r.status === "fulfilled")
-          .flatMap((r) => r.value);
-
-        const failures = results.filter((r) => r.status === "rejected");
-
-        setRows(sortRowsByDateAsc(successRows));
-
-        if (failures.length > 0 && successRows.length === 0) {
-          const firstError = failures[0]?.reason;
-          setErr(
-            String(
-              firstError?.message ||
-                firstError ||
-                "Failed to load customer statements"
-            )
-          );
-        } else if (failures.length > 0) {
-          setErr(
-            `Some customer statements could not be loaded (${failures.length} failed, ${
-              results.length - failures.length
-            } loaded).`
-          );
-        }
-      } else {
-        const codes = vendorList.map((v) => v.vendor_code).filter(Boolean);
-
-        if (codes.length === 0) {
-          setRows([]);
-          return;
-        }
-
-        const results = await Promise.allSettled(
-          codes.map(async (code) => {
-            const data = await apiGet(
-              `/vendors/${encodeURIComponent(code)}/statement`
-            );
-            const list = Array.isArray(data) ? data : [];
-
-            return list.map((row) => ({
-              ...row,
-              vendor_code: code,
-            }));
-          })
-        );
-
-        const successRows = results
-          .filter((r) => r.status === "fulfilled")
-          .flatMap((r) => r.value);
-
-        const failures = results.filter((r) => r.status === "rejected");
-
-        setRows(sortRowsByDateAsc(successRows));
-
-        if (failures.length > 0 && successRows.length === 0) {
-          const firstError = failures[0]?.reason;
-          setErr(
-            String(
-              firstError?.message ||
-                firstError ||
-                "Failed to load vendor statements"
-            )
-          );
-        } else if (failures.length > 0) {
-          setErr(
-            `Some vendor statements could not be loaded (${failures.length} failed, ${
-              results.length - failures.length
-            } loaded).`
-          );
-        }
-      }
-    } catch (e) {
-      setErr(String(e.message || e));
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadStatement(type, code) {
-    if (!code) {
-      await loadAllStatements(type);
-      return;
-    }
-
-    setErr("");
-    setLoading(true);
-
-    try {
-      const url =
-        type === "CUSTOMER"
-          ? `/customers/${encodeURIComponent(code)}/statement`
-          : `/vendors/${encodeURIComponent(code)}/statement`;
-
-      const data = await apiGet(url);
-      setRows(sortRowsByDateAsc(Array.isArray(data) ? data : []));
-    } catch (e) {
-      setErr(String(e.message || e));
-      setRows([]);
+      setSalesInvoices([]);
+      setPurchaseBills([]);
+      setReceipts([]);
+      setVendorPayments([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadMasters();
+    load();
   }, [location.key]);
 
+  const partyOptions = useMemo(() => {
+    const src = tab === "AR" ? customers : vendors;
+
+    const mapped = src.map((x) => {
+      const code =
+        tab === "AR"
+          ? x.customer_code || x.code || ""
+          : x.vendor_code || x.code || "";
+
+      const name =
+        tab === "AR"
+          ? x.customer_name || x.name || ""
+          : x.vendor_name || x.name || "";
+
+      return {
+        code: String(code || "").trim(),
+        name: String(name || "").trim(),
+        label: name ? `${code} - ${name}` : code,
+      };
+    });
+
+    return mapped
+      .filter((x) => x.code)
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+  }, [tab, customers, vendors]);
+
+  const selectedParty = useMemo(() => {
+    return partyOptions.find((x) => x.code === partyCode) || null;
+  }, [partyOptions, partyCode]);
+
   useEffect(() => {
-    if (!mastersLoaded) return;
-
-    if (mode === "CUSTOMER") {
-      setVendorCode("");
-      setCustomerCode("");
-      loadAllStatements("CUSTOMER");
-    } else {
-      setCustomerCode("");
-      setVendorCode("");
-      loadAllStatements("VENDOR");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, mastersLoaded]);
-
-  useEffect(() => {
-    if (!mastersLoaded) return;
-    if (mode !== "CUSTOMER") return;
-
-    if (!customerCode) {
-      loadAllStatements("CUSTOMER");
+    if (!partyCode && partyOptions.length > 0) {
+      setPartyCode(partyOptions[0].code);
       return;
     }
 
-    loadStatement("CUSTOMER", customerCode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerCode]);
+    if (partyCode && !partyOptions.some((x) => x.code === partyCode)) {
+      setPartyCode(partyOptions[0]?.code || "");
+    }
+  }, [partyCode, partyOptions]);
 
-  useEffect(() => {
-    if (!mastersLoaded) return;
-    if (mode !== "VENDOR") return;
+  const allEntries = useMemo(() => {
+    if (!partyCode) return [];
 
-    if (!vendorCode) {
-      loadAllStatements("VENDOR");
-      return;
+    if (tab === "AR") {
+      const invoiceEntries = salesInvoices
+        .filter((r) => normalize(r.customer_code) === normalize(partyCode))
+        .map((r) => ({
+          date: r.invoice_date || "",
+          type: "INVOICE",
+          docNo: r.invoice_no || "",
+          remark: r.remark || "",
+          debit: Number(r.grand_total || 0),
+          credit: 0,
+          rawStatus: r.status || "",
+        }));
+
+      const receiptEntries = receipts
+        .filter((r) => normalize(r.customer_code) === normalize(partyCode))
+        .map((r) => ({
+          date: r.receipt_date || "",
+          type: "RECEIPT",
+          docNo: r.receipt_no || "",
+          remark: r.remark || "",
+          debit: 0,
+          credit: Number(r.amount || 0),
+          rawStatus: "",
+        }));
+
+      return [...invoiceEntries, ...receiptEntries].sort((a, b) => {
+        const d = asDateValue(a.date) - asDateValue(b.date);
+        if (d !== 0) return d;
+
+        const typeRank = (x) => (x.type === "INVOICE" || x.type === "BILL" ? 0 : 1);
+        if (typeRank(a) !== typeRank(b)) return typeRank(a) - typeRank(b);
+
+        return String(a.docNo || "").localeCompare(String(b.docNo || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+      });
     }
 
-    loadStatement("VENDOR", vendorCode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendorCode]);
+    const billEntries = purchaseBills
+      .filter((r) => normalize(r.vendor_code) === normalize(partyCode))
+      .map((r) => ({
+        date: r.bill_date || "",
+        type: "BILL",
+        docNo: r.bill_no || "",
+        remark: r.remark || "",
+        debit: Number(r.grand_total || 0),
+        credit: 0,
+        rawStatus: r.status || "",
+      }));
 
-  const filteredCustomers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return customers;
+    const paymentEntries = vendorPayments
+      .filter((r) => normalize(r.vendor_code) === normalize(partyCode))
+      .map((r) => ({
+        date: r.payment_date || "",
+        type: "PAYMENT",
+        docNo: r.payment_no || "",
+        remark: r.remark || "",
+        debit: 0,
+        credit: Number(r.amount || 0),
+        rawStatus: "",
+      }));
 
-    return customers.filter((c) => {
-      return (
-        String(c.customer_code || "").toLowerCase().includes(q) ||
-        String(c.customer_name || "").toLowerCase().includes(q)
-      );
+    return [...billEntries, ...paymentEntries].sort((a, b) => {
+      const d = asDateValue(a.date) - asDateValue(b.date);
+      if (d !== 0) return d;
+
+      const typeRank = (x) => (x.type === "INVOICE" || x.type === "BILL" ? 0 : 1);
+      if (typeRank(a) !== typeRank(b)) return typeRank(a) - typeRank(b);
+
+      return String(a.docNo || "").localeCompare(String(b.docNo || ""), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
     });
-  }, [customers, search]);
+  }, [tab, partyCode, salesInvoices, purchaseBills, receipts, vendorPayments]);
 
-  const filteredVendors = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return vendors;
+  const openingBalance = useMemo(() => {
+    if (!fromDate) return 0;
 
-    return vendors.filter((v) => {
-      return (
-        String(v.vendor_code || "").toLowerCase().includes(q) ||
-        String(v.vendor_name || "").toLowerCase().includes(q)
-      );
-    });
-  }, [vendors, search]);
+    return allEntries
+      .filter((x) => asDateValue(x.date) < asDateValue(fromDate))
+      .reduce((acc, x) => acc + Number(x.debit || 0) - Number(x.credit || 0), 0);
+  }, [allEntries, fromDate]);
 
-  const selectedCustomer = useMemo(() => {
-    return customers.find((c) => c.customer_code === customerCode) || null;
-  }, [customers, customerCode]);
+  const rows = useMemo(() => {
+    const qq = String(q || "").trim().toLowerCase();
 
-  const selectedVendor = useMemo(() => {
-    return vendors.find((v) => v.vendor_code === vendorCode) || null;
-  }, [vendors, vendorCode]);
+    let running = openingBalance;
 
-  const filteredRows = useMemo(() => {
-    const fromTs = fromDate ? new Date(fromDate).getTime() : null;
-    const toTs = toDate ? new Date(toDate).getTime() : null;
+    return allEntries
+      .filter((x) => inDateRange(x.date, fromDate, toDate))
+      .filter((x) => {
+        if (!qq) return true;
+        return (
+          String(x.docNo || "").toLowerCase().includes(qq) ||
+          String(x.type || "").toLowerCase().includes(qq) ||
+          String(x.remark || "").toLowerCase().includes(qq)
+        );
+      })
+      .map((x) => {
+        running += Number(x.debit || 0) - Number(x.credit || 0);
+        return {
+          ...x,
+          runningBalance: running,
+        };
+      });
+  }, [allEntries, fromDate, toDate, q, openingBalance]);
 
-    return rows.filter((r) => {
-      const rowTs = r?.date ? new Date(r.date).getTime() : null;
-      if (rowTs == null || Number.isNaN(rowTs)) return false;
+  const summary = useMemo(() => {
+    return rows.reduce(
+      (acc, x) => {
+        acc.debit += Number(x.debit || 0);
+        acc.credit += Number(x.credit || 0);
+        acc.count += 1;
+        return acc;
+      },
+      {
+        count: 0,
+        debit: 0,
+        credit: 0,
+      }
+    );
+  }, [rows]);
 
-      if (fromTs != null && !Number.isNaN(fromTs) && rowTs < fromTs) return false;
-      if (toTs != null && !Number.isNaN(toTs) && rowTs > toTs) return false;
+  const closingBalance = useMemo(() => {
+    if (!rows.length) return openingBalance;
+    return Number(rows[rows.length - 1].runningBalance || 0);
+  }, [rows, openingBalance]);
 
-      return true;
-    });
-  }, [rows, fromDate, toDate]);
+  const chartData = useMemo(() => {
+    const map = {};
 
-  const totals = useMemo(() => {
-    let debit = 0;
-    let credit = 0;
-    let closing = 0;
+    for (const row of rows) {
+      const key = monthKey(row.date);
+      if (!key) continue;
 
-    for (const r of filteredRows) {
-      debit += Number(r.debit || 0);
-      credit += Number(r.credit || 0);
-      closing = Number(r.balance || 0);
+      if (!map[key]) {
+        map[key] = {
+          month: key,
+          debit: 0,
+          credit: 0,
+        };
+      }
+
+      map[key].debit += Number(row.debit || 0);
+      map[key].credit += Number(row.credit || 0);
     }
 
-    const opening =
-      filteredRows.length > 0
-        ? Number(filteredRows[0].balance || 0) -
-          Number(filteredRows[0].debit || 0) +
-          Number(filteredRows[0].credit || 0)
-        : 0;
+    return Object.values(map).sort((a, b) => a.month.localeCompare(b.month));
+  }, [rows]);
 
-    return {
-      opening,
-      debit,
-      credit,
-      closing,
-    };
-  }, [filteredRows]);
+  function exportCSV() {
+    const out = [
+      {
+        Date: "",
+        Type: "OPENING",
+        DocNo: "",
+        Remark: "",
+        Debit: "",
+        Credit: "",
+        RunningBalance: money(openingBalance),
+      },
+      ...rows.map((r) => ({
+        Date: isoToDisplay(r.date),
+        Type: r.type,
+        DocNo: r.docNo,
+        Remark: r.remark,
+        Debit: r.debit ? money(r.debit) : "",
+        Credit: r.credit ? money(r.credit) : "",
+        RunningBalance: money(r.runningBalance),
+      })),
+    ];
 
-  const pageTitle =
-    mode === "CUSTOMER" ? "Customer Statement" : "Vendor Statement";
-
-  const pageDesc =
-    mode === "CUSTOMER"
-      ? "View invoice and receipt movement with running balance."
-      : "View purchase bill and vendor payment movement with running balance.";
-
-  async function handleRefresh() {
-    if (mode === "CUSTOMER") {
-      await loadStatement("CUSTOMER", customerCode);
-    } else {
-      await loadStatement("VENDOR", vendorCode);
-    }
-  }
-
-  function handleExportCSV() {
-    if (filteredRows.length === 0) return;
-
-    const selectedCode =
-      mode === "CUSTOMER" ? customerCode || "ALL_CUSTOMERS" : vendorCode || "ALL_VENDORS";
-
-    const out = filteredRows.map((r) => ({
-      Date: isoToDisplay(r.date),
-      DocNo: r.doc_no,
-      Type: r.type,
-      Debit: money(r.debit),
-      Credit: money(r.credit),
-      Balance: money(r.balance),
-    }));
-
+    if (out.length === 0) return;
     downloadCSV(
-      `${mode}_STATEMENT_${selectedCode}_${fromDate || "START"}_${toDate || "END"}.csv`,
+      `${tab}_statement_${partyCode || "party"}_${fromDate || "from"}_${toDate || "to"}.csv`,
       out
     );
   }
@@ -471,31 +430,38 @@ export default function Statement() {
   return (
     <div style={page}>
       <PageHeaderBlock
-        eyebrowText="STATEMENTS"
-        title={pageTitle}
-        subtitle={pageDesc}
+        eyebrowText="STATEMENT"
+        title="Party Statement"
+        subtitle={
+          tab === "AR"
+            ? "Customer-wise statement with invoices, receipts, and running balance."
+            : "Vendor-wise statement with bills, payments, and running balance."
+        }
         actions={
           <>
             <button
               type="button"
-              onClick={() => {
-                setSearch("");
-                setMode("CUSTOMER");
-              }}
-              style={mode === "CUSTOMER" ? tabActiveBlue : tabButton}
+              onClick={() => setTab("AR")}
+              style={tab === "AR" ? tabActiveBlue : tabButton}
             >
               Customer Statement
             </button>
 
             <button
               type="button"
-              onClick={() => {
-                setSearch("");
-                setMode("VENDOR");
-              }}
-              style={mode === "VENDOR" ? tabActiveGreen : tabButton}
+              onClick={() => setTab("AP")}
+              style={tab === "AP" ? tabActiveGreen : tabButton}
             >
               Vendor Statement
+            </button>
+
+            <button
+              type="button"
+              onClick={load}
+              style={btnGhost}
+              disabled={loading}
+            >
+              {loading ? "Refreshing..." : "Refresh"}
             </button>
           </>
         }
@@ -511,67 +477,29 @@ export default function Statement() {
           <div>
             <h2 style={cardTitle}>Filters</h2>
             <p style={cardSubtitle}>
-              Search, select, and filter the statement by date range.
+              Select party and date range to generate a running statement.
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={handleRefresh}
-            style={btnGhost}
-            disabled={loading}
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
         </div>
 
         <div style={filterGrid}>
           <div style={field}>
-            <label style={labelStyle}>Search</label>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={
-                mode === "CUSTOMER"
-                  ? "Search customer code / customer name"
-                  : "Search vendor code / vendor name"
-              }
+            <label style={labelStyle}>{tab === "AR" ? "Customer" : "Vendor"}</label>
+            <select
+              value={partyCode}
+              onChange={(e) => setPartyCode(e.target.value)}
               style={input}
-            />
-          </div>
-
-          <div style={field}>
-            <label style={labelStyle}>
-              {mode === "CUSTOMER" ? "Customer" : "Vendor"}
-            </label>
-
-            {mode === "CUSTOMER" ? (
-              <select
-                value={customerCode}
-                onChange={(e) => setCustomerCode(e.target.value)}
-                style={input}
-              >
-                <option value="">ALL CUSTOMERS</option>
-                {filteredCustomers.map((c) => (
-                  <option key={c.customer_code} value={c.customer_code}>
-                    {c.customer_code} - {c.customer_name}
+            >
+              {partyOptions.length === 0 ? (
+                <option value="">No parties available</option>
+              ) : (
+                partyOptions.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.label}
                   </option>
-                ))}
-              </select>
-            ) : (
-              <select
-                value={vendorCode}
-                onChange={(e) => setVendorCode(e.target.value)}
-                style={input}
-              >
-                <option value="">ALL VENDORS</option>
-                {filteredVendors.map((v) => (
-                  <option key={v.vendor_code} value={v.vendor_code}>
-                    {v.vendor_code} - {v.vendor_name}
-                  </option>
-                ))}
-              </select>
-            )}
+                ))
+              )}
+            </select>
           </div>
 
           <div style={field}>
@@ -593,14 +521,24 @@ export default function Statement() {
               style={input}
             />
           </div>
+
+          <div style={field}>
+            <label style={labelStyle}>Search</label>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="doc no / type / remark"
+              style={input}
+            />
+          </div>
         </div>
 
-        <div style={actionRow}>
+        <div style={filterActions}>
           <button
             type="button"
-            onClick={handleExportCSV}
-            style={filteredRows.length === 0 ? disabledLike(btnPrimary) : btnPrimary}
-            disabled={filteredRows.length === 0}
+            onClick={exportCSV}
+            style={rows.length === 0 ? disabledLike(btnPrimary) : btnPrimary}
+            disabled={rows.length === 0}
           >
             Export CSV
           </button>
@@ -609,107 +547,145 @@ export default function Statement() {
             Print
           </button>
         </div>
-
-        <div style={infoStrip}>
-          {mode === "CUSTOMER" ? (
-            <>
-              <InfoMini
-                title="Selected Customer"
-                value={
-                  selectedCustomer
-                    ? `${selectedCustomer.customer_code} - ${selectedCustomer.customer_name}`
-                    : "ALL CUSTOMERS"
-                }
-                badge={badgeBlue}
-              />
-              <InfoMini
-                title="Address"
-                value={getCustomerAddress(selectedCustomer)}
-              />
-            </>
-          ) : (
-            <>
-              <InfoMini
-                title="Selected Vendor"
-                value={
-                  selectedVendor
-                    ? `${selectedVendor.vendor_code} - ${selectedVendor.vendor_name}`
-                    : "ALL VENDORS"
-                }
-                badge={badgeGreen}
-              />
-              <InfoMini
-                title="Address"
-                value={getVendorAddress(selectedVendor)}
-              />
-            </>
-          )}
-
-          <InfoMini
-            title="Date Range"
-            value={`${isoToDisplay(fromDate)} to ${isoToDisplay(toDate)}`}
-          />
-        </div>
       </section>
 
-      <div style={statGrid}>
-        <Stat title="Opening Balance" value={money(totals.opening)} badge={badgeBlue} />
-        <Stat title="Total Debit" value={money(totals.debit)} badge={badgeBlue} />
-        <Stat title="Total Credit" value={money(totals.credit)} badge={badgeGreen} />
-        <Stat title="Closing Balance" value={money(totals.closing)} strong />
+      <div style={summaryGrid}>
+        <SummaryCard
+          title={tab === "AR" ? "Customer" : "Vendor"}
+          value={selectedParty?.label || "-"}
+          badge={badgeBlue}
+          wide
+        />
+        <SummaryCard title="Opening Balance" value={money(openingBalance)} />
+        <SummaryCard
+          title={tab === "AR" ? "Invoices / Bills" : "Bills"}
+          value={money(summary.debit)}
+          badge={badgeGreen}
+        />
+        <SummaryCard
+          title={tab === "AR" ? "Receipts" : "Payments"}
+          value={money(summary.credit)}
+          badge={badgeAmber}
+        />
+        <SummaryCard title="Closing Balance" value={money(closingBalance)} strong />
+        <SummaryCard title="Transactions" value={summary.count} badge={badgeGray} />
       </div>
 
       <section style={card}>
         <div style={cardHeader}>
           <div>
+            <h2 style={cardTitle}>Monthly Movement</h2>
+            <p style={cardSubtitle}>
+              Compare billed value against received or paid value across the selected period.
+            </p>
+          </div>
+        </div>
+
+        <div style={chartWrap}>
+          {chartData.length === 0 ? (
+            <div style={emptyChartText}>No chart data available for current filters.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis tickFormatter={(v) => compactMoney(v)} />
+                <Tooltip formatter={(v) => `₹ ${money(v)}`} />
+                <Legend />
+                <Bar
+                  dataKey="debit"
+                  name={tab === "AR" ? "Invoices" : "Bills"}
+                  fill="#2563eb"
+                  radius={[8, 8, 0, 0]}
+                />
+                <Bar
+                  dataKey="credit"
+                  name={tab === "AR" ? "Receipts" : "Payments"}
+                  fill="#16a34a"
+                  radius={[8, 8, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </section>
+
+      <section style={card}>
+        <div style={cardHeader}>
+          <div>
             <h2 style={cardTitle}>
-              {mode === "CUSTOMER" ? "Customer Statement Rows" : "Vendor Statement Rows"}
+              {tab === "AR" ? "Customer Statement" : "Vendor Statement"}
             </h2>
-            <p style={cardSubtitle}>Rows: {filteredRows.length}</p>
+            <p style={cardSubtitle}>
+              Opening balance plus all transactions in date order with running balance.
+            </p>
           </div>
         </div>
 
         <div style={tableWrap}>
-          <table style={{ ...table, minWidth: 900 }}>
+          <table style={{ ...table, minWidth: 1100 }}>
             <thead>
               <tr>
                 <th style={th}>Date</th>
-                <th style={th}>Doc No</th>
                 <th style={th}>Type</th>
-                <th style={thRight}>Debit</th>
-                <th style={thRight}>Credit</th>
-                <th style={thRight}>Balance</th>
+                <th style={th}>Doc No</th>
+                <th style={th}>Remark</th>
+                <th style={thRight}>{tab === "AR" ? "Debit" : "Debit"}</th>
+                <th style={thRight}>{tab === "AR" ? "Credit" : "Credit"}</th>
+                <th style={thRight}>Running Balance</th>
               </tr>
             </thead>
 
             <tbody>
-              {filteredRows.map((r, i) => (
-                <tr key={`${r.doc_no}-${r.type}-${i}`} style={tr}>
-                  <td style={td}>{isoToDisplay(r.date)}</td>
-                  <td style={tdCode}>{r.doc_no}</td>
-                  <td style={td}>{r.type}</td>
-                  <td style={tdRight}>{money(r.debit)}</td>
-                  <td style={tdRight}>{money(r.credit)}</td>
-                  <td style={{ ...tdRight, fontWeight: 900 }}>
-                    {money(r.balance)}
-                  </td>
-                </tr>
-              ))}
+              <tr style={tr}>
+                <td style={td}>-</td>
+                <td style={tdCode}>OPENING</td>
+                <td style={td}>-</td>
+                <td style={td}>Opening balance before selected period</td>
+                <td style={tdRight}>-</td>
+                <td style={tdRight}>-</td>
+                <td style={{ ...tdRight, fontWeight: 900 }}>{money(openingBalance)}</td>
+              </tr>
 
-              {filteredRows.length === 0 && !loading && (
+              {rows.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={emptyTd}>
-                    No statement rows found.
+                  <td colSpan="7" style={emptyTd}>
+                    No statement entries found for current filters.
                   </td>
                 </tr>
+              ) : (
+                rows.map((r, idx) => (
+                  <tr key={`${r.type}-${r.docNo}-${r.date}-${idx}`} style={tr}>
+                    <td style={td}>{isoToDisplay(r.date)}</td>
+                    <td style={tdCenter}>
+                      <span style={typeBadge(r.type)}>{r.type}</span>
+                    </td>
+                    <td style={tdCode}>{r.docNo || "-"}</td>
+                    <td style={td}>{r.remark || "-"}</td>
+                    <td style={tdRight}>{r.debit ? money(r.debit) : "-"}</td>
+                    <td style={tdRight}>{r.credit ? money(r.credit) : "-"}</td>
+                    <td
+                      style={{
+                        ...tdRight,
+                        fontWeight: 900,
+                        color: Number(r.runningBalance || 0) >= 0 ? "#111" : "#a40000",
+                      }}
+                    >
+                      {money(r.runningBalance)}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
 
         <div style={footNote}>
-          Statement is shown in date order with running balance. Opening balance is
-          derived from the first row in the filtered range.
+          Statement logic: invoices or bills increase balance, receipts or payments reduce balance.
+          Running balance starts from opening balance before the selected From Date.
         </div>
       </section>
 
@@ -718,19 +694,25 @@ export default function Statement() {
   );
 }
 
-function Stat({ title, value, strong = false, badge = null }) {
+function SummaryCard({ title, value, badge, strong = false, wide = false }) {
   return (
-    <div style={statCard}>
-      <div style={statHead}>
-        <div style={statTitle}>{title}</div>
+    <div
+      style={{
+        ...summaryCard,
+        ...(wide ? { gridColumn: "span 2" } : {}),
+      }}
+    >
+      <div style={summaryHead}>
+        <div style={summaryTitle}>{title}</div>
         {badge ? <span style={badge}>LIVE</span> : null}
       </div>
+
       <div
         style={{
-          fontSize: 20,
+          ...summaryValue,
           fontWeight: strong ? 950 : 900,
-          color: "#111",
-          marginTop: 8,
+          fontSize: wide ? 18 : 22,
+          wordBreak: "break-word",
         }}
       >
         {value}
@@ -739,16 +721,33 @@ function Stat({ title, value, strong = false, badge = null }) {
   );
 }
 
-function InfoMini({ title, value, badge = null }) {
-  return (
-    <div style={miniCard}>
-      <div style={miniHead}>
-        <div style={miniTitle}>{title}</div>
-        {badge ? <span style={badge}>LIVE</span> : null}
-      </div>
-      <div style={miniValue}>{value}</div>
-    </div>
-  );
+function typeBadge(type) {
+  const t = normalize(type);
+
+  const base = {
+    display: "inline-block",
+    padding: "5px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 900,
+    border: "1px solid transparent",
+  };
+
+  if (t === "INVOICE" || t === "BILL") {
+    return {
+      ...base,
+      background: "#eef4ff",
+      color: "#0b5cff",
+      borderColor: "#b7cbff",
+    };
+  }
+
+  return {
+    ...base,
+    background: "#ecfff1",
+    color: "#116b2f",
+    borderColor: "#a6e0b8",
+  };
 }
 
 function disabledLike(base) {
@@ -766,8 +765,7 @@ const tabButton = {
   background: "#fff",
   color: "#334155",
   cursor: "pointer",
-  fontWeight: 900,
-  whiteSpace: "nowrap",
+  fontWeight: 800,
 };
 
 const tabActiveBlue = {
@@ -786,75 +784,65 @@ const tabActiveGreen = {
 
 const filterGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 14,
+  alignItems: "end",
 };
 
-const actionRow = {
+const filterActions = {
   display: "flex",
-  justifyContent: "flex-end",
   gap: 10,
+  justifyContent: "flex-end",
   flexWrap: "wrap",
   marginTop: 14,
 };
 
-const infoStrip = {
+const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 12,
-  marginTop: 14,
-};
-
-const statGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 12,
 };
 
-const statCard = {
-  background: "#f7f8fa",
-  border: "1px solid #eee",
-  borderRadius: 14,
-  padding: 12,
+const summaryCard = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  padding: 14,
 };
 
-const statHead = {
+const summaryHead = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: 10,
 };
 
-const statTitle = {
+const summaryTitle = {
   fontSize: 12,
   color: "#666",
-};
-
-const miniCard = {
-  background: "#f7f8fa",
-  border: "1px solid #eee",
-  borderRadius: 14,
-  padding: 12,
-};
-
-const miniHead = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 10,
-};
-
-const miniTitle = {
-  fontSize: 12,
-  color: "#666",
-};
-
-const miniValue = {
-  fontSize: 14,
   fontWeight: 800,
+};
+
+const summaryValue = {
+  marginTop: 8,
+  fontSize: 22,
+  fontWeight: 900,
   color: "#111",
-  marginTop: 4,
-  wordBreak: "break-word",
+};
+
+const chartWrap = {
+  width: "100%",
+  height: 320,
+};
+
+const emptyChartText = {
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#64748b",
+  fontWeight: 700,
 };
 
 const footNote = {
@@ -869,5 +857,9 @@ const printCss = `
   nav { display: none !important; }
   button, input, select, textarea { display: none !important; }
   #root { padding: 0 !important; }
+
+  table {
+    font-size: 12px !important;
+  }
 }
 `;
