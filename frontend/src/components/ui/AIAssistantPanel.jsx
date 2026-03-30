@@ -51,6 +51,7 @@ function daysOverdueFromDueDate(dueDate, fallbackDate) {
 
 const QUICK_PROMPTS = [
   "Show overdue customers",
+  "Who should I follow up first",
   "Open aging report",
   "Show vendor dues",
   "Open statement",
@@ -194,13 +195,13 @@ export default function AIAssistantPanel({
       role: "assistant",
       time: nowTime(),
       text:
-        "Welcome. I can help with finance actions like overdue customer summary, vendor dues, aging report navigation, statement navigation, ledger navigation, and payment reminder drafting.",
+        "Welcome. I can help with finance actions like overdue customer summary, follow-up priority, vendor dues, aging report navigation, statement navigation, ledger navigation, and payment reminder drafting.",
       cards: [
         {
           type: "summary",
           title: "Supported Actions",
           rows: [
-            { label: "AR", value: "Overdue / Receivables" },
+            { label: "AR", value: "Overdue / Follow-up / Receivables" },
             { label: "AP", value: "Vendor Dues" },
             { label: "Reports", value: "Aging / Statement / Ledger" },
             { label: "Docs", value: "Invoices / Purchase Bills" },
@@ -224,7 +225,7 @@ export default function AIAssistantPanel({
     if (!query) {
       return {
         reply:
-          "Please type a command like Show overdue customers, Open aging report, or Show vendor dues.",
+          "Please type a command like Show overdue customers, Who should I follow up first, Open aging report, or Show vendor dues.",
         cards: [],
       };
     }
@@ -310,6 +311,77 @@ export default function AIAssistantPanel({
               { label: "Route", value: "/sales-invoices" },
             ],
           },
+        ],
+      };
+    }
+
+    if (
+      query.includes("follow up") ||
+      query.includes("follow-up") ||
+      query.includes("priority") ||
+      query.includes("who should i follow up first")
+    ) {
+      const arData = await apiGet("/sales-invoices/");
+      const rows = Array.isArray(arData) ? arData : [];
+
+      const overdueRows = rows
+        .map((r) => {
+          const overdueDays = daysOverdueFromDueDate(r.due_date, r.invoice_date);
+          return { ...r, overdueDays };
+        })
+        .filter((r) => Number(r.balance || 0) > 0 && Number(r.overdueDays || 0) > 0)
+        .sort((a, b) => {
+          if (Number(b.overdueDays || 0) !== Number(a.overdueDays || 0)) {
+            return Number(b.overdueDays || 0) - Number(a.overdueDays || 0);
+          }
+          return Number(b.balance || 0) - Number(a.balance || 0);
+        });
+
+      const topPriority = overdueRows.slice(0, 5);
+
+      return {
+        reply:
+          topPriority.length > 0
+            ? "Here are the top customers/invoices you should follow up first."
+            : "No overdue follow-up cases found right now.",
+        cards: [
+          {
+            type: "summary",
+            title: "Follow-up Priority",
+            rows: [
+              { label: "Overdue invoices", value: String(overdueRows.length) },
+              {
+                label: "Priority list",
+                value: String(topPriority.length),
+              },
+              {
+                label: "Highest overdue days",
+                value: topPriority[0] ? String(topPriority[0].overdueDays) : "0",
+              },
+              {
+                label: "Highest balance",
+                value: topPriority[0]
+                  ? money(Number(topPriority[0].balance || 0))
+                  : money(0),
+              },
+            ],
+          },
+          ...(topPriority.length
+            ? [
+                {
+                  type: "list",
+                  title: "Top Follow-up Targets",
+                  items: topPriority.map(
+                    (r, index) =>
+                      `${index + 1}. ${r.customer_code || "CUSTOMER"} | ${
+                        r.invoice_no || "-"
+                      } | ${money(Number(r.balance || 0))} | ${
+                        r.overdueDays
+                      } days overdue`
+                  ),
+                },
+              ]
+            : []),
         ],
       };
     }
@@ -483,7 +555,7 @@ Accounts Team`;
 
     return {
       reply:
-        "Command not supported yet. Try: Show overdue customers, Show vendor dues, Open aging report, Open statement, Open ledger, Show invoices, or Show purchase bills.",
+        "Command not supported yet. Try: Show overdue customers, Who should I follow up first, Show vendor dues, Open aging report, Open statement, Open ledger, Show invoices, or Show purchase bills.",
       cards: [],
     };
   }
@@ -629,7 +701,7 @@ Accounts Team`;
 
         <div style={footerHint}>
           Try: <span style={hintStrong}>Show overdue customers</span>,{" "}
-          <span style={hintStrong}>Show vendor dues</span>, or{" "}
+          <span style={hintStrong}>Who should I follow up first</span>, or{" "}
           <span style={hintStrong}>Open aging report</span>
         </div>
       </div>
