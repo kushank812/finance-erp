@@ -5,9 +5,8 @@ import {
   NavLink,
   Navigate,
   useLocation,
-  useNavigate,
 } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { apiGet, apiPost } from "./api/client";
 
@@ -21,9 +20,7 @@ import BillingNew from "./pages/BillingNew";
 import PurchaseBillNew from "./pages/PurchaseBillNew";
 
 import ReceiptNew from "./pages/ReceiptNew";
-import ReceiptList from "./pages/ReceiptList";
 import VendorPaymentNew from "./pages/VendorPaymentNew";
-import VendorPaymentList from "./pages/VendorPaymentList";
 
 import Ledger from "./pages/Ledger";
 import Aging from "./pages/Aging";
@@ -297,61 +294,37 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
 
             <div style={divider} />
 
-            {(canDoTransactions(currentUser) || canViewDocuments(currentUser)) && (
+            {canDoTransactions(currentUser) && (
               <>
                 <div style={groupLabelStyle()}>AR</div>
 
-                {canDoTransactions(currentUser) && (
-                  <NavLink to="/billing" style={({ isActive }) => linkStyle(isActive)}>
-                    Create Invoice
-                  </NavLink>
-                )}
+                <NavLink to="/billing" style={({ isActive }) => linkStyle(isActive)}>
+                  Create Invoice
+                </NavLink>
 
-                {canViewDocuments(currentUser) && (
-                  <NavLink to="/sales-invoices" style={({ isActive }) => linkStyle(isActive)}>
-                    Invoices
-                  </NavLink>
-                )}
+                <NavLink to="/sales-invoices" style={({ isActive }) => linkStyle(isActive)}>
+                  Invoices
+                </NavLink>
 
-                {canDoTransactions(currentUser) && (
-                  <NavLink to="/receipt/new" style={({ isActive }) => linkStyle(isActive)}>
-                    Receipt
-                  </NavLink>
-                )}
-
-                {canViewDocuments(currentUser) && (
-                  <NavLink to="/receipts" style={({ isActive }) => linkStyle(isActive)}>
-                    Receipts
-                  </NavLink>
-                )}
+                <NavLink to="/receipt/new" style={({ isActive }) => linkStyle(isActive)}>
+                  Receipt
+                </NavLink>
 
                 <div style={divider} />
 
                 <div style={groupLabelStyle()}>AP</div>
 
-                {canDoTransactions(currentUser) && (
-                  <NavLink to="/purchase/new" style={({ isActive }) => linkStyle(isActive)}>
-                    Purchase Bill
-                  </NavLink>
-                )}
+                <NavLink to="/purchase/new" style={({ isActive }) => linkStyle(isActive)}>
+                  Purchase Bill
+                </NavLink>
 
-                {canViewDocuments(currentUser) && (
-                  <NavLink to="/purchase-bills" style={({ isActive }) => linkStyle(isActive)}>
-                    Bills
-                  </NavLink>
-                )}
+                <NavLink to="/purchase-bills" style={({ isActive }) => linkStyle(isActive)}>
+                  Bills
+                </NavLink>
 
-                {canDoTransactions(currentUser) && (
-                  <NavLink to="/purchase/pay" style={({ isActive }) => linkStyle(isActive)}>
-                    Vendor Payment
-                  </NavLink>
-                )}
-
-                {canViewDocuments(currentUser) && (
-                  <NavLink to="/vendor-payments" style={({ isActive }) => linkStyle(isActive)}>
-                    Payments
-                  </NavLink>
-                )}
+                <NavLink to="/purchase/pay" style={({ isActive }) => linkStyle(isActive)}>
+                  Vendor Payment
+                </NavLink>
 
                 <div style={divider} />
               </>
@@ -611,7 +584,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <SalesInvoiceDirectView currentUser={currentUser} />
+              <SalesInvoiceDirectView />
             </DocumentViewRoute>
           }
         />
@@ -639,19 +612,6 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
             >
               <ReceiptNew />
             </TransactionRoute>
-          }
-        />
-
-        <Route
-          path="/receipts"
-          element={
-            <DocumentViewRoute
-              authReady={authReady}
-              authenticated={authenticated}
-              currentUser={currentUser}
-            >
-              <ReceiptList currentUser={currentUser} />
-            </DocumentViewRoute>
           }
         />
 
@@ -702,7 +662,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
               authenticated={authenticated}
               currentUser={currentUser}
             >
-              <PurchaseBillView currentUser={currentUser} />
+              <PurchaseBillView />
             </DocumentViewRoute>
           }
         />
@@ -730,19 +690,6 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
             >
               <VendorPaymentNew />
             </TransactionRoute>
-          }
-        />
-
-        <Route
-          path="/vendor-payments"
-          element={
-            <DocumentViewRoute
-              authReady={authReady}
-              authenticated={authenticated}
-              currentUser={currentUser}
-            >
-              <VendorPaymentList currentUser={currentUser} />
-            </DocumentViewRoute>
           }
         />
 
@@ -813,32 +760,19 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
   );
 }
 
-function AppShell() {
-  const navigate = useNavigate();
-
+export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  const bootstrapped = useRef(false);
-
-  async function refreshAuth(options = {}) {
-    const { silent = false } = options;
-
-    if (!silent) {
-      setAuthReady(false);
-    }
-
+  async function refreshAuth() {
     try {
       const me = await apiGet("/auth/me");
-
       setAuthenticated(true);
       setCurrentUser(me);
-      return true;
     } catch {
       setAuthenticated(false);
       setCurrentUser(null);
-      return false;
     } finally {
       setAuthReady(true);
     }
@@ -852,32 +786,23 @@ function AppShell() {
     } finally {
       setAuthenticated(false);
       setCurrentUser(null);
-      setAuthReady(true);
-      navigate("/login", { replace: true });
+      window.location.href = "/login";
     }
   }
 
   useEffect(() => {
-    if (bootstrapped.current) return;
-    bootstrapped.current = true;
     refreshAuth();
   }, []);
 
   return (
-    <AppRoutes
-      authReady={authReady}
-      authenticated={authenticated}
-      currentUser={currentUser}
-      logout={logout}
-      refreshAuth={refreshAuth}
-    />
-  );
-}
-
-export default function App() {
-  return (
     <Router>
-      <AppShell />
+      <AppRoutes
+        authReady={authReady}
+        authenticated={authenticated}
+        currentUser={currentUser}
+        logout={logout}
+        refreshAuth={refreshAuth}
+      />
     </Router>
   );
 }
