@@ -28,15 +28,9 @@ function moneyINR(n) {
 function compactINR(n) {
   const x = Number(n || 0);
 
-  if (Math.abs(x) >= 10000000) {
-    return `${(x / 10000000).toFixed(2)} Cr`;
-  }
-  if (Math.abs(x) >= 100000) {
-    return `${(x / 100000).toFixed(2)} L`;
-  }
-  if (Math.abs(x) >= 1000) {
-    return `${(x / 1000).toFixed(1)} K`;
-  }
+  if (Math.abs(x) >= 10000000) return `${(x / 10000000).toFixed(2)} Cr`;
+  if (Math.abs(x) >= 100000) return `${(x / 100000).toFixed(2)} L`;
+  if (Math.abs(x) >= 1000) return `${(x / 1000).toFixed(1)} K`;
   return `${x.toFixed(0)}`;
 }
 
@@ -176,7 +170,6 @@ export default function Dashboard() {
         value: num(c.balance || c.outstanding || c.amount),
       }));
     }
-
     return [];
   }, [data]);
 
@@ -184,13 +177,6 @@ export default function Dashboard() {
     <>
       <div style={pageWrap}>
         <div className="dashboard-grid" style={dashboardGrid}>
-          <aside className="dashboard-ai" style={aiCol}>
-            <AIAssistantPanel
-              title="AI Finance Assistant"
-              height="calc(100vh - 108px)"
-            />
-          </aside>
-
           <main className="dashboard-main" style={mainCol}>
             <div style={topWrap}>
               <div>
@@ -539,6 +525,13 @@ export default function Dashboard() {
               </>
             )}
           </main>
+
+          <aside className="dashboard-ai" style={aiCol}>
+            <AIAssistantPanel
+              title="AI Finance Assistant"
+              height="calc(100vh - 130px)"
+            />
+          </aside>
         </div>
       </div>
 
@@ -618,7 +611,9 @@ function StatTile({ label, value, ok, warn, danger, muted }) {
       }}
     >
       <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>{label}</div>
-      <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color }}>{value ?? 0}</div>
+      <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color }}>
+        {value ?? 0}
+      </div>
     </div>
   );
 }
@@ -744,6 +739,7 @@ const mainCol = {
 
 const aiCol = {
   width: "100%",
+  minWidth: 320,
   maxWidth: 420,
   position: "sticky",
   top: 86,
@@ -895,6 +891,7 @@ const responsiveCss = `
     position: static !important;
     top: auto !important;
     max-width: 100% !important;
+    min-width: 0 !important;
     order: -1 !important;
     margin-bottom: 14px !important;
   }
