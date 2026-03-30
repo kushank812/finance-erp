@@ -62,3 +62,4 @@ def log_activity(
     except Exception as e:
         # NEVER break main business flow due to logging
         print("AUDIT LOG ERROR:", str(e))
+        
