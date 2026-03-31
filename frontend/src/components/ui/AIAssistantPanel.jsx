@@ -53,6 +53,8 @@ const QUICK_PROMPTS = [
   "Show overdue customers",
   "Who should I follow up first",
   "Generate reminder",
+  "What should I do today",
+  "Show biggest risks",
   "Open aging report",
   "Show vendor dues",
   "Open statement",
@@ -187,6 +189,7 @@ export default function AIAssistantPanel({
   const navigate = useNavigate();
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const bootedRef = useRef(false);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -220,13 +223,155 @@ export default function AIAssistantPanel({
     }
   }, [messages, loading]);
 
+  useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+
+    async function loadAutoInsights() {
+      try {
+        const [dashboardData, arData, apData] = await Promise.all([
+          apiGet("/dashboard/summary"),
+          apiGet("/sales-invoices/"),
+          apiGet("/purchase-invoices/"),
+        ]);
+
+        const salesRows = Array.isArray(arData) ? arData : [];
+        const purchaseRows = Array.isArray(apData) ? apData : [];
+
+        const overdueInvoices = salesRows
+          .map((r) => {
+            const overdueDays = daysOverdueFromDueDate(r.due_date, r.invoice_date);
+            return { ...r, overdueDays };
+          })
+          .filter((r) => Number(r.balance || 0) > 0 && Number(r.overdueDays || 0) > 0)
+          .sort((a, b) => {
+            if (Number(b.overdueDays || 0) !== Number(a.overdueDays || 0)) {
+              return Number(b.overdueDays || 0) - Number(a.overdueDays || 0);
+            }
+            return Number(b.balance || 0) - Number(a.balance || 0);
+          });
+
+        const top3 = overdueInvoices.slice(0, 3);
+        const oldest60Plus = overdueInvoices.filter(
+          (r) => Number(r.overdueDays || 0) > 60
+        );
+        const oldest90Plus = overdueInvoices.filter(
+          (r) => Number(r.overdueDays || 0) > 90
+        );
+
+        const purchaseOpen = purchaseRows.filter((r) => Number(r.balance || 0) > 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const dueThisWeek = purchaseOpen.filter((r) => {
+          const due = toDateValue(r.due_date || r.bill_date);
+          if (!due) return false;
+          due.setHours(0, 0, 0, 0);
+          const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          return diffDays >= 0 && diffDays <= 7;
+        });
+
+        const overdueAmount =
+          Number(dashboardData?.overdue_receivables || 0) ||
+          overdueInvoices.reduce((sum, r) => sum + Number(r.balance || 0), 0);
+
+        const highestInvoice = overdueInvoices[0];
+        const topCustomer = top3[0]?.customer_code || "-";
+
+        const autoCards = [
+          {
+            type: "summary",
+            title: "Today's AI Insights",
+            rows: [
+              { label: "Overdue amount", value: money(overdueAmount) },
+              { label: "Overdue invoices", value: String(overdueInvoices.length) },
+              { label: "Top follow-up customer", value: topCustomer },
+              { label: "Vendor bills due this week", value: String(dueThisWeek.length) },
+            ],
+          },
+        ];
+
+        if (top3.length > 0) {
+          autoCards.push({
+            type: "list",
+            title: "Top 3 Follow-up Customers",
+            items: top3.map(
+              (r, index) =>
+                `${index + 1}. ${r.customer_code || "CUSTOMER"} | ${
+                  r.invoice_no || "-"
+                } | ${money(Number(r.balance || 0))} | ${r.overdueDays} days overdue`
+            ),
+          });
+        }
+
+        if (highestInvoice) {
+          autoCards.push({
+            type: "summary",
+            title: "Highest Risk Invoice",
+            rows: [
+              { label: "Customer", value: highestInvoice.customer_code || "-" },
+              { label: "Invoice", value: highestInvoice.invoice_no || "-" },
+              { label: "Balance", value: money(Number(highestInvoice.balance || 0)) },
+              { label: "Overdue days", value: String(highestInvoice.overdueDays || 0) },
+            ],
+          });
+        }
+
+        autoCards.push({
+          type: "list",
+          title: "AI Warnings",
+          items: [
+            overdueInvoices.length > 0
+              ? `${overdueInvoices.length} overdue invoice(s) need follow-up.`
+              : "No overdue invoices right now.",
+            oldest60Plus.length > 0
+              ? `${oldest60Plus.length} invoice(s) are overdue beyond 60 days.`
+              : "No invoices overdue beyond 60 days.",
+            oldest90Plus.length > 0
+              ? `${oldest90Plus.length} invoice(s) are overdue beyond 90 days.`
+              : "No invoices overdue beyond 90 days.",
+            dueThisWeek.length > 0
+              ? `${dueThisWeek.length} vendor bill(s) are due this week.`
+              : "No vendor bills due this week.",
+          ],
+        });
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid(),
+            role: "assistant",
+            time: nowTime(),
+            text:
+              "I checked the latest dashboard, receivables, and payables data. Here are today's automatic AI insights.",
+            cards: autoCards,
+          },
+        ]);
+      } catch (e) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid(),
+            role: "assistant",
+            time: nowTime(),
+            text:
+              "I could not load automatic AI insights right now, but you can still use commands like Show overdue customers, Who should I follow up first, or Generate reminder.",
+            cards: [],
+          },
+        ]);
+      }
+    }
+
+    loadAutoInsights();
+  }, []);
+
   async function buildRealResponse(text) {
     const query = String(text || "").trim().toLowerCase();
 
     if (!query) {
       return {
         reply:
-          "Please type a command like Show overdue customers, Who should I follow up first, Generate reminder, Open aging report, or Show vendor dues.",
+          "Please type a command like Show overdue customers, Who should I follow up first, Generate reminder, What should I do today, Open aging report, or Show vendor dues.",
         cards: [],
       };
     }
@@ -312,6 +457,85 @@ export default function AIAssistantPanel({
               { label: "Route", value: "/sales-invoices" },
             ],
           },
+        ],
+      };
+    }
+
+    if (
+      query.includes("what should i do today") ||
+      query.includes("what should i do") ||
+      query.includes("today") ||
+      query.includes("biggest risks") ||
+      query.includes("risk")
+    ) {
+      const [arData, apData] = await Promise.all([
+        apiGet("/sales-invoices/"),
+        apiGet("/purchase-invoices/"),
+      ]);
+
+      const salesRows = Array.isArray(arData) ? arData : [];
+      const purchaseRows = Array.isArray(apData) ? apData : [];
+
+      const overdueRows = salesRows
+        .map((r) => {
+          const overdueDays = daysOverdueFromDueDate(r.due_date, r.invoice_date);
+          return { ...r, overdueDays };
+        })
+        .filter((r) => Number(r.balance || 0) > 0 && Number(r.overdueDays || 0) > 0)
+        .sort((a, b) => {
+          if (Number(b.overdueDays || 0) !== Number(a.overdueDays || 0)) {
+            return Number(b.overdueDays || 0) - Number(a.overdueDays || 0);
+          }
+          return Number(b.balance || 0) - Number(a.balance || 0);
+        });
+
+      const top3 = overdueRows.slice(0, 3);
+      const highest = overdueRows[0];
+
+      const purchaseOpen = purchaseRows.filter((r) => Number(r.balance || 0) > 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const dueThisWeek = purchaseOpen.filter((r) => {
+        const due = toDateValue(r.due_date || r.bill_date);
+        if (!due) return false;
+        due.setHours(0, 0, 0, 0);
+        const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return diffDays >= 0 && diffDays <= 7;
+      });
+
+      return {
+        reply: "Here is what you should focus on today.",
+        cards: [
+          {
+            type: "summary",
+            title: "Today's Priorities",
+            rows: [
+              { label: "Overdue invoices", value: String(overdueRows.length) },
+              { label: "Top follow-up cases", value: String(top3.length) },
+              { label: "Vendor bills due this week", value: String(dueThisWeek.length) },
+              {
+                label: "Highest risk balance",
+                value: highest ? money(Number(highest.balance || 0)) : money(0),
+              },
+            ],
+          },
+          ...(top3.length
+            ? [
+                {
+                  type: "list",
+                  title: "Focus First",
+                  items: top3.map(
+                    (r, index) =>
+                      `${index + 1}. ${r.customer_code || "CUSTOMER"} | ${
+                        r.invoice_no || "-"
+                      } | ${money(Number(r.balance || 0))} | ${
+                        r.overdueDays
+                      } days overdue`
+                  ),
+                },
+              ]
+            : []),
         ],
       };
     }
@@ -577,7 +801,7 @@ Accounts Team`;
 
     return {
       reply:
-        "Command not supported yet. Try: Show overdue customers, Who should I follow up first, Generate reminder, Show vendor dues, Open aging report, Open statement, Open ledger, Show invoices, or Show purchase bills.",
+        "Command not supported yet. Try: Show overdue customers, Who should I follow up first, Generate reminder, What should I do today, Show biggest risks, Show vendor dues, Open aging report, Open statement, Open ledger, Show invoices, or Show purchase bills.",
       cards: [],
     };
   }
@@ -646,7 +870,7 @@ Accounts Team`;
       <div style={panelHeader}>
         <div>
           <div style={panelTitle}>{title}</div>
-          <div style={panelSubtitle}>Finance actions, summaries, and reminder drafts</div>
+          <div style={panelSubtitle}>Finance actions, summaries, reminders, and auto insights</div>
         </div>
 
         <div style={statusBadge}>
@@ -722,7 +946,7 @@ Accounts Team`;
         </div>
 
         <div style={footerHint}>
-          Try: <span style={hintStrong}>Show overdue customers</span>,{" "}
+          Try: <span style={hintStrong}>What should I do today</span>,{" "}
           <span style={hintStrong}>Who should I follow up first</span>, or{" "}
           <span style={hintStrong}>Generate reminder</span>
         </div>
