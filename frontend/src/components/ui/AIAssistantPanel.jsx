@@ -1021,7 +1021,7 @@ Accounts Team`;
   }
 
   function onKeyDown(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSend();
     }
@@ -1082,18 +1082,23 @@ Accounts Team`;
       </div>
 
       <div style={panelFooter}>
-        <div style={inputShell}>
-          <textarea
+        <div
+          style={{
+            ...inputShell,
+            ...(isListening ? inputShellListening : null),
+          }}
+        >
+          <input
             ref={inputRef}
+            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={
               isListening
-                ? "Listening... speak your finance command"
+                ? "Speak your finance command..."
                 : "Ask anything"
             }
-            rows={1}
             style={inputStyle}
             disabled={loading}
           />
@@ -1374,21 +1379,25 @@ const inputShell = {
   background: "rgba(255,255,255,0.06)",
   padding: "8px 10px 8px 16px",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+  minHeight: 58,
+};
+
+const inputShellListening = {
+  border: "1px solid rgba(111, 192, 255, 0.28)",
+  boxShadow:
+    "0 0 0 1px rgba(111,192,255,0.06) inset, 0 0 20px rgba(63,136,255,0.08)",
 };
 
 const inputStyle = {
   flex: 1,
-  resize: "none",
   border: "none",
   background: "transparent",
   color: "#ffffff",
-  padding: "8px 0",
   fontSize: 15,
   lineHeight: 1.4,
   outline: "none",
   fontFamily: "inherit",
-  minHeight: 24,
-  maxHeight: 96,
+  height: 24,
 };
 
 const rightActions = {
