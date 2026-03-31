@@ -187,6 +187,71 @@ function MessageBubble({ msg }) {
   );
 }
 
+function MicIcon({ active = false }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ display: "block" }}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M12 15.5C9.93 15.5 8.25 13.82 8.25 11.75V7.75C8.25 5.68 9.93 4 12 4C14.07 4 15.75 5.68 15.75 7.75V11.75C15.75 13.82 14.07 15.5 12 15.5Z"
+        stroke={active ? "#ffffff" : "rgba(235,242,255,0.92)"}
+        strokeWidth="1.8"
+      />
+      <path
+        d="M18.25 11.75C18.25 15.2 15.45 18 12 18C8.55 18 5.75 15.2 5.75 11.75"
+        stroke={active ? "#ffffff" : "rgba(235,242,255,0.92)"}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 18V21"
+        stroke={active ? "#ffffff" : "rgba(235,242,255,0.92)"}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9.5 21H14.5"
+        stroke={active ? "#ffffff" : "rgba(235,242,255,0.92)"}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ display: "block" }}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M21 3L10 14"
+        stroke="#07121f"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M21 3L14 21L10 14L3 10L21 3Z"
+        stroke="#07121f"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function AIAssistantPanel({
   title = "AI Finance Assistant",
   height = "calc(100vh - 140px)",
@@ -443,6 +508,7 @@ export default function AIAssistantPanel({
 
     try {
       recognitionRef.current.start();
+      inputRef.current?.focus();
     } catch {
       // ignore duplicate start
     }
@@ -1016,7 +1082,7 @@ Accounts Team`;
       </div>
 
       <div style={panelFooter}>
-        <div style={inputWrap}>
+        <div style={inputShell}>
           <textarea
             ref={inputRef}
             value={input}
@@ -1025,46 +1091,47 @@ Accounts Team`;
             placeholder={
               isListening
                 ? "Listening... speak your finance command"
-                : "Type a finance command..."
+                : "Ask anything"
             }
-            rows={2}
+            rows={1}
             style={inputStyle}
             disabled={loading}
           />
 
-          <button
-            type="button"
-            onClick={isListening ? stopListening : startListening}
-            disabled={!speechSupported || loading}
-            title={
-              !speechSupported
-                ? "Voice recognition not supported"
-                : isListening
-                ? "Stop voice input"
-                : "Start voice input"
-            }
-            style={{
-              ...(isListening ? micBtnActive : micBtn),
-              opacity: !speechSupported || loading ? 0.55 : 1,
-              cursor:
-                !speechSupported || loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {speechSupported ? (isListening ? "Stop Mic" : "Mic") : "No Mic"}
-          </button>
+          <div style={rightActions}>
+            <button
+              type="button"
+              onClick={isListening ? stopListening : startListening}
+              disabled={!speechSupported || loading}
+              title={
+                !speechSupported
+                  ? "Voice recognition not supported"
+                  : isListening
+                  ? "Stop voice input"
+                  : "Start voice input"
+              }
+              style={{
+                ...(isListening ? micBtnActive : micBtn),
+                opacity: !speechSupported || loading ? 0.5 : 1,
+                cursor: !speechSupported || loading ? "not-allowed" : "pointer",
+              }}
+            >
+              <MicIcon active={isListening} />
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleSend()}
-            disabled={!canSend}
-            style={{
-              ...sendBtn,
-              opacity: canSend ? 1 : 0.55,
-              cursor: canSend ? "pointer" : "not-allowed",
-            }}
-          >
-            Send
-          </button>
+            <button
+              type="button"
+              onClick={() => handleSend()}
+              disabled={!canSend}
+              style={{
+                ...sendBtn,
+                opacity: canSend ? 1 : 0.55,
+                cursor: canSend ? "pointer" : "not-allowed",
+              }}
+            >
+              <SendIcon />
+            </button>
+          </div>
         </div>
 
         {speechError ? <div style={speechErrorText}>{speechError}</div> : null}
@@ -1298,55 +1365,72 @@ const panelFooter = {
   background: "rgba(8,12,26,0.88)",
 };
 
-const inputWrap = {
+const inputShell = {
   display: "flex",
+  alignItems: "center",
   gap: 10,
-  alignItems: "flex-end",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.06)",
+  padding: "8px 10px 8px 16px",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
 };
 
 const inputStyle = {
   flex: 1,
   resize: "none",
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.05)",
+  border: "none",
+  background: "transparent",
   color: "#ffffff",
-  padding: "11px 12px",
-  fontSize: 13,
-  lineHeight: 1.45,
+  padding: "8px 0",
+  fontSize: 15,
+  lineHeight: 1.4,
   outline: "none",
   fontFamily: "inherit",
+  minHeight: 24,
+  maxHeight: 96,
+};
+
+const rightActions = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flex: "0 0 auto",
 };
 
 const micBtn = {
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 14,
-  padding: "12px 14px",
-  minWidth: 92,
-  fontWeight: 900,
-  color: "#edf2ff",
-  background: "rgba(255,255,255,0.05)",
+  width: 42,
+  height: 42,
+  border: "none",
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(255,255,255,0.08)",
 };
 
 const micBtnActive = {
-  border: "1px solid rgba(255,120,120,0.28)",
-  borderRadius: 14,
-  padding: "12px 14px",
-  minWidth: 92,
-  fontWeight: 900,
-  color: "#ffffff",
-  background: "linear-gradient(135deg, rgba(255,97,97,0.28), rgba(255,143,92,0.22))",
-  boxShadow: "0 0 0 1px rgba(255,120,120,0.08) inset",
+  width: 42,
+  height: 42,
+  border: "none",
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "linear-gradient(135deg, rgba(255,97,97,0.88), rgba(255,143,92,0.82))",
+  boxShadow: "0 10px 20px rgba(255,90,90,0.20)",
 };
 
 const sendBtn = {
+  width: 42,
+  height: 42,
   border: "none",
-  borderRadius: 14,
-  padding: "12px 16px",
-  minWidth: 84,
-  fontWeight: 900,
-  color: "#06111f",
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   background: "linear-gradient(135deg, #6ceec7, #65b7ff)",
+  boxShadow: "0 10px 20px rgba(101,183,255,0.22)",
 };
 
 const speechErrorText = {
