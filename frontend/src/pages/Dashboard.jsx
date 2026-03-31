@@ -566,9 +566,9 @@ export default function Dashboard() {
           onClick={() => setAiOpen(true)}
           style={floatingAiBtn}
           title="Open AI Assistant"
+          aria-label="Open AI Assistant"
         >
-          <span style={floatingDot} />
-          AI Assistant
+          <span style={floatingAiText}>AI</span>
         </button>
       ) : null}
 
@@ -936,8 +936,9 @@ const floatingAiBtn = {
   right: 20,
   bottom: 20,
   zIndex: 40,
-  padding: "12px 16px",
-  borderRadius: 999,
+  width: 60,
+  height: 60,
+  borderRadius: "50%",
   border: "1px solid rgba(96,165,250,0.35)",
   background: "linear-gradient(135deg, #1d4ed8, #2563eb)",
   color: "#fff",
@@ -945,16 +946,14 @@ const floatingAiBtn = {
   fontWeight: 900,
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
+  justifyContent: "center",
   boxShadow: "0 14px 28px rgba(37,99,235,0.28)",
 };
 
-const floatingDot = {
-  width: 10,
-  height: 10,
-  borderRadius: 999,
-  background: "#4ade80",
-  boxShadow: "0 0 10px rgba(74,222,128,0.7)",
+const floatingAiText = {
+  fontSize: 18,
+  fontWeight: 900,
+  letterSpacing: 0.5,
 };
 
 const msgErr = {
@@ -1016,6 +1015,10 @@ const responsiveCss = `
 
   .dashboard-main {
     padding: 12px !important;
+  }
+
+  .recharts-legend-wrapper {
+    font-size: 11px !important;
   }
 }
 `;
