@@ -52,6 +52,7 @@ function daysOverdueFromDueDate(dueDate, fallbackDate) {
 const QUICK_PROMPTS = [
   "Show overdue customers",
   "Who should I follow up first",
+  "Generate reminder",
   "Open aging report",
   "Show vendor dues",
   "Open statement",
@@ -225,7 +226,7 @@ export default function AIAssistantPanel({
     if (!query) {
       return {
         reply:
-          "Please type a command like Show overdue customers, Who should I follow up first, Open aging report, or Show vendor dues.",
+          "Please type a command like Show overdue customers, Who should I follow up first, Generate reminder, Open aging report, or Show vendor dues.",
         cards: [],
       };
     }
@@ -350,10 +351,7 @@ export default function AIAssistantPanel({
             title: "Follow-up Priority",
             rows: [
               { label: "Overdue invoices", value: String(overdueRows.length) },
-              {
-                label: "Priority list",
-                value: String(topPriority.length),
-              },
+              { label: "Priority list", value: String(topPriority.length) },
               {
                 label: "Highest overdue days",
                 value: topPriority[0] ? String(topPriority[0].overdueDays) : "0",
@@ -494,6 +492,7 @@ export default function AIAssistantPanel({
     }
 
     if (
+      query.includes("generate reminder") ||
       query.includes("draft payment reminder") ||
       query.includes("payment reminder") ||
       query.includes("reminder")
@@ -507,32 +506,50 @@ export default function AIAssistantPanel({
           return { ...r, overdueDays };
         })
         .filter((r) => Number(r.balance || 0) > 0 && Number(r.overdueDays || 0) > 0)
-        .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
+        .sort((a, b) => {
+          if (Number(b.overdueDays || 0) !== Number(a.overdueDays || 0)) {
+            return Number(b.overdueDays || 0) - Number(a.overdueDays || 0);
+          }
+          return Number(b.balance || 0) - Number(a.balance || 0);
+        });
 
       const top = overdueRows[0];
 
       if (!top) {
         return {
-          reply: "No overdue invoice found, so I could not draft a live payment reminder.",
+          reply: "No overdue invoice found, so I could not generate a live reminder.",
           cards: [],
         };
       }
 
-      const draft = `Dear ${top.customer_code},
+      const whatsappMsg = `Hi ${top.customer_code},
 
-This is a gentle reminder that payment of ${money(
+Your payment of ${money(Number(top.balance || 0))} for invoice ${
+        top.invoice_no || "-"
+      } is overdue by ${top.overdueDays} day(s).
+
+Please arrange payment soon and share the payment details.
+
+Regards,
+Accounts Team`;
+
+      const emailMsg = `Subject: Payment Reminder – Invoice ${top.invoice_no || "-"}
+
+Dear ${top.customer_code},
+
+This is a reminder that your payment of ${money(
         Number(top.balance || 0)
       )} against invoice ${top.invoice_no || "-"} is overdue by ${
         top.overdueDays
       } day(s).
 
-Kindly arrange payment at the earliest and share the payment details with us.
+Kindly arrange the payment at the earliest and share the payment details with us.
 
 Regards,
 Accounts Team`;
 
       return {
-        reply: "Live payment reminder draft created from current overdue invoice data.",
+        reply: "Reminder generated with WhatsApp and Email formats.",
         cards: [
           {
             type: "summary",
@@ -546,8 +563,13 @@ Accounts Team`;
           },
           {
             type: "message",
-            title: "Reminder Draft",
-            message: draft,
+            title: "WhatsApp Reminder",
+            message: whatsappMsg,
+          },
+          {
+            type: "message",
+            title: "Email Reminder",
+            message: emailMsg,
           },
         ],
       };
@@ -555,7 +577,7 @@ Accounts Team`;
 
     return {
       reply:
-        "Command not supported yet. Try: Show overdue customers, Who should I follow up first, Show vendor dues, Open aging report, Open statement, Open ledger, Show invoices, or Show purchase bills.",
+        "Command not supported yet. Try: Show overdue customers, Who should I follow up first, Generate reminder, Show vendor dues, Open aging report, Open statement, Open ledger, Show invoices, or Show purchase bills.",
       cards: [],
     };
   }
@@ -702,7 +724,7 @@ Accounts Team`;
         <div style={footerHint}>
           Try: <span style={hintStrong}>Show overdue customers</span>,{" "}
           <span style={hintStrong}>Who should I follow up first</span>, or{" "}
-          <span style={hintStrong}>Open aging report</span>
+          <span style={hintStrong}>Generate reminder</span>
         </div>
       </div>
     </div>
