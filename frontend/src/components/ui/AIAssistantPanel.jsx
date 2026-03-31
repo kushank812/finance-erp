@@ -1088,22 +1088,20 @@ Accounts Team`;
             ...(isListening ? inputShellListening : null),
           }}
         >
-          <div style={inputArea}>
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={isListening ? "Speak your finance command..." : "Ask anything"}
-              style={inputStyle}
-              disabled={loading}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="none"
-              spellCheck={false}
-            />
-          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={
+              isListening
+                ? "Speak your finance command..."
+                : "Ask anything"
+            }
+            style={inputStyle}
+            disabled={loading}
+          />
 
           <div style={rightActions}>
             <button
@@ -1377,48 +1375,29 @@ const inputShell = {
   alignItems: "center",
   gap: 10,
   borderRadius: 999,
-  border: "1px solid rgba(102, 130, 255, 0.22)",
-  background:
-    "linear-gradient(180deg, rgba(18,26,52,0.96) 0%, rgba(14,21,44,0.96) 100%)",
-  padding: "8px 10px 8px 14px",
-  boxShadow:
-    "inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(71,107,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.06)",
+  padding: "8px 10px 8px 16px",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
   minHeight: 58,
 };
 
 const inputShellListening = {
-  border: "1px solid rgba(111, 192, 255, 0.4)",
+  border: "1px solid rgba(111, 192, 255, 0.28)",
   boxShadow:
-    "0 0 0 1px rgba(111,192,255,0.08) inset, 0 0 24px rgba(63,136,255,0.10)",
-};
-
-const inputArea = {
-  flex: 1,
-  minWidth: 0,
-  display: "flex",
-  alignItems: "center",
+    "0 0 0 1px rgba(111,192,255,0.06) inset, 0 0 20px rgba(63,136,255,0.08)",
 };
 
 const inputStyle = {
-  width: "100%",
-  minWidth: 0,
+  flex: 1,
   border: "none",
-  outline: "none",
-  boxShadow: "none",
-  WebkitBoxShadow: "none",
-  appearance: "none",
-  WebkitAppearance: "none",
-  MozAppearance: "none",
   background: "transparent",
-  backgroundColor: "transparent",
   color: "#ffffff",
-  fontSize: 16,
+  fontSize: 15,
   lineHeight: 1.4,
+  outline: "none",
   fontFamily: "inherit",
   height: 24,
-  padding: 0,
-  margin: 0,
-  borderRadius: 0,
 };
 
 const rightActions = {
