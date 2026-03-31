@@ -49,6 +49,11 @@ function daysOverdueFromDueDate(dueDate, fallbackDate) {
   return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
 }
 
+function getSpeechRecognition() {
+  if (typeof window === "undefined") return null;
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
 const QUICK_PROMPTS = [
   "Show overdue customers",
   "Who should I follow up first",
@@ -190,9 +195,13 @@ export default function AIAssistantPanel({
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const bootedRef = useRef(false);
+  const recognitionRef = useRef(null);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [speechError, setSpeechError] = useState("");
   const [messages, setMessages] = useState([
     {
       id: uid(),
@@ -216,6 +225,63 @@ export default function AIAssistantPanel({
   ]);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+
+  useEffect(() => {
+    const RecognitionClass = getSpeechRecognition();
+    setSpeechSupported(Boolean(RecognitionClass));
+
+    if (!RecognitionClass) return;
+
+    const recognition = new RecognitionClass();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-IN";
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setSpeechError("");
+    };
+
+    recognition.onresult = (event) => {
+      let transcript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        transcript += event.results[i][0].transcript;
+      }
+
+      setInput(transcript.trim());
+    };
+
+    recognition.onerror = (event) => {
+      const errorCode = event?.error || "";
+
+      if (errorCode === "not-allowed") {
+        setSpeechError("Microphone permission denied.");
+      } else if (errorCode === "no-speech") {
+        setSpeechError("No speech detected. Please try again.");
+      } else if (errorCode === "audio-capture") {
+        setSpeechError("No microphone detected.");
+      } else {
+        setSpeechError("Voice recognition failed. Please try again.");
+      }
+
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      try {
+        recognition.stop();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -364,6 +430,32 @@ export default function AIAssistantPanel({
 
     loadAutoInsights();
   }, []);
+
+  function startListening() {
+    setSpeechError("");
+
+    if (!recognitionRef.current) {
+      setSpeechError("Voice recognition is not supported in this browser.");
+      return;
+    }
+
+    if (loading) return;
+
+    try {
+      recognitionRef.current.start();
+    } catch {
+      // ignore duplicate start
+    }
+  }
+
+  function stopListening() {
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      // ignore
+    }
+    setIsListening(false);
+  }
 
   async function buildRealResponse(text) {
     const query = String(text || "").trim().toLowerCase();
@@ -842,6 +934,10 @@ Accounts Team`;
     const finalText = String(customText ?? input).trim();
     if (!finalText || loading) return;
 
+    if (isListening) {
+      stopListening();
+    }
+
     setMessages((prev) => [
       ...prev,
       {
@@ -926,11 +1022,37 @@ Accounts Team`;
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Type a finance command..."
+            placeholder={
+              isListening
+                ? "Listening... speak your finance command"
+                : "Type a finance command..."
+            }
             rows={2}
             style={inputStyle}
             disabled={loading}
           />
+
+          <button
+            type="button"
+            onClick={isListening ? stopListening : startListening}
+            disabled={!speechSupported || loading}
+            title={
+              !speechSupported
+                ? "Voice recognition not supported"
+                : isListening
+                ? "Stop voice input"
+                : "Start voice input"
+            }
+            style={{
+              ...(isListening ? micBtnActive : micBtn),
+              opacity: !speechSupported || loading ? 0.55 : 1,
+              cursor:
+                !speechSupported || loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {speechSupported ? (isListening ? "Stop Mic" : "Mic") : "No Mic"}
+          </button>
+
           <button
             type="button"
             onClick={() => handleSend()}
@@ -944,6 +1066,8 @@ Accounts Team`;
             Send
           </button>
         </div>
+
+        {speechError ? <div style={speechErrorText}>{speechError}</div> : null}
 
         <div style={footerHint}>
           Try: <span style={hintStrong}>What should I do today</span>,{" "}
@@ -1194,6 +1318,27 @@ const inputStyle = {
   fontFamily: "inherit",
 };
 
+const micBtn = {
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 14,
+  padding: "12px 14px",
+  minWidth: 92,
+  fontWeight: 900,
+  color: "#edf2ff",
+  background: "rgba(255,255,255,0.05)",
+};
+
+const micBtnActive = {
+  border: "1px solid rgba(255,120,120,0.28)",
+  borderRadius: 14,
+  padding: "12px 14px",
+  minWidth: 92,
+  fontWeight: 900,
+  color: "#ffffff",
+  background: "linear-gradient(135deg, rgba(255,97,97,0.28), rgba(255,143,92,0.22))",
+  boxShadow: "0 0 0 1px rgba(255,120,120,0.08) inset",
+};
+
 const sendBtn = {
   border: "none",
   borderRadius: 14,
@@ -1202,6 +1347,12 @@ const sendBtn = {
   fontWeight: 900,
   color: "#06111f",
   background: "linear-gradient(135deg, #6ceec7, #65b7ff)",
+};
+
+const speechErrorText = {
+  fontSize: 12,
+  color: "#ffb3b3",
+  fontWeight: 700,
 };
 
 const footerHint = {
