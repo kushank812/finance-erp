@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiGet } from "../api/client";
 import AIAssistantPanel from "../components/ui/AIAssistantPanel";
 import {
@@ -47,6 +48,8 @@ const STATUS_COLORS = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -200,10 +203,10 @@ export default function Dashboard() {
 
                 <button
                   type="button"
-                  onClick={() => setAiOpen((prev) => !prev)}
+                  onClick={() => navigate("/ai")}
                   style={btnAi}
                 >
-                  {aiOpen ? "Hide AI" : "Open AI"}
+                  Open AI
                 </button>
               </div>
             </div>

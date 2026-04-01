@@ -36,6 +36,7 @@ import SalesInvoicePrintView from "./pages/SalesInvoicePrintView";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
+import AIWorkspacePage from "./pages/AIWorkspacePage";
 
 import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
@@ -95,10 +96,6 @@ function isOperator(user) {
   return user?.role === "OPERATOR";
 }
 
-function isViewer(user) {
-  return user?.role === "VIEWER";
-}
-
 function canManageUsers(user) {
   return isAdmin(user);
 }
@@ -112,15 +109,15 @@ function canDoTransactions(user) {
 }
 
 function canViewReports(user) {
-  return isAdmin(user) || isOperator(user) || isViewer(user);
+  return isAdmin(user) || isOperator(user) || user?.role === "VIEWER";
 }
 
 function canViewMasters(user) {
-  return isAdmin(user) || isOperator(user) || isViewer(user);
+  return isAdmin(user) || isOperator(user) || user?.role === "VIEWER";
 }
 
 function canViewDocuments(user) {
-  return isAdmin(user) || isOperator(user) || isViewer(user);
+  return isAdmin(user) || isOperator(user) || user?.role === "VIEWER";
 }
 
 function FullPageLoader() {
@@ -287,6 +284,10 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
 
             <NavLink to="/dashboard" style={({ isActive }) => linkStyle(isActive)}>
               Dashboard
+            </NavLink>
+
+            <NavLink to="/ai" style={({ isActive }) => linkStyle(isActive)}>
+              AI Workspace
             </NavLink>
 
             {canDoTransactions(currentUser) && (
@@ -495,6 +496,15 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           element={
             <ProtectedRoute authReady={authReady} authenticated={authenticated}>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/ai"
+          element={
+            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+              <AIWorkspacePage />
             </ProtectedRoute>
           }
         />
