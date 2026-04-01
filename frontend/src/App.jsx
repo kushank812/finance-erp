@@ -96,6 +96,10 @@ function isOperator(user) {
   return user?.role === "OPERATOR";
 }
 
+function isViewer(user) {
+  return user?.role === "VIEWER";
+}
+
 function canManageUsers(user) {
   return isAdmin(user);
 }
@@ -109,15 +113,15 @@ function canDoTransactions(user) {
 }
 
 function canViewReports(user) {
-  return isAdmin(user) || isOperator(user) || user?.role === "VIEWER";
+  return isAdmin(user) || isOperator(user) || isViewer(user);
 }
 
 function canViewMasters(user) {
-  return isAdmin(user) || isOperator(user) || user?.role === "VIEWER";
+  return isAdmin(user) || isOperator(user) || isViewer(user);
 }
 
 function canViewDocuments(user) {
-  return isAdmin(user) || isOperator(user) || user?.role === "VIEWER";
+  return isAdmin(user) || isOperator(user) || isViewer(user);
 }
 
 function FullPageLoader() {
@@ -165,7 +169,7 @@ function AdminRoute({ children, authReady, authenticated, currentUser }) {
   }
 
   if (!isAdmin(currentUser)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/entry" replace />;
   }
 
   return children;
@@ -183,7 +187,7 @@ function MastersRoute({ children, authReady, authenticated, currentUser }) {
   }
 
   if (!canViewMasters(currentUser)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/entry" replace />;
   }
 
   return children;
@@ -219,7 +223,7 @@ function ReportsRoute({ children, authReady, authenticated, currentUser }) {
   }
 
   if (!canViewReports(currentUser)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/entry" replace />;
   }
 
   return children;
@@ -237,7 +241,7 @@ function DocumentViewRoute({ children, authReady, authenticated, currentUser }) 
   }
 
   if (!canViewDocuments(currentUser)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/entry" replace />;
   }
 
   return children;
@@ -249,7 +253,7 @@ function PublicOnlyRoute({ children, authReady, authenticated }) {
   }
 
   if (authenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/entry" replace />;
   }
 
   return children;
@@ -275,7 +279,7 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
     <div style={shell}>
       <nav style={navStyle}>
         <div style={navInner}>
-          <NavLink to="/dashboard" style={{ textDecoration: "none", flex: "0 0 auto" }}>
+          <NavLink to="/entry" style={{ textDecoration: "none", flex: "0 0 auto" }}>
             <div style={brand}>Finance AP/AR</div>
           </NavLink>
 
@@ -486,7 +490,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           path="/"
           element={
             <ProtectedRoute authReady={authReady} authenticated={authenticated}>
-              <Navigate to="/dashboard" replace />
+              <Navigate to="/entry" replace />
             </ProtectedRoute>
           }
         />
