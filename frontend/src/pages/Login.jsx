@@ -14,7 +14,7 @@ export default function Login({ refreshAuth }) {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const redirectTo = location.state?.from || "/dashboard";
+  const redirectTo = location.state?.from || "/entry";
 
   async function onSubmit(e) {
     e.preventDefault();
