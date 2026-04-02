@@ -1,4 +1,3 @@
-// src/pages/EntryScreen.jsx
 import { useNavigate } from "react-router-dom";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import {
@@ -84,7 +83,7 @@ export default function EntryScreen() {
     <div style={page}>
       <PageHeaderBlock
         eyebrowText="ENTRY"
-        title="Finance Entry Control Center"
+        title="Billing & Accounting Entry"
         subtitle="Start daily AP/AR work from one place. Create transactions, open reports, manage masters, and move through your ERP workflow faster."
         actions={
           <div style={headerActions}>
