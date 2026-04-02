@@ -90,8 +90,8 @@ export default function EntryScreen() {
             <button onClick={() => nav("/dashboard")} style={btnSecondary} type="button">
               Open Dashboard
             </button>
-            <button onClick={() => nav("/ai")} style={btnPrimary} type="button">
-              Open AI Workspace
+            <button onClick={() => nav("/users")} style={btnPrimary} type="button">
+              Open Users
             </button>
           </div>
         }
@@ -238,8 +238,8 @@ export default function EntryScreen() {
       </div>
 
       <div style={twoColGrid}>
-        <section style={card}>
-          <div style={cardHeader}>
+        <section style={mastersCard}>
+          <div style={mastersHeader}>
             <div>
               <h2 style={cardTitle}>Masters</h2>
               <p style={cardSubtitle}>
@@ -265,9 +265,9 @@ export default function EntryScreen() {
               onClick={() => nav("/vendors")}
             />
             <ShortcutButton
-              label="AI Workspace"
-              subtext="Ask questions, generate summaries, and explore finance insights."
-              onClick={() => nav("/ai")}
+              label="Users"
+              subtext="Manage users, roles, and access control."
+              onClick={() => nav("/users")}
             />
           </div>
         </section>
@@ -300,8 +300,8 @@ export default function EntryScreen() {
             />
             <WorkflowItem
               step="4"
-              title="Check reports and AI insights"
-              desc="Open ledger, aging, statement, dashboard, and AI workspace for analysis and follow-up."
+              title="Check reports and users"
+              desc="Open ledger, aging, statement, dashboard, and user management for review and control."
             />
           </div>
         </section>
@@ -417,6 +417,7 @@ const shortcutBtn = {
   boxShadow: "0 6px 14px rgba(0,0,0,0.05)",
   display: "grid",
   gap: 6,
+  minHeight: 120,
 };
 
 const shortcutLabel = {
@@ -474,4 +475,15 @@ const workflowDesc = {
   fontSize: 13,
   lineHeight: 1.5,
   marginTop: 4,
+};
+
+const mastersCard = {
+  ...card,
+  paddingTop: 14,
+};
+
+const mastersHeader = {
+  ...cardHeader,
+  marginBottom: 10,
+  paddingBottom: 0,
 };
