@@ -84,8 +84,8 @@ export default function EntryScreen() {
     <div style={page}>
       <PageHeaderBlock
         eyebrowText="ENTRY"
-        title="Finance Entry Control Center"
-        subtitle="Start daily AP/AR work from one place. Create transactions, open reports, manage masters, and move through your ERP workflow faster."
+        title="Billing & Accounting Entry"
+        subtitle="Manage receivables, payables, masters, and reports from one place."
         actions={
           <div style={headerActions}>
             <button onClick={() => nav("/dashboard")} style={btnSecondary} type="button">
