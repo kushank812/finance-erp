@@ -9,6 +9,7 @@ import {
   cardSubtitle,
   btnPrimary,
   btnSecondary,
+  btnGhost,
   badgeBlue,
   badgeGreen,
   badgeAmber,
@@ -35,7 +36,8 @@ function QuickActionCard({
   badgeStyle,
   tone = "primary",
 }) {
-  const buttonStyle = tone === "secondary" ? btnSecondary : btnPrimary;
+  const buttonStyle =
+    tone === "secondary" ? btnSecondary : tone === "ghost" ? btnGhost : btnPrimary;
 
   return (
     <div style={quickCard}>
@@ -88,6 +90,9 @@ export default function EntryScreen() {
           <div style={headerActions}>
             <button onClick={() => nav("/dashboard")} style={btnSecondary} type="button">
               Open Dashboard
+            </button>
+            <button onClick={() => nav("/ai")} style={btnPrimary} type="button">
+              Open AI Workspace
             </button>
           </div>
         }
@@ -233,9 +238,9 @@ export default function EntryScreen() {
         </section>
       </div>
 
-      <div style={twoColGridBottom}>
-        <section style={fixedCard}>
-          <div style={cardHeaderCompact}>
+      <div style={twoColGrid}>
+        <section style={card}>
+          <div style={cardHeader}>
             <div>
               <h2 style={cardTitle}>Masters</h2>
               <p style={cardSubtitle}>
@@ -261,15 +266,15 @@ export default function EntryScreen() {
               onClick={() => nav("/vendors")}
             />
             <ShortcutButton
-              label="Users"
-              subtext="Manage users, roles, and access control."
-              onClick={() => nav("/users")}
+              label="AI Workspace"
+              subtext="Ask questions, generate summaries, and explore finance insights."
+              onClick={() => nav("/ai")}
             />
           </div>
         </section>
 
-        <section style={fixedCard}>
-          <div style={cardHeaderCompact}>
+        <section style={card}>
+          <div style={cardHeader}>
             <div>
               <h2 style={cardTitle}>Recommended Workflow</h2>
               <p style={cardSubtitle}>
@@ -296,8 +301,8 @@ export default function EntryScreen() {
             />
             <WorkflowItem
               step="4"
-              title="Check reports"
-              desc="Open ledger, aging, statement, and dashboard for analysis and follow-up."
+              title="Check reports and AI insights"
+              desc="Open ledger, aging, statement, dashboard, and AI workspace for analysis and follow-up."
             />
           </div>
         </section>
@@ -395,23 +400,6 @@ const twoColGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
   gap: 16,
-};
-
-const twoColGridBottom = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 16,
-  alignItems: "start",
-};
-
-const fixedCard = {
-  ...card,
-  alignSelf: "start",
-};
-
-const cardHeaderCompact = {
-  ...cardHeader,
-  marginBottom: 14,
 };
 
 const shortcutGrid = {
