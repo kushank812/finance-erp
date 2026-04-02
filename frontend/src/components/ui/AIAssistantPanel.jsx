@@ -54,6 +54,131 @@ function getSpeechRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
+function isAdmin(user) {
+  return user?.role === "ADMIN";
+}
+
+function isOperator(user) {
+  return user?.role === "OPERATOR";
+}
+
+function isViewer(user) {
+  return user?.role === "VIEWER";
+}
+
+function canViewReports(user) {
+  return isAdmin(user) || isOperator(user) || isViewer(user);
+}
+
+function canViewDocuments(user) {
+  return isAdmin(user) || isOperator(user) || isViewer(user);
+}
+
+function canDoTransactions(user) {
+  return isAdmin(user) || isOperator(user);
+}
+
+function canManageUsers(user) {
+  return isAdmin(user);
+}
+
+function canViewAudit(user) {
+  return isAdmin(user);
+}
+
+function canNavigateTo(path, user) {
+  if (!user?.role) return false;
+
+  const normalizedPath = String(path || "").trim();
+
+  if (normalizedPath === "/users") {
+    return canManageUsers(user);
+  }
+
+  if (normalizedPath === "/audit") {
+    return canViewAudit(user);
+  }
+
+  if (
+    normalizedPath === "/entry" ||
+    normalizedPath === "/billing" ||
+    normalizedPath === "/receipt/new" ||
+    normalizedPath === "/purchase/new" ||
+    normalizedPath === "/purchase/pay" ||
+    normalizedPath.startsWith("/billing/edit/") ||
+    normalizedPath.startsWith("/purchase/edit/")
+  ) {
+    return canDoTransactions(user);
+  }
+
+  if (
+    normalizedPath === "/ledger" ||
+    normalizedPath === "/aging" ||
+    normalizedPath === "/statement"
+  ) {
+    return canViewReports(user);
+  }
+
+  if (
+    normalizedPath === "/sales-invoices" ||
+    normalizedPath === "/purchase-bills" ||
+    normalizedPath.startsWith("/sales-invoice-view/") ||
+    normalizedPath.startsWith("/purchase/view/") ||
+    normalizedPath.startsWith("/receipt/view/") ||
+    normalizedPath.startsWith("/vendor-payment/view/")
+  ) {
+    return canViewDocuments(user);
+  }
+
+  return false;
+}
+
+function safeNavigate(path, navigate, user, destinationLabel) {
+  if (!canNavigateTo(path, user)) {
+    return {
+      blocked: true,
+      result: {
+        reply:
+          user?.role === "VIEWER"
+            ? `Access denied. ${destinationLabel} is not allowed for VIEWER role.`
+            : "Access denied. You are not allowed to open this screen.",
+        cards: [
+          {
+            type: "summary",
+            title: "Permission Blocked",
+            rows: [
+              { label: "Requested screen", value: destinationLabel || path },
+              { label: "Route", value: path },
+              { label: "Your role", value: user?.role || "UNKNOWN" },
+              { label: "Status", value: "Blocked" },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  navigate(path);
+
+  return {
+    blocked: false,
+    result: {
+      reply: `Opening ${destinationLabel}...`,
+      cards: [
+        {
+          type: "summary",
+          title: "Navigation",
+          rows: [
+            { label: "Destination", value: destinationLabel },
+            { label: "Route", value: path },
+            { label: "Status", value: "Allowed" },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 const QUICK_PROMPTS = [
   "Summarize dashboard",
   "Show overdue customers",
@@ -721,7 +846,7 @@ Accounts Team`;
   };
 }
 
-async function buildAIResponse(text, navigate) {
+async function buildAIResponse(text, navigate, currentUser) {
   const query = String(text || "").trim().toLowerCase();
 
   if (!query) {
@@ -733,88 +858,23 @@ async function buildAIResponse(text, navigate) {
   }
 
   if (query.includes("open aging") || query === "aging" || query.includes("aging report")) {
-    navigate("/aging");
-    return {
-      reply: "Opening Aging Report...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Aging Report" },
-            { label: "Route", value: "/aging" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/aging", navigate, currentUser, "Aging Report").result;
   }
 
   if (query.includes("open statement") || query === "statement") {
-    navigate("/statement");
-    return {
-      reply: "Opening Statement...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Statement" },
-            { label: "Route", value: "/statement" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/statement", navigate, currentUser, "Statement").result;
   }
 
   if (query.includes("open ledger") || query === "ledger") {
-    navigate("/ledger");
-    return {
-      reply: "Opening Ledger...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Ledger" },
-            { label: "Route", value: "/ledger" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/ledger", navigate, currentUser, "Ledger").result;
   }
 
   if (query.includes("purchase bill") || query.includes("purchase bills")) {
-    navigate("/purchase-bills");
-    return {
-      reply: "Opening Purchase Bills...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Purchase Bills" },
-            { label: "Route", value: "/purchase-bills" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/purchase-bills", navigate, currentUser, "Purchase Bills").result;
   }
 
   if (query.includes("invoice") || query.includes("invoices")) {
-    navigate("/sales-invoices");
-    return {
-      reply: "Opening Sales Invoices...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Sales Invoices" },
-            { label: "Route", value: "/sales-invoices" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/sales-invoices", navigate, currentUser, "Sales Invoices").result;
   }
 
   const snapshot = await fetchFinanceSnapshot();
@@ -877,6 +937,7 @@ async function buildAIResponse(text, navigate) {
 }
 
 export default function AIAssistantPanel({
+  currentUser = null,
   title = "AI Finance Assistant",
   height = "calc(100vh - 140px)",
 }) {
@@ -897,7 +958,9 @@ export default function AIAssistantPanel({
       role: "assistant",
       time: nowTime(),
       text:
-        "Welcome. I can summarize dashboard status, show overdue customers, rank follow-up priorities, generate receivables or payables reports, analyze vendor dues, draft reminders, and open finance pages.",
+        currentUser?.role === "VIEWER"
+          ? "Welcome. You are using the AI in read-only mode. I can summarize dashboard status, show overdue customers, rank follow-up priorities, generate receivables or payables reports, analyze vendor dues, draft reminders, and open allowed read-only finance pages."
+          : "Welcome. I can summarize dashboard status, show overdue customers, rank follow-up priorities, generate receivables or payables reports, analyze vendor dues, draft reminders, and open finance pages.",
       cards: [
         {
           type: "summary",
@@ -1066,7 +1129,7 @@ export default function AIAssistantPanel({
     setLoading(true);
 
     try {
-      const result = await buildAIResponse(finalText, navigate);
+      const result = await buildAIResponse(finalText, navigate, currentUser);
 
       setMessages((prev) => [
         ...prev,
@@ -1108,13 +1171,15 @@ export default function AIAssistantPanel({
         <div>
           <div style={panelTitle}>{title}</div>
           <div style={panelSubtitle}>
-            Live finance summaries, reports, risks, reminders, and navigation
+            {currentUser?.role === "VIEWER"
+              ? "Read-only AI summaries, reports, risks, reminders, and safe navigation"
+              : "Live finance summaries, reports, risks, reminders, and navigation"}
           </div>
         </div>
 
         <div style={statusBadge}>
           <span style={statusDot} />
-          <span>Ready</span>
+          <span>{currentUser?.role === "VIEWER" ? "Read Only" : "Ready"}</span>
         </div>
       </div>
 

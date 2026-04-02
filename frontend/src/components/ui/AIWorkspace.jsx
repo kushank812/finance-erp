@@ -61,6 +61,131 @@ function getSpeechRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
+function isAdmin(user) {
+  return user?.role === "ADMIN";
+}
+
+function isOperator(user) {
+  return user?.role === "OPERATOR";
+}
+
+function isViewer(user) {
+  return user?.role === "VIEWER";
+}
+
+function canViewReports(user) {
+  return isAdmin(user) || isOperator(user) || isViewer(user);
+}
+
+function canViewDocuments(user) {
+  return isAdmin(user) || isOperator(user) || isViewer(user);
+}
+
+function canDoTransactions(user) {
+  return isAdmin(user) || isOperator(user);
+}
+
+function canManageUsers(user) {
+  return isAdmin(user);
+}
+
+function canViewAudit(user) {
+  return isAdmin(user);
+}
+
+function canNavigateTo(path, user) {
+  if (!user?.role) return false;
+
+  const normalizedPath = String(path || "").trim();
+
+  if (normalizedPath === "/users") {
+    return canManageUsers(user);
+  }
+
+  if (normalizedPath === "/audit") {
+    return canViewAudit(user);
+  }
+
+  if (
+    normalizedPath === "/entry" ||
+    normalizedPath === "/billing" ||
+    normalizedPath === "/receipt/new" ||
+    normalizedPath === "/purchase/new" ||
+    normalizedPath === "/purchase/pay" ||
+    normalizedPath.startsWith("/billing/edit/") ||
+    normalizedPath.startsWith("/purchase/edit/")
+  ) {
+    return canDoTransactions(user);
+  }
+
+  if (
+    normalizedPath === "/ledger" ||
+    normalizedPath === "/aging" ||
+    normalizedPath === "/statement"
+  ) {
+    return canViewReports(user);
+  }
+
+  if (
+    normalizedPath === "/sales-invoices" ||
+    normalizedPath === "/purchase-bills" ||
+    normalizedPath.startsWith("/sales-invoice-view/") ||
+    normalizedPath.startsWith("/purchase/view/") ||
+    normalizedPath.startsWith("/receipt/view/") ||
+    normalizedPath.startsWith("/vendor-payment/view/")
+  ) {
+    return canViewDocuments(user);
+  }
+
+  return false;
+}
+
+function safeNavigate(path, navigate, user, destinationLabel) {
+  if (!canNavigateTo(path, user)) {
+    return {
+      blocked: true,
+      result: {
+        reply:
+          user?.role === "VIEWER"
+            ? `Access denied. ${destinationLabel} is not allowed for VIEWER role.`
+            : "Access denied. You are not allowed to open this screen.",
+        cards: [
+          {
+            type: "summary",
+            title: "Permission Blocked",
+            rows: [
+              { label: "Requested screen", value: destinationLabel || path },
+              { label: "Route", value: path },
+              { label: "Your role", value: user?.role || "UNKNOWN" },
+              { label: "Status", value: "Blocked" },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  navigate(path);
+
+  return {
+    blocked: false,
+    result: {
+      reply: `Opening ${destinationLabel}...`,
+      cards: [
+        {
+          type: "summary",
+          title: "Navigation",
+          rows: [
+            { label: "Destination", value: destinationLabel },
+            { label: "Route", value: path },
+            { label: "Status", value: "Allowed" },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 const QUICK_PROMPTS = [
   "Summarize dashboard",
   "Show overdue customers",
@@ -78,14 +203,16 @@ const QUICK_PROMPTS = [
   "Show purchase bills",
 ];
 
-function createWelcomeMessages() {
+function createWelcomeMessages(currentUser) {
   return [
     {
       id: uid(),
       role: "assistant",
       time: nowTime(),
       text:
-        "Welcome to the AI Finance Workspace. I work best on your live AP/AR data. I can summarize dashboard status, identify overdue customers, rank follow-up priority, analyze vendor dues, generate receivables/payables summaries, draft reminders, and open relevant finance pages.",
+        currentUser?.role === "VIEWER"
+          ? "Welcome to the AI Finance Workspace. You are using read-only AI mode. I can summarize dashboard status, identify overdue customers, rank follow-up priority, analyze vendor dues, generate receivables/payables summaries, draft reminders, and open only allowed read-only finance pages."
+          : "Welcome to the AI Finance Workspace. I work best on your live AP/AR data. I can summarize dashboard status, identify overdue customers, rank follow-up priority, analyze vendor dues, generate receivables/payables summaries, draft reminders, and open relevant finance pages.",
       cards: [
         {
           type: "summary",
@@ -112,14 +239,14 @@ function createWelcomeMessages() {
   ];
 }
 
-function createNewChat() {
+function createNewChat(currentUser) {
   const timestamp = nowISO();
   return {
     id: uid(),
     title: "New Chat",
     createdAt: timestamp,
     updatedAt: timestamp,
-    messages: createWelcomeMessages(),
+    messages: createWelcomeMessages(currentUser),
   };
 }
 
@@ -813,7 +940,7 @@ Accounts Team`;
   };
 }
 
-async function buildAIResponse(text, navigate) {
+async function buildAIResponse(text, navigate, currentUser) {
   const query = String(text || "").trim().toLowerCase();
 
   if (!query) {
@@ -825,88 +952,23 @@ async function buildAIResponse(text, navigate) {
   }
 
   if (query.includes("open aging") || query === "aging" || query.includes("aging report")) {
-    navigate("/aging");
-    return {
-      reply: "Opening Aging Report...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Aging Report" },
-            { label: "Route", value: "/aging" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/aging", navigate, currentUser, "Aging Report").result;
   }
 
   if (query.includes("open statement") || query === "statement") {
-    navigate("/statement");
-    return {
-      reply: "Opening Statement...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Statement" },
-            { label: "Route", value: "/statement" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/statement", navigate, currentUser, "Statement").result;
   }
 
   if (query.includes("open ledger") || query === "ledger") {
-    navigate("/ledger");
-    return {
-      reply: "Opening Ledger...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Ledger" },
-            { label: "Route", value: "/ledger" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/ledger", navigate, currentUser, "Ledger").result;
   }
 
   if (query.includes("purchase bill") || query.includes("purchase bills")) {
-    navigate("/purchase-bills");
-    return {
-      reply: "Opening Purchase Bills...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Purchase Bills" },
-            { label: "Route", value: "/purchase-bills" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/purchase-bills", navigate, currentUser, "Purchase Bills").result;
   }
 
   if (query.includes("invoice") || query.includes("invoices")) {
-    navigate("/sales-invoices");
-    return {
-      reply: "Opening Sales Invoices...",
-      cards: [
-        {
-          type: "summary",
-          title: "Navigation",
-          rows: [
-            { label: "Destination", value: "Sales Invoices" },
-            { label: "Route", value: "/sales-invoices" },
-          ],
-        },
-      ],
-    };
+    return safeNavigate("/sales-invoices", navigate, currentUser, "Sales Invoices").result;
   }
 
   const snapshot = await fetchFinanceSnapshot();
@@ -968,7 +1030,7 @@ async function buildAIResponse(text, navigate) {
   };
 }
 
-export default function AIWorkspace() {
+export default function AIWorkspace({ currentUser = null }) {
   const navigate = useNavigate();
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -979,7 +1041,7 @@ export default function AIWorkspace() {
   const [speechSupported, setSpeechSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState("");
-  const [chats, setChats] = useState([createNewChat()]);
+  const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
 
   const activeChat = useMemo(
@@ -1004,10 +1066,10 @@ export default function AIWorkspace() {
       // ignore
     }
 
-    const first = createNewChat();
+    const first = createNewChat(currentUser);
     setChats([first]);
     setActiveChatId(first.id);
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (!Array.isArray(chats) || chats.length === 0) return;
@@ -1122,14 +1184,14 @@ export default function AIWorkspace() {
   function ensureActiveChat() {
     if (activeChat) return activeChat.id;
 
-    const fresh = createNewChat();
+    const fresh = createNewChat(currentUser);
     setChats([fresh]);
     setActiveChatId(fresh.id);
     return fresh.id;
   }
 
   function handleNewChat() {
-    const fresh = createNewChat();
+    const fresh = createNewChat(currentUser);
     setChats((prev) => [fresh, ...prev]);
     setActiveChatId(fresh.id);
     setInput("");
@@ -1141,7 +1203,7 @@ export default function AIWorkspace() {
     setChats((prev) => {
       const filtered = prev.filter((chat) => chat.id !== chatId);
       if (filtered.length === 0) {
-        const fresh = createNewChat();
+        const fresh = createNewChat(currentUser);
         setActiveChatId(fresh.id);
         setTimeout(() => loadAutoInsights(fresh.id), 0);
         return [fresh];
@@ -1223,7 +1285,7 @@ export default function AIWorkspace() {
     setLoading(true);
 
     try {
-      const result = await buildAIResponse(finalText, navigate);
+      const result = await buildAIResponse(finalText, navigate, currentUser);
 
       appendMessageToChat(chatId, {
         id: uid(),
@@ -1254,7 +1316,11 @@ export default function AIWorkspace() {
   }
 
   useEffect(() => {
-    if (activeChat && (activeChat.messages || []).length <= createWelcomeMessages().length) {
+    if (
+      activeChat &&
+      Array.isArray(activeChat.messages) &&
+      activeChat.messages.length <= createWelcomeMessages(currentUser).length
+    ) {
       loadAutoInsights(activeChat.id);
     }
   }, [activeChatId]);
@@ -1278,13 +1344,15 @@ export default function AIWorkspace() {
               <div>
                 <div style={panelTitle}>{activeChat?.title || "AI Finance Assistant"}</div>
                 <div style={panelSubtitle}>
-                  Live finance summaries, risks, reports, reminders, and navigation
+                  {currentUser?.role === "VIEWER"
+                    ? "Read-only AI summaries, risks, reports, reminders, and safe navigation"
+                    : "Live finance summaries, risks, reports, reminders, and navigation"}
                 </div>
               </div>
 
               <div style={statusBadge}>
                 <span style={statusDot} />
-                <span>Ready</span>
+                <span>{currentUser?.role === "VIEWER" ? "Read Only" : "Ready"}</span>
               </div>
             </div>
 

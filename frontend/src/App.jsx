@@ -508,7 +508,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           path="/ai"
           element={
             <ProtectedRoute authReady={authReady} authenticated={authenticated}>
-              <AIWorkspacePage />
+              <AIWorkspacePage currentUser={currentUser} />
             </ProtectedRoute>
           }
         />
