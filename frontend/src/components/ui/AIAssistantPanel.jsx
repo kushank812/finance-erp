@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiGet } from "../../api/client";
 import {
   QUICK_PROMPTS,
   uid,
@@ -125,15 +126,14 @@ function MessageBubble({ msg }) {
     >
       <div
         style={{
-          width: "min(100%, 900px)",
-          maxWidth: "92%",
-          borderRadius: 18,
-          padding: "12px 14px",
+          maxWidth: "88%",
+          borderRadius: 16,
+          padding: "10px 12px",
           whiteSpace: "pre-wrap",
-          lineHeight: 1.5,
+          lineHeight: 1.45,
           fontSize: 13,
           border: isUser
-            ? "1px solid rgba(64, 206, 255, 0.30)"
+            ? "1px solid rgba(64, 206, 255, 0.28)"
             : "1px solid rgba(255,255,255,0.08)",
           background: isUser
             ? "linear-gradient(135deg, rgba(39,190,255,0.22), rgba(90,120,255,0.18))"
@@ -142,7 +142,7 @@ function MessageBubble({ msg }) {
           boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
         }}
       >
-        <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 12, opacity: 0.95 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12, opacity: 0.9 }}>
           {isUser ? "You" : "AI Assistant"}
         </div>
 
@@ -152,7 +152,7 @@ function MessageBubble({ msg }) {
           style={{
             marginTop: 6,
             fontSize: 11,
-            opacity: 0.72,
+            opacity: 0.7,
             textAlign: "right",
           }}
         >
@@ -160,7 +160,7 @@ function MessageBubble({ msg }) {
         </div>
 
         {Array.isArray(msg.cards) && msg.cards.length > 0 ? (
-          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
             {msg.cards.map((card, index) => (
               <AssistantCard key={`${card.title || "card"}_${index}`} card={card} />
             ))}
@@ -247,6 +247,9 @@ export default function AIAssistantPanel({
   const bootedRef = useRef(false);
   const recognitionRef = useRef(null);
 
+  const [resolvedUser, setResolvedUser] = useState(currentUser || null);
+  const [userLoading, setUserLoading] = useState(!currentUser);
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -254,11 +257,46 @@ export default function AIAssistantPanel({
   const [speechError, setSpeechError] = useState("");
   const [messages, setMessages] = useState(createWelcomeMessages(currentUser));
 
-  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+  const effectiveUser = resolvedUser || currentUser || null;
+
+  const canSend = useMemo(
+    () => input.trim().length > 0 && !loading && !userLoading,
+    [input, loading, userLoading]
+  );
 
   useEffect(() => {
-    setMessages(createWelcomeMessages(currentUser));
+    let active = true;
+
+    async function resolveUser() {
+      if (currentUser?.role) {
+        setResolvedUser(currentUser);
+        setUserLoading(false);
+        return;
+      }
+
+      try {
+        setUserLoading(true);
+        const me = await apiGet("/auth/me");
+        if (!active) return;
+        setResolvedUser(me || null);
+      } catch {
+        if (!active) return;
+        setResolvedUser(null);
+      } finally {
+        if (active) setUserLoading(false);
+      }
+    }
+
+    resolveUser();
+
+    return () => {
+      active = false;
+    };
   }, [currentUser]);
+
+  useEffect(() => {
+    setMessages(createWelcomeMessages(effectiveUser));
+  }, [effectiveUser?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const RecognitionClass = getSpeechRecognition();
@@ -325,6 +363,8 @@ export default function AIAssistantPanel({
 
   useEffect(() => {
     if (bootedRef.current) return;
+    if (userLoading) return;
+
     bootedRef.current = true;
 
     async function loadAutoInsights() {
@@ -362,7 +402,7 @@ export default function AIAssistantPanel({
     }
 
     loadAutoInsights();
-  }, []);
+  }, [userLoading]);
 
   function startListening() {
     setSpeechError("");
@@ -372,7 +412,7 @@ export default function AIAssistantPanel({
       return;
     }
 
-    if (loading) return;
+    if (loading || userLoading) return;
 
     try {
       recognitionRef.current.start();
@@ -393,7 +433,7 @@ export default function AIAssistantPanel({
 
   async function handleSend(customText) {
     const finalText = String(customText ?? input).trim();
-    if (!finalText || loading) return;
+    if (!finalText || loading || userLoading) return;
 
     if (isListening) {
       stopListening();
@@ -414,7 +454,7 @@ export default function AIAssistantPanel({
     setLoading(true);
 
     try {
-      const result = await buildAIResponse(finalText, navigate, currentUser);
+      const result = await buildAIResponse(finalText, navigate, effectiveUser);
 
       setMessages((prev) => [
         ...prev,
@@ -456,7 +496,7 @@ export default function AIAssistantPanel({
         <div>
           <div style={panelTitle}>{title}</div>
           <div style={panelSubtitle}>
-            {currentUser?.role === "VIEWER"
+            {effectiveUser?.role === "VIEWER"
               ? "Read-only AI summaries, reports, search, reminders, and safe navigation"
               : "Live finance summaries, reports, search, reminders, and navigation"}
           </div>
@@ -464,7 +504,9 @@ export default function AIAssistantPanel({
 
         <div style={statusBadge}>
           <span style={statusDot} />
-          <span>{currentUser?.role === "VIEWER" ? "Read Only" : "Ready"}</span>
+          <span>
+            {userLoading ? "Loading Session" : effectiveUser?.role === "VIEWER" ? "Read Only" : "Ready"}
+          </span>
         </div>
       </div>
 
@@ -478,7 +520,7 @@ export default function AIAssistantPanel({
                 type="button"
                 style={chipBtn}
                 onClick={() => handleSend(prompt)}
-                disabled={loading}
+                disabled={loading || userLoading}
               >
                 {prompt}
               </button>
@@ -494,7 +536,7 @@ export default function AIAssistantPanel({
           {loading ? (
             <div style={{ display: "flex", justifyContent: "flex-start" }}>
               <div style={loadingBubble}>
-                <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12 }}>
                   AI Assistant
                 </div>
                 <div style={typingRow}>
@@ -522,9 +564,15 @@ export default function AIAssistantPanel({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder={isListening ? "Speak your finance command..." : "Ask your finance question"}
+              placeholder={
+                userLoading
+                  ? "Loading session..."
+                  : isListening
+                  ? "Speak your finance command..."
+                  : "Ask your finance question"
+              }
               style={inputStyle}
-              disabled={loading}
+              disabled={loading || userLoading}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="none"
@@ -536,7 +584,7 @@ export default function AIAssistantPanel({
             <button
               type="button"
               onClick={isListening ? stopListening : startListening}
-              disabled={!speechSupported || loading}
+              disabled={!speechSupported || loading || userLoading}
               title={
                 !speechSupported
                   ? "Voice recognition not supported"
@@ -546,8 +594,9 @@ export default function AIAssistantPanel({
               }
               style={{
                 ...(isListening ? micBtnActive : micBtn),
-                opacity: !speechSupported || loading ? 0.5 : 1,
-                cursor: !speechSupported || loading ? "not-allowed" : "pointer",
+                opacity: !speechSupported || loading || userLoading ? 0.5 : 1,
+                cursor:
+                  !speechSupported || loading || userLoading ? "not-allowed" : "pointer",
               }}
             >
               <MicIcon active={isListening} />
@@ -573,7 +622,7 @@ export default function AIAssistantPanel({
         <div style={footerHint}>
           Try: <span style={hintStrong}>Open ledger</span>,{" "}
           <span style={hintStrong}>Open statement</span>, or{" "}
-          <span style={hintStrong}>Generate receivables report</span>
+          <span style={hintStrong}>Open aging report</span>
         </div>
       </div>
     </div>
@@ -583,7 +632,7 @@ export default function AIAssistantPanel({
 const panelWrap = {
   width: "100%",
   minWidth: 320,
-  maxWidth: 460,
+  maxWidth: 420,
   display: "flex",
   flexDirection: "column",
   borderRadius: 22,
@@ -614,7 +663,7 @@ const panelTitle = {
 
 const panelSubtitle = {
   fontSize: 12,
-  color: "rgba(235,240,255,0.82)",
+  color: "rgba(235,240,255,0.78)",
   marginTop: 2,
 };
 
@@ -659,7 +708,7 @@ const sectionLabel = {
   textTransform: "uppercase",
   letterSpacing: 0.9,
   fontWeight: 900,
-  color: "rgba(220,228,255,0.78)",
+  color: "rgba(220,228,255,0.72)",
 };
 
 const chipsWrap = {
@@ -680,7 +729,7 @@ const chipBtn = {
 };
 
 const loadingBubble = {
-  maxWidth: "72%",
+  maxWidth: "70%",
   borderRadius: 16,
   padding: "10px 12px",
   background: "rgba(255,255,255,0.04)",
@@ -703,35 +752,33 @@ const typingDot = {
 const cardBox = {
   borderRadius: 16,
   padding: 12,
-  background: "rgba(9, 17, 34, 0.72)",
+  background: "rgba(9, 17, 34, 0.68)",
   border: "1px solid rgba(255,255,255,0.08)",
 };
 
 const cardTitle = {
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 900,
   marginBottom: 10,
-  color: "#ffffff",
-  letterSpacing: 0.15,
+  color: "#dce7ff",
 };
 
 const cardGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
   gap: 10,
 };
 
 const statTile = {
   borderRadius: 14,
-  padding: "11px 12px",
-  background: "rgba(255,255,255,0.05)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  padding: "10px 11px",
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.07)",
 };
 
 const statLabel = {
   fontSize: 11,
-  fontWeight: 800,
-  color: "rgba(230,236,255,0.78)",
+  color: "rgba(223,230,255,0.72)",
   marginBottom: 6,
 };
 
@@ -739,7 +786,7 @@ const statValue = {
   fontSize: 14,
   fontWeight: 900,
   color: "#ffffff",
-  lineHeight: 1.35,
+  lineHeight: 1.3,
 };
 
 const listItem = {
@@ -748,7 +795,7 @@ const listItem = {
   gap: 8,
   fontSize: 13,
   color: "#eef3ff",
-  lineHeight: 1.5,
+  lineHeight: 1.45,
 };
 
 const listDot = {
@@ -797,35 +844,31 @@ const tableWrap = {
   width: "100%",
   overflowX: "auto",
   borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(3, 8, 18, 0.35)",
+  border: "1px solid rgba(255,255,255,0.08)",
 };
 
 const tableStyle = {
   width: "100%",
-  minWidth: 640,
+  minWidth: 520,
   borderCollapse: "collapse",
-  background: "transparent",
+  background: "rgba(255,255,255,0.02)",
 };
 
 const thStyle = {
   textAlign: "left",
-  padding: "12px 14px",
-  fontSize: 13,
+  padding: "10px 12px",
+  fontSize: 12,
   fontWeight: 900,
-  color: "#ffffff",
-  background: "rgba(255,255,255,0.12)",
-  borderBottom: "1px solid rgba(255,255,255,0.12)",
+  color: "#dce7ff",
+  background: "rgba(255,255,255,0.05)",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
   whiteSpace: "nowrap",
-  position: "sticky",
-  top: 0,
 };
 
 const tdStyle = {
-  padding: "12px 14px",
-  fontSize: 13,
-  fontWeight: 700,
-  color: "#f3f7ff",
+  padding: "10px 12px",
+  fontSize: 12,
+  color: "#eef3ff",
   borderBottom: "1px solid rgba(255,255,255,0.06)",
   whiteSpace: "nowrap",
 };
@@ -937,7 +980,7 @@ const speechErrorText = {
 
 const footerHint = {
   fontSize: 12,
-  color: "rgba(226,232,255,0.76)",
+  color: "rgba(226,232,255,0.72)",
 };
 
 const hintStrong = {

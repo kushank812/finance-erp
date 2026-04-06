@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiGet } from "../../api/client";
 import AIHistorySidebar from "./AIHistorySidebar";
 import {
   STORAGE_KEY,
@@ -245,6 +246,9 @@ export default function AIWorkspace({ currentUser = null }) {
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
 
+  const [resolvedUser, setResolvedUser] = useState(currentUser || null);
+  const [userLoading, setUserLoading] = useState(!currentUser);
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -253,14 +257,51 @@ export default function AIWorkspace({ currentUser = null }) {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
 
+  const effectiveUser = resolvedUser || currentUser || null;
+
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) || chats[0] || null,
     [chats, activeChatId]
   );
 
-  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+  const canSend = useMemo(
+    () => input.trim().length > 0 && !loading && !userLoading,
+    [input, loading, userLoading]
+  );
 
   useEffect(() => {
+    let active = true;
+
+    async function resolveUser() {
+      if (currentUser?.role) {
+        setResolvedUser(currentUser);
+        setUserLoading(false);
+        return;
+      }
+
+      try {
+        setUserLoading(true);
+        const me = await apiGet("/auth/me");
+        if (!active) return;
+        setResolvedUser(me || null);
+      } catch {
+        if (!active) return;
+        setResolvedUser(null);
+      } finally {
+        if (active) setUserLoading(false);
+      }
+    }
+
+    resolveUser();
+
+    return () => {
+      active = false;
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (userLoading) return;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -275,10 +316,10 @@ export default function AIWorkspace({ currentUser = null }) {
       // ignore
     }
 
-    const first = createNewChat(currentUser);
+    const first = createNewChat(effectiveUser);
     setChats([first]);
     setActiveChatId(first.id);
-  }, [currentUser]);
+  }, [userLoading, effectiveUser]);
 
   useEffect(() => {
     if (!Array.isArray(chats) || chats.length === 0) return;
@@ -368,7 +409,7 @@ export default function AIWorkspace({ currentUser = null }) {
   function ensureActiveChat() {
     if (activeChat) return activeChat.id;
 
-    const fresh = createNewChat(currentUser);
+    const fresh = createNewChat(effectiveUser);
     setChats([fresh]);
     setActiveChatId(fresh.id);
     return fresh.id;
@@ -400,7 +441,7 @@ export default function AIWorkspace({ currentUser = null }) {
   }
 
   function handleNewChat() {
-    const fresh = createNewChat(currentUser);
+    const fresh = createNewChat(effectiveUser);
     setChats((prev) => [fresh, ...prev]);
     setActiveChatId(fresh.id);
     setInput("");
@@ -413,7 +454,7 @@ export default function AIWorkspace({ currentUser = null }) {
       const filtered = prev.filter((chat) => chat.id !== chatId);
 
       if (filtered.length === 0) {
-        const fresh = createNewChat(currentUser);
+        const fresh = createNewChat(effectiveUser);
         setActiveChatId(fresh.id);
         setTimeout(() => loadAutoInsights(fresh.id), 0);
         return [fresh];
@@ -454,7 +495,7 @@ export default function AIWorkspace({ currentUser = null }) {
       return;
     }
 
-    if (loading) return;
+    if (loading || userLoading) return;
 
     try {
       recognitionRef.current.start();
@@ -477,7 +518,7 @@ export default function AIWorkspace({ currentUser = null }) {
     const chatId = ensureActiveChat();
     const finalText = String(customText ?? input).trim();
 
-    if (!finalText || loading) return;
+    if (!finalText || loading || userLoading) return;
 
     if (isListening) {
       stopListening();
@@ -495,7 +536,7 @@ export default function AIWorkspace({ currentUser = null }) {
     setLoading(true);
 
     try {
-      const result = await buildAIResponse(finalText, navigate, currentUser);
+      const result = await buildAIResponse(finalText, navigate, effectiveUser);
 
       appendMessageToChat(chatId, {
         id: uid(),
@@ -527,13 +568,14 @@ export default function AIWorkspace({ currentUser = null }) {
 
   useEffect(() => {
     if (
+      !userLoading &&
       activeChat &&
       Array.isArray(activeChat.messages) &&
-      activeChat.messages.length <= createWelcomeMessages(currentUser).length
+      activeChat.messages.length <= createWelcomeMessages(effectiveUser).length
     ) {
       loadAutoInsights(activeChat.id);
     }
-  }, [activeChatId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeChatId, userLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -554,7 +596,7 @@ export default function AIWorkspace({ currentUser = null }) {
               <div>
                 <div style={panelTitle}>{activeChat?.title || "AI Finance Assistant"}</div>
                 <div style={panelSubtitle}>
-                  {currentUser?.role === "VIEWER"
+                  {effectiveUser?.role === "VIEWER"
                     ? "Read-only AI summaries, reports, search, reminders, and safe navigation"
                     : "Live finance summaries, reports, search, reminders, and navigation"}
                 </div>
@@ -562,7 +604,9 @@ export default function AIWorkspace({ currentUser = null }) {
 
               <div style={statusBadge}>
                 <span style={statusDot} />
-                <span>{currentUser?.role === "VIEWER" ? "Read Only" : "Ready"}</span>
+                <span>
+                  {userLoading ? "Loading Session" : effectiveUser?.role === "VIEWER" ? "Read Only" : "Ready"}
+                </span>
               </div>
             </div>
 
@@ -576,7 +620,7 @@ export default function AIWorkspace({ currentUser = null }) {
                       type="button"
                       style={chipBtn}
                       onClick={() => handleSend(prompt)}
-                      disabled={loading}
+                      disabled={loading || userLoading}
                     >
                       {prompt}
                     </button>
@@ -620,9 +664,15 @@ export default function AIWorkspace({ currentUser = null }) {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={onKeyDown}
-                    placeholder={isListening ? "Speak your finance command..." : "Ask your finance question"}
+                    placeholder={
+                      userLoading
+                        ? "Loading session..."
+                        : isListening
+                        ? "Speak your finance command..."
+                        : "Ask your finance question"
+                    }
                     style={inputStyle}
-                    disabled={loading}
+                    disabled={loading || userLoading}
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="none"
@@ -634,7 +684,7 @@ export default function AIWorkspace({ currentUser = null }) {
                   <button
                     type="button"
                     onClick={isListening ? stopListening : startListening}
-                    disabled={!speechSupported || loading}
+                    disabled={!speechSupported || loading || userLoading}
                     title={
                       !speechSupported
                         ? "Voice recognition not supported"
@@ -644,8 +694,9 @@ export default function AIWorkspace({ currentUser = null }) {
                     }
                     style={{
                       ...(isListening ? micBtnActive : micBtn),
-                      opacity: !speechSupported || loading ? 0.5 : 1,
-                      cursor: !speechSupported || loading ? "not-allowed" : "pointer",
+                      opacity: !speechSupported || loading || userLoading ? 0.5 : 1,
+                      cursor:
+                        !speechSupported || loading || userLoading ? "not-allowed" : "pointer",
                     }}
                   >
                     <MicIcon active={isListening} />
@@ -669,9 +720,9 @@ export default function AIWorkspace({ currentUser = null }) {
               {speechError ? <div style={speechErrorText}>{speechError}</div> : null}
 
               <div style={footerHint}>
-                Try: <span style={hintStrong}>Generate receivables report</span>,{" "}
-                <span style={hintStrong}>Find invoice INV0001</span>, or{" "}
-                <span style={hintStrong}>Show unpaid purchase bills</span>
+                Try: <span style={hintStrong}>Open ledger</span>,{" "}
+                <span style={hintStrong}>Open statement</span>, or{" "}
+                <span style={hintStrong}>Open purchase bills</span>
               </div>
             </div>
           </div>

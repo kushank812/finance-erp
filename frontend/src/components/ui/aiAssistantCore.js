@@ -111,7 +111,7 @@ export function canViewMasters(user) {
 function normalizePath(path) {
   const raw = String(path || "").trim();
   if (!raw) return "/";
-  return raw.startsWith("/") ? raw : `/${raw}`;
+  return raw.replace(/\/+$/, "") || "/";
 }
 
 export function canNavigateTo(path, user) {
@@ -174,6 +174,28 @@ export function canNavigateTo(path, user) {
 
 export function safeNavigate(path, navigate, user, destinationLabel) {
   const normalizedPath = normalizePath(path);
+
+  if (!user?.role) {
+    return {
+      blocked: true,
+      result: {
+        reply:
+          "Your session details are not loaded in the AI panel yet. Please wait a moment and try again.",
+        cards: [
+          {
+            type: "summary",
+            title: "Session Not Ready",
+            rows: [
+              { label: "Requested screen", value: destinationLabel || normalizedPath },
+              { label: "Route", value: normalizedPath },
+              { label: "Role", value: "Not loaded" },
+              { label: "Status", value: "Blocked" },
+            ],
+          },
+        ],
+      },
+    };
+  }
 
   if (!canNavigateTo(normalizedPath, user)) {
     return {
@@ -270,18 +292,9 @@ export function createWelcomeMessages(currentUser) {
           title: "Supported AI Actions",
           rows: [
             { label: "Dashboard", value: "Summary / Risks / Daily view" },
-            {
-              label: "Receivables",
-              value: "Overdue / Follow-up / Reports / Invoice search",
-            },
-            {
-              label: "Payables",
-              value: "Vendor dues / Bill search / Reports",
-            },
-            {
-              label: "Operations",
-              value: "Receipts / Vendor payments / Masters / Navigation",
-            },
+            { label: "Receivables", value: "Overdue / Follow-up / Reports / Invoice search" },
+            { label: "Payables", value: "Vendor dues / Bill search / Reports" },
+            { label: "Operations", value: "Receipts / Vendor payments / Masters / Navigation" },
           ],
         },
       ],
@@ -1179,9 +1192,7 @@ Accounts Team`;
 
 function buildSalesInvoiceSearch(snapshot, queryText, opts = {}) {
   const limit = opts.limit || 10;
-  const q =
-    extractEntityAfterKeyword(queryText, ["invoice", "invoices", "customer"]) ||
-    queryText;
+  const q = extractEntityAfterKeyword(queryText, ["invoice", "invoices", "customer"]) || queryText;
 
   const rows = snapshot.salesRows
     .filter(
@@ -1222,9 +1233,7 @@ function buildSalesInvoiceSearch(snapshot, queryText, opts = {}) {
 
 function buildPurchaseBillSearch(snapshot, queryText, opts = {}) {
   const limit = opts.limit || 10;
-  const q =
-    extractEntityAfterKeyword(queryText, ["bill", "bills", "vendor"]) ||
-    queryText;
+  const q = extractEntityAfterKeyword(queryText, ["bill", "bills", "vendor"]) || queryText;
 
   const rows = snapshot.purchaseRows
     .filter(
@@ -1420,7 +1429,7 @@ function buildUnpaidPurchaseBills(snapshot, opts = {}) {
 function buildUnknownResponse() {
   return {
     reply:
-      "I could not fully understand that request yet. Try asking in one of these ways: 'Generate receivables report', 'Show top 10 overdue invoices', 'Show unpaid purchase bills', 'Customer outstanding report', 'Vendor outstanding report', 'Find invoice INV0001', 'Find bill BILL0001', 'Open ledger', 'Open statement', or 'Summarize dashboard'.",
+      "I could not fully understand that request yet. Try asking in one of these ways: 'Generate receivables report', 'Show top 10 overdue invoices', 'Show unpaid purchase bills', 'Customer outstanding report', 'Vendor outstanding report', 'Find invoice INV0001', 'Find bill BILL0001', 'Show recent receipts', or 'Summarize dashboard'.",
     cards: [
       {
         type: "list",
@@ -1434,8 +1443,6 @@ function buildUnknownResponse() {
           "Find bill BILL0001",
           "Show unpaid sales invoices",
           "Show unpaid purchase bills",
-          "Open ledger",
-          "Open statement",
         ],
       },
     ],
@@ -1445,171 +1452,103 @@ function buildUnknownResponse() {
 function getNavigationIntent(query, navigate, currentUser) {
   const q = normalizeText(query);
 
-  const open = (path, label) => safeNavigate(path, navigate, currentUser, label).result;
-
-  if (
-    q.includes("open dashboard") ||
-    q.includes("go to dashboard") ||
-    q.includes("show dashboard") ||
-    q === "dashboard"
-  ) {
-    return open("/dashboard", "Dashboard");
+  if (q.includes("open dashboard") || q === "dashboard") {
+    return safeNavigate("/dashboard", navigate, currentUser, "Dashboard").result;
   }
 
-  if (
-    q.includes("open entry") ||
-    q.includes("go to entry") ||
-    q.includes("show entry") ||
-    q === "entry"
-  ) {
-    return open("/entry", "Entry Screen");
+  if (q.includes("open entry") || q === "entry") {
+    return safeNavigate("/entry", navigate, currentUser, "Entry Screen").result;
   }
 
   if (
     q.includes("open aging") ||
-    q.includes("open aging report") ||
-    q.includes("go to aging") ||
-    q.includes("show aging") ||
-    q === "aging"
+    q.includes("aging report") ||
+    q === "aging" ||
+    q === "open aging report"
   ) {
-    return open("/aging", "Aging Report");
+    return safeNavigate("/aging", navigate, currentUser, "Aging Report").result;
   }
 
   if (
     q.includes("open statement") ||
-    q.includes("open statements") ||
-    q.includes("go to statement") ||
-    q.includes("go to statements") ||
-    q.includes("show statement") ||
-    q.includes("show statements") ||
-    q === "statement" ||
-    q === "statements"
+    q.includes("statement report") ||
+    q === "statement"
   ) {
-    return open("/statement", "Statement");
+    return safeNavigate("/statement", navigate, currentUser, "Statement").result;
   }
 
   if (
     q.includes("open ledger") ||
-    q.includes("open ledgers") ||
-    q.includes("go to ledger") ||
-    q.includes("show ledger") ||
-    q === "ledger" ||
-    q === "ledgers"
+    q.includes("ledger report") ||
+    q === "ledger"
   ) {
-    return open("/ledger", "Ledger");
+    return safeNavigate("/ledger", navigate, currentUser, "Ledger").result;
   }
 
-  if (
-    q.includes("open customers") ||
-    q.includes("go to customers") ||
-    q.includes("show customers") ||
-    q === "customers"
-  ) {
-    return open("/customers", "Customer Master");
+  if (q.includes("open customers") || q === "customers") {
+    return safeNavigate("/customers", navigate, currentUser, "Customer Master").result;
   }
 
-  if (
-    q.includes("open vendors") ||
-    q.includes("go to vendors") ||
-    q.includes("show vendors") ||
-    q === "vendors"
-  ) {
-    return open("/vendors", "Vendor Master");
+  if (q.includes("open vendors") || q === "vendors") {
+    return safeNavigate("/vendors", navigate, currentUser, "Vendor Master").result;
   }
 
-  if (
-    q.includes("open items") ||
-    q.includes("go to items") ||
-    q.includes("show items") ||
-    q === "items"
-  ) {
-    return open("/items", "Item Master");
+  if (q.includes("open items") || q === "items") {
+    return safeNavigate("/items", navigate, currentUser, "Item Master").result;
   }
 
-  if (
-    q.includes("open users") ||
-    q.includes("go to users") ||
-    q.includes("show users") ||
-    q === "users"
-  ) {
-    return open("/users", "Users");
+  if (q.includes("open users") || q === "users") {
+    return safeNavigate("/users", navigate, currentUser, "Users").result;
   }
 
-  if (
-    q.includes("open audit") ||
-    q.includes("open audit logs") ||
-    q.includes("go to audit") ||
-    q.includes("show audit") ||
-    q.includes("audit log") ||
-    q.includes("audit logs")
-  ) {
-    return open("/audit", "Audit Logs");
+  if (q.includes("open audit") || q.includes("audit log")) {
+    return safeNavigate("/audit", navigate, currentUser, "Audit Logs").result;
   }
 
-  if (
-    q.includes("change password") ||
-    q.includes("open change password") ||
-    q.includes("go to change password")
-  ) {
-    return open("/change-password", "Change Password");
+  if (q.includes("change password")) {
+    return safeNavigate("/change-password", navigate, currentUser, "Change Password").result;
   }
 
   if (
     q.includes("create invoice") ||
     q.includes("open create invoice") ||
-    q.includes("go to create invoice") ||
-    q.includes("new invoice") ||
     q === "billing"
   ) {
-    return open("/billing", "Create Invoice");
+    return safeNavigate("/billing", navigate, currentUser, "Create Invoice").result;
   }
 
   if (
     q.includes("create purchase bill") ||
     q.includes("open create purchase bill") ||
-    q.includes("go to create purchase bill") ||
-    q.includes("new purchase bill")
+    q.includes("open purchase new")
   ) {
-    return open("/purchase/new", "Create Purchase Bill");
+    return safeNavigate("/purchase/new", navigate, currentUser, "Create Purchase Bill").result;
+  }
+
+  if (q.includes("create receipt") || q.includes("open create receipt")) {
+    return safeNavigate("/receipt/new", navigate, currentUser, "Create Receipt").result;
+  }
+
+  if (q.includes("vendor payment") || q.includes("open vendor payment")) {
+    return safeNavigate("/purchase/pay", navigate, currentUser, "Vendor Payment").result;
   }
 
   if (
-    q.includes("create receipt") ||
-    q.includes("open create receipt") ||
-    q.includes("go to create receipt") ||
-    q.includes("new receipt")
-  ) {
-    return open("/receipt/new", "Create Receipt");
-  }
-
-  if (
-    q.includes("vendor payment") ||
-    q.includes("open vendor payment") ||
-    q.includes("go to vendor payment") ||
-    q.includes("new vendor payment")
-  ) {
-    return open("/purchase/pay", "Vendor Payment");
-  }
-
-  if (
+    q.includes("purchase bills") ||
     q.includes("open purchase bills") ||
-    q.includes("go to purchase bills") ||
-    q.includes("show purchase bills") ||
-    q.includes("open bills") ||
-    q.includes("go to bills") ||
-    q === "purchase bills" ||
-    q === "bills"
+    q.includes("open bills")
   ) {
-    return open("/purchase-bills", "Purchase Bills");
+    return safeNavigate("/purchase-bills", navigate, currentUser, "Purchase Bills").result;
   }
 
   if (
-    q.includes("open invoices") ||
-    q.includes("go to invoices") ||
-    q.includes("show invoices") ||
-    q === "invoices"
+    (q.includes("invoice") || q.includes("invoices")) &&
+    !q.includes("find invoice") &&
+    !q.includes("overdue invoice") &&
+    !q.includes("unpaid sales invoice") &&
+    !q.includes("sales invoice report")
   ) {
-    return open("/sales-invoices", "Sales Invoices");
+    return safeNavigate("/sales-invoices", navigate, currentUser, "Sales Invoices").result;
   }
 
   return null;
@@ -1622,7 +1561,7 @@ export async function buildAIResponse(text, navigate, currentUser) {
   if (!query) {
     return {
       reply:
-        "Please type a command like Summarize dashboard, Generate receivables report, Show top 10 overdue invoices, Find invoice INV0001, Show vendor dues, Open ledger, or Open statement.",
+        "Please type a command like Summarize dashboard, Generate receivables report, Show top 10 overdue invoices, Find invoice INV0001, Show vendor dues, or Open dashboard.",
       cards: [],
     };
   }
