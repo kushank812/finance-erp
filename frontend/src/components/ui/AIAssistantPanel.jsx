@@ -125,14 +125,15 @@ function MessageBubble({ msg }) {
     >
       <div
         style={{
-          maxWidth: "88%",
-          borderRadius: 16,
-          padding: "10px 12px",
+          width: "min(100%, 900px)",
+          maxWidth: "92%",
+          borderRadius: 18,
+          padding: "12px 14px",
           whiteSpace: "pre-wrap",
-          lineHeight: 1.45,
+          lineHeight: 1.5,
           fontSize: 13,
           border: isUser
-            ? "1px solid rgba(64, 206, 255, 0.28)"
+            ? "1px solid rgba(64, 206, 255, 0.30)"
             : "1px solid rgba(255,255,255,0.08)",
           background: isUser
             ? "linear-gradient(135deg, rgba(39,190,255,0.22), rgba(90,120,255,0.18))"
@@ -141,7 +142,7 @@ function MessageBubble({ msg }) {
           boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
         }}
       >
-        <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12, opacity: 0.9 }}>
+        <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 12, opacity: 0.95 }}>
           {isUser ? "You" : "AI Assistant"}
         </div>
 
@@ -151,7 +152,7 @@ function MessageBubble({ msg }) {
           style={{
             marginTop: 6,
             fontSize: 11,
-            opacity: 0.7,
+            opacity: 0.72,
             textAlign: "right",
           }}
         >
@@ -159,7 +160,7 @@ function MessageBubble({ msg }) {
         </div>
 
         {Array.isArray(msg.cards) && msg.cards.length > 0 ? (
-          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
             {msg.cards.map((card, index) => (
               <AssistantCard key={`${card.title || "card"}_${index}`} card={card} />
             ))}
@@ -493,7 +494,7 @@ export default function AIAssistantPanel({
           {loading ? (
             <div style={{ display: "flex", justifyContent: "flex-start" }}>
               <div style={loadingBubble}>
-                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 12 }}>
                   AI Assistant
                 </div>
                 <div style={typingRow}>
@@ -570,9 +571,9 @@ export default function AIAssistantPanel({
         {speechError ? <div style={speechErrorText}>{speechError}</div> : null}
 
         <div style={footerHint}>
-          Try: <span style={hintStrong}>Generate receivables report</span>,{" "}
-          <span style={hintStrong}>Find bill BILL0001</span>, or{" "}
-          <span style={hintStrong}>Show overdue customers</span>
+          Try: <span style={hintStrong}>Open ledger</span>,{" "}
+          <span style={hintStrong}>Open statement</span>, or{" "}
+          <span style={hintStrong}>Generate receivables report</span>
         </div>
       </div>
     </div>
@@ -582,7 +583,7 @@ export default function AIAssistantPanel({
 const panelWrap = {
   width: "100%",
   minWidth: 320,
-  maxWidth: 420,
+  maxWidth: 460,
   display: "flex",
   flexDirection: "column",
   borderRadius: 22,
@@ -613,7 +614,7 @@ const panelTitle = {
 
 const panelSubtitle = {
   fontSize: 12,
-  color: "rgba(235,240,255,0.78)",
+  color: "rgba(235,240,255,0.82)",
   marginTop: 2,
 };
 
@@ -658,7 +659,7 @@ const sectionLabel = {
   textTransform: "uppercase",
   letterSpacing: 0.9,
   fontWeight: 900,
-  color: "rgba(220,228,255,0.72)",
+  color: "rgba(220,228,255,0.78)",
 };
 
 const chipsWrap = {
@@ -679,7 +680,7 @@ const chipBtn = {
 };
 
 const loadingBubble = {
-  maxWidth: "70%",
+  maxWidth: "72%",
   borderRadius: 16,
   padding: "10px 12px",
   background: "rgba(255,255,255,0.04)",
@@ -702,33 +703,35 @@ const typingDot = {
 const cardBox = {
   borderRadius: 16,
   padding: 12,
-  background: "rgba(9, 17, 34, 0.68)",
+  background: "rgba(9, 17, 34, 0.72)",
   border: "1px solid rgba(255,255,255,0.08)",
 };
 
 const cardTitle = {
-  fontSize: 13,
+  fontSize: 14,
   fontWeight: 900,
   marginBottom: 10,
-  color: "#dce7ff",
+  color: "#ffffff",
+  letterSpacing: 0.15,
 };
 
 const cardGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
   gap: 10,
 };
 
 const statTile = {
   borderRadius: 14,
-  padding: "10px 11px",
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.07)",
+  padding: "11px 12px",
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.08)",
 };
 
 const statLabel = {
   fontSize: 11,
-  color: "rgba(223,230,255,0.72)",
+  fontWeight: 800,
+  color: "rgba(230,236,255,0.78)",
   marginBottom: 6,
 };
 
@@ -736,7 +739,7 @@ const statValue = {
   fontSize: 14,
   fontWeight: 900,
   color: "#ffffff",
-  lineHeight: 1.3,
+  lineHeight: 1.35,
 };
 
 const listItem = {
@@ -745,7 +748,7 @@ const listItem = {
   gap: 8,
   fontSize: 13,
   color: "#eef3ff",
-  lineHeight: 1.45,
+  lineHeight: 1.5,
 };
 
 const listDot = {
@@ -794,31 +797,35 @@ const tableWrap = {
   width: "100%",
   overflowX: "auto",
   borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(3, 8, 18, 0.35)",
 };
 
 const tableStyle = {
   width: "100%",
-  minWidth: 520,
+  minWidth: 640,
   borderCollapse: "collapse",
-  background: "rgba(255,255,255,0.02)",
+  background: "transparent",
 };
 
 const thStyle = {
   textAlign: "left",
-  padding: "10px 12px",
-  fontSize: 12,
+  padding: "12px 14px",
+  fontSize: 13,
   fontWeight: 900,
-  color: "#dce7ff",
-  background: "rgba(255,255,255,0.05)",
-  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  color: "#ffffff",
+  background: "rgba(255,255,255,0.12)",
+  borderBottom: "1px solid rgba(255,255,255,0.12)",
   whiteSpace: "nowrap",
+  position: "sticky",
+  top: 0,
 };
 
 const tdStyle = {
-  padding: "10px 12px",
-  fontSize: 12,
-  color: "#eef3ff",
+  padding: "12px 14px",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#f3f7ff",
   borderBottom: "1px solid rgba(255,255,255,0.06)",
   whiteSpace: "nowrap",
 };
@@ -930,7 +937,7 @@ const speechErrorText = {
 
 const footerHint = {
   fontSize: 12,
-  color: "rgba(226,232,255,0.72)",
+  color: "rgba(226,232,255,0.76)",
 };
 
 const hintStrong = {
