@@ -74,6 +74,46 @@ function AssistantCard({ card }) {
     );
   }
 
+  if (card.type === "table") {
+    return (
+      <div style={cardBox}>
+        <div style={cardTitle}>{card.title}</div>
+        <div style={tableWrap}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {(card.columns || []).map((col) => (
+                  <th key={col} style={thStyle}>
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(card.rows || []).length > 0 ? (
+                card.rows.map((row, index) => (
+                  <tr key={`row_${index}`}>
+                    {(row || []).map((cell, cellIndex) => (
+                      <td key={`cell_${index}_${cellIndex}`} style={tdStyle}>
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td style={tdStyle} colSpan={(card.columns || []).length || 1}>
+                    No rows found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -353,7 +393,7 @@ export default function AIWorkspace({ currentUser = null }) {
         role: "assistant",
         time: nowTime(),
         text:
-          "I could not load automatic finance insights right now, but you can still ask for dashboard summary, overdue customers, recent receipts, recent vendor payments, master summary, reports, or reminders.",
+          "I could not load automatic finance insights right now, but you can still ask for dashboard summary, overdue customers, recent receipts, recent vendor payments, master summary, reports, invoice search, bill search, or reminders.",
         cards: [],
       });
     }
@@ -515,8 +555,8 @@ export default function AIWorkspace({ currentUser = null }) {
                 <div style={panelTitle}>{activeChat?.title || "AI Finance Assistant"}</div>
                 <div style={panelSubtitle}>
                   {currentUser?.role === "VIEWER"
-                    ? "Read-only AI summaries, masters, reports, reminders, and safe navigation"
-                    : "Live finance summaries, masters, reports, reminders, and navigation"}
+                    ? "Read-only AI summaries, reports, search, reminders, and safe navigation"
+                    : "Live finance summaries, reports, search, reminders, and navigation"}
                 </div>
               </div>
 
@@ -629,9 +669,9 @@ export default function AIWorkspace({ currentUser = null }) {
               {speechError ? <div style={speechErrorText}>{speechError}</div> : null}
 
               <div style={footerHint}>
-                Try: <span style={hintStrong}>Summarize dashboard</span>,{" "}
-                <span style={hintStrong}>Show recent vendor payments</span>, or{" "}
-                <span style={hintStrong}>Open audit logs</span>
+                Try: <span style={hintStrong}>Generate receivables report</span>,{" "}
+                <span style={hintStrong}>Find invoice INV0001</span>, or{" "}
+                <span style={hintStrong}>Show unpaid purchase bills</span>
               </div>
             </div>
           </div>
@@ -869,6 +909,39 @@ const secondaryBtn = {
   cursor: "pointer",
   color: "#edf2ff",
   background: "rgba(255,255,255,0.05)",
+};
+
+const tableWrap = {
+  width: "100%",
+  overflowX: "auto",
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.08)",
+};
+
+const tableStyle = {
+  width: "100%",
+  minWidth: 560,
+  borderCollapse: "collapse",
+  background: "rgba(255,255,255,0.02)",
+};
+
+const thStyle = {
+  textAlign: "left",
+  padding: "10px 12px",
+  fontSize: 12,
+  fontWeight: 900,
+  color: "#dce7ff",
+  background: "rgba(255,255,255,0.05)",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  whiteSpace: "nowrap",
+};
+
+const tdStyle = {
+  padding: "10px 12px",
+  fontSize: 12,
+  color: "#eef3ff",
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  whiteSpace: "nowrap",
 };
 
 const panelFooter = {
