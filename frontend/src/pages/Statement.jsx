@@ -38,10 +38,11 @@ function money(n) {
 function isoToDisplay(iso) {
   if (!iso) return "-";
   const s = String(iso).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
+  const onlyDate = s.includes("T") ? s.split("T")[0] : s;
+  const parts = onlyDate.split("-");
+  if (parts.length !== 3) return onlyDate;
   const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
+  if (!yyyy || !mm || !dd) return onlyDate;
   return `${dd}/${mm}/${yyyy}`;
 }
 
@@ -126,6 +127,37 @@ function downloadCSV(filename, rows) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function startOfDayTs(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(`${dateStr}T00:00:00`);
+  const ts = d.getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function endOfDayTs(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(`${dateStr}T23:59:59.999`);
+  const ts = d.getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function normalizeRowDateTs(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+
+  if (!s) return null;
+
+  let d;
+  if (s.includes("T")) {
+    d = new Date(s);
+  } else {
+    d = new Date(`${s}T12:00:00`);
+  }
+
+  const ts = d.getTime();
+  return Number.isNaN(ts) ? null : ts;
 }
 
 export default function Statement() {
@@ -323,11 +355,11 @@ export default function Statement() {
     if (mode === "CUSTOMER") {
       setVendorCode("");
       setCustomerCode("");
-      loadAllStatements("CUSTOMER");
+      loadAllStatements("CUSTOMER", customers, vendors);
     } else {
       setCustomerCode("");
       setVendorCode("");
-      loadAllStatements("VENDOR");
+      loadAllStatements("VENDOR", customers, vendors);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, mastersLoaded]);
@@ -337,7 +369,7 @@ export default function Statement() {
     if (mode !== "CUSTOMER") return;
 
     if (!customerCode) {
-      loadAllStatements("CUSTOMER");
+      loadAllStatements("CUSTOMER", customers, vendors);
       return;
     }
 
@@ -350,7 +382,7 @@ export default function Statement() {
     if (mode !== "VENDOR") return;
 
     if (!vendorCode) {
-      loadAllStatements("VENDOR");
+      loadAllStatements("VENDOR", customers, vendors);
       return;
     }
 
@@ -391,15 +423,15 @@ export default function Statement() {
   }, [vendors, vendorCode]);
 
   const filteredRows = useMemo(() => {
-    const fromTs = fromDate ? new Date(fromDate).getTime() : null;
-    const toTs = toDate ? new Date(toDate).getTime() : null;
+    const fromTs = startOfDayTs(fromDate);
+    const toTs = endOfDayTs(toDate);
 
     return rows.filter((r) => {
-      const rowTs = r?.date ? new Date(r.date).getTime() : null;
-      if (rowTs == null || Number.isNaN(rowTs)) return false;
+      const rowTs = normalizeRowDateTs(r?.date);
+      if (rowTs == null) return false;
 
-      if (fromTs != null && !Number.isNaN(fromTs) && rowTs < fromTs) return false;
-      if (toTs != null && !Number.isNaN(toTs) && rowTs > toTs) return false;
+      if (fromTs != null && rowTs < fromTs) return false;
+      if (toTs != null && rowTs > toTs) return false;
 
       return true;
     });
@@ -451,7 +483,9 @@ export default function Statement() {
     if (filteredRows.length === 0) return;
 
     const selectedCode =
-      mode === "CUSTOMER" ? customerCode || "ALL_CUSTOMERS" : vendorCode || "ALL_VENDORS";
+      mode === "CUSTOMER"
+        ? customerCode || "ALL_CUSTOMERS"
+        : vendorCode || "ALL_VENDORS";
 
     const out = filteredRows.map((r) => ({
       Date: isoToDisplay(r.date),
