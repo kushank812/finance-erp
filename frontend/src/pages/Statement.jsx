@@ -35,15 +35,14 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function isoToDisplay(iso) {
+function toDisplayDate(iso) {
   if (!iso) return "-";
   const s = String(iso).trim();
   const clean = s.includes("T") ? s.split("T")[0] : s;
   const parts = clean.split("-");
   if (parts.length !== 3) return clean;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return clean;
-  return `${dd}/${mm}/${yyyy}`;
+  const [y, m, d] = parts;
+  return `${d}/${m}/${y}`;
 }
 
 function todayISO() {
@@ -63,7 +62,6 @@ function firstDayOfMonthISO() {
 
 function getCustomerAddress(customer) {
   if (!customer) return "-";
-
   return (
     customer.customer_address_line1 ||
     customer.address_line1 ||
@@ -74,13 +72,147 @@ function getCustomerAddress(customer) {
 
 function getVendorAddress(vendor) {
   if (!vendor) return "-";
-
   return (
     vendor.vendor_address_line1 ||
     vendor.address_line1 ||
     vendor.vendor_address ||
     "-"
   );
+}
+
+function getRowDate(row, mode) {
+  if (mode === "CUSTOMER") {
+    return (
+      row?.date ||
+      row?.doc_date ||
+      row?.invoice_date ||
+      row?.receipt_date ||
+      row?.transaction_date ||
+      null
+    );
+  }
+
+  return (
+    row?.date ||
+    row?.doc_date ||
+    row?.bill_date ||
+    row?.payment_date ||
+    row?.transaction_date ||
+    null
+  );
+}
+
+function getRowDocNo(row, mode) {
+  if (mode === "CUSTOMER") {
+    return (
+      row?.doc_no ||
+      row?.invoice_no ||
+      row?.receipt_no ||
+      row?.document_no ||
+      "-"
+    );
+  }
+
+  return (
+    row?.doc_no ||
+    row?.bill_no ||
+    row?.payment_no ||
+    row?.document_no ||
+    "-"
+  );
+}
+
+function getRowType(row, mode) {
+  if (mode === "CUSTOMER") {
+    return (
+      row?.type ||
+      row?.doc_type ||
+      (row?.invoice_no ? "INVOICE" : row?.receipt_no ? "RECEIPT" : "-")
+    );
+  }
+
+  return (
+    row?.type ||
+    row?.doc_type ||
+    (row?.bill_no ? "BILL" : row?.payment_no ? "PAYMENT" : "-")
+  );
+}
+
+function getRowDebit(row, mode) {
+  if (row?.debit != null) return Number(row.debit || 0);
+
+  if (mode === "CUSTOMER") {
+    if (row?.invoice_no) return Number(row?.grand_total || row?.amount || 0);
+    return 0;
+  }
+
+  if (row?.bill_no) return Number(row?.grand_total || row?.amount || 0);
+  return 0;
+}
+
+function getRowCredit(row, mode) {
+  if (row?.credit != null) return Number(row.credit || 0);
+
+  if (mode === "CUSTOMER") {
+    if (row?.receipt_no) {
+      return Number(
+        row?.amount_received || row?.received_amount || row?.amount || 0
+      );
+    }
+    return 0;
+  }
+
+  if (row?.payment_no) {
+    return Number(row?.amount_paid || row?.paid_amount || row?.amount || 0);
+  }
+  return 0;
+}
+
+function getRowBalance(row) {
+  return Number(
+    row?.balance ??
+      row?.running_balance ??
+      row?.closing_balance ??
+      0
+  );
+}
+
+function normalizeDateTs(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+
+  const d = s.includes("T") ? new Date(s) : new Date(`${s}T00:00:00`);
+  const ts = d.getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function startOfDayTs(dateStr) {
+  if (!dateStr) return null;
+  const ts = new Date(`${dateStr}T00:00:00`).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function endOfDayTs(dateStr) {
+  if (!dateStr) return null;
+  const ts = new Date(`${dateStr}T23:59:59.999`).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function sortRowsByDateAsc(list, mode) {
+  return [...list].sort((a, b) => {
+    const da = normalizeDateTs(getRowDate(a, mode)) || 0;
+    const db = normalizeDateTs(getRowDate(b, mode)) || 0;
+
+    if (da !== db) return da - db;
+
+    const docA = String(getRowDocNo(a, mode) || "");
+    const docB = String(getRowDocNo(b, mode) || "");
+    return docA.localeCompare(docB, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 function downloadCSV(filename, rows) {
@@ -101,6 +233,7 @@ function downloadCSV(filename, rows) {
   const blob = new Blob([lines.join("\n")], {
     type: "text/csv;charset=utf-8",
   });
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -109,131 +242,18 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-function getRowDate(row) {
-  return (
-    row?.date ||
-    row?.doc_date ||
-    row?.entry_date ||
-    row?.invoice_date ||
-    row?.bill_date ||
-    row?.transaction_date ||
-    null
-  );
-}
-
-function getRowDocNo(row) {
-  return (
-    row?.doc_no ||
-    row?.document_no ||
-    row?.invoice_no ||
-    row?.bill_no ||
-    row?.receipt_no ||
-    row?.payment_no ||
-    "-"
-  );
-}
-
-function getRowType(row) {
-  return (
-    row?.type ||
-    row?.doc_type ||
-    row?.transaction_type ||
-    row?.entry_type ||
-    "-"
-  );
-}
-
-function getRowDebit(row) {
-  return Number(
-    row?.debit ??
-      row?.debit_amount ??
-      row?.amount_debit ??
-      0
-  );
-}
-
-function getRowCredit(row) {
-  return Number(
-    row?.credit ??
-      row?.credit_amount ??
-      row?.amount_credit ??
-      0
-  );
-}
-
-function getRowBalance(row) {
-  return Number(
-    row?.balance ??
-      row?.running_balance ??
-      row?.closing_balance ??
-      0
-  );
-}
-
-function normalizeDateToTs(value) {
-  if (!value) return null;
-
-  const s = String(value).trim();
-  if (!s) return null;
-
-  const d = s.includes("T") ? new Date(s) : new Date(`${s}T00:00:00`);
-  const ts = d.getTime();
-
-  return Number.isNaN(ts) ? null : ts;
-}
-
-function sortRowsByDateAsc(list) {
-  return [...list].sort((a, b) => {
-    const da = normalizeDateToTs(getRowDate(a)) || 0;
-    const db = normalizeDateToTs(getRowDate(b)) || 0;
-
-    if (da !== db) return da - db;
-
-    const docA = String(getRowDocNo(a) || "");
-    const docB = String(getRowDocNo(b) || "");
-
-    if (docA !== docB) {
-      return docA.localeCompare(docB, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-    }
-
-    return String(getRowType(a) || "").localeCompare(String(getRowType(b) || ""));
-  });
-}
-
-function startOfDayTs(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(`${dateStr}T00:00:00`);
-  const ts = d.getTime();
-  return Number.isNaN(ts) ? null : ts;
-}
-
-function endOfDayTs(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(`${dateStr}T23:59:59.999`);
-  const ts = d.getTime();
-  return Number.isNaN(ts) ? null : ts;
-}
-
 export default function Statement() {
   const location = useLocation();
 
   const [mode, setMode] = useState("CUSTOMER");
-
   const [customerCode, setCustomerCode] = useState("");
   const [vendorCode, setVendorCode] = useState("");
-
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
-
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState(firstDayOfMonthISO());
   const [toDate, setToDate] = useState(todayISO());
-
   const [rows, setRows] = useState([]);
-
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [mastersLoaded, setMastersLoaded] = useState(false);
@@ -247,11 +267,8 @@ export default function Statement() {
         apiGet("/vendors/"),
       ]);
 
-      const cList = Array.isArray(cData) ? cData : [];
-      const vList = Array.isArray(vData) ? vData : [];
-
-      setCustomers(cList);
-      setVendors(vList);
+      setCustomers(Array.isArray(cData) ? cData : []);
+      setVendors(Array.isArray(vData) ? vData : []);
       setCustomerCode("");
       setVendorCode("");
       setMastersLoaded(true);
@@ -289,11 +306,7 @@ export default function Statement() {
               `/customers/${encodeURIComponent(code)}/statement`
             );
             const list = Array.isArray(data) ? data : [];
-
-            return list.map((row) => ({
-              ...row,
-              customer_code: code,
-            }));
+            return list.map((row) => ({ ...row, customer_code: code }));
           })
         );
 
@@ -303,7 +316,7 @@ export default function Statement() {
 
         const failures = results.filter((r) => r.status === "rejected");
 
-        setRows(sortRowsByDateAsc(successRows));
+        setRows(sortRowsByDateAsc(successRows, "CUSTOMER"));
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
@@ -335,11 +348,7 @@ export default function Statement() {
               `/vendors/${encodeURIComponent(code)}/statement`
             );
             const list = Array.isArray(data) ? data : [];
-
-            return list.map((row) => ({
-              ...row,
-              vendor_code: code,
-            }));
+            return list.map((row) => ({ ...row, vendor_code: code }));
           })
         );
 
@@ -349,7 +358,7 @@ export default function Statement() {
 
         const failures = results.filter((r) => r.status === "rejected");
 
-        setRows(sortRowsByDateAsc(successRows));
+        setRows(sortRowsByDateAsc(successRows, "VENDOR"));
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
@@ -392,7 +401,7 @@ export default function Statement() {
           : `/vendors/${encodeURIComponent(code)}/statement`;
 
       const data = await apiGet(url);
-      setRows(sortRowsByDateAsc(Array.isArray(data) ? data : []));
+      setRows(sortRowsByDateAsc(Array.isArray(data) ? data : [], type));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -483,15 +492,13 @@ export default function Statement() {
     const toTs = endOfDayTs(toDate);
 
     return rows.filter((r) => {
-      const rowTs = normalizeDateToTs(getRowDate(r));
+      const rowTs = normalizeDateTs(getRowDate(r, mode));
       if (rowTs == null) return false;
-
       if (fromTs != null && rowTs < fromTs) return false;
       if (toTs != null && rowTs > toTs) return false;
-
       return true;
     });
-  }, [rows, fromDate, toDate]);
+  }, [rows, fromDate, toDate, mode]);
 
   const totals = useMemo(() => {
     let debit = 0;
@@ -499,16 +506,16 @@ export default function Statement() {
     let closing = 0;
 
     for (const r of filteredRows) {
-      debit += getRowDebit(r);
-      credit += getRowCredit(r);
+      debit += getRowDebit(r, mode);
+      credit += getRowCredit(r, mode);
       closing = getRowBalance(r);
     }
 
     const opening =
       filteredRows.length > 0
         ? getRowBalance(filteredRows[0]) -
-          getRowDebit(filteredRows[0]) +
-          getRowCredit(filteredRows[0])
+          getRowDebit(filteredRows[0], mode) +
+          getRowCredit(filteredRows[0], mode)
         : 0;
 
     return {
@@ -517,7 +524,7 @@ export default function Statement() {
       credit,
       closing,
     };
-  }, [filteredRows]);
+  }, [filteredRows, mode]);
 
   const pageTitle =
     mode === "CUSTOMER" ? "Customer Statement" : "Vendor Statement";
@@ -544,11 +551,11 @@ export default function Statement() {
         : vendorCode || "ALL_VENDORS";
 
     const out = filteredRows.map((r) => ({
-      Date: isoToDisplay(getRowDate(r)),
-      DocNo: getRowDocNo(r),
-      Type: getRowType(r),
-      Debit: money(getRowDebit(r)),
-      Credit: money(getRowCredit(r)),
+      Date: toDisplayDate(getRowDate(r, mode)),
+      DocNo: getRowDocNo(r, mode),
+      Type: getRowType(r, mode),
+      Debit: money(getRowDebit(r, mode)),
+      Credit: money(getRowCredit(r, mode)),
       Balance: money(getRowBalance(r)),
     }));
 
@@ -737,7 +744,7 @@ export default function Statement() {
 
           <InfoMini
             title="Date Range"
-            value={`${isoToDisplay(fromDate)} to ${isoToDisplay(toDate)}`}
+            value={`${toDisplayDate(fromDate)} to ${toDisplayDate(toDate)}`}
           />
         </div>
       </section>
@@ -774,12 +781,12 @@ export default function Statement() {
 
             <tbody>
               {filteredRows.map((r, i) => (
-                <tr key={`${getRowDocNo(r)}-${getRowType(r)}-${i}`} style={tr}>
-                  <td style={td}>{isoToDisplay(getRowDate(r))}</td>
-                  <td style={tdCode}>{getRowDocNo(r)}</td>
-                  <td style={td}>{getRowType(r)}</td>
-                  <td style={tdRight}>{money(getRowDebit(r))}</td>
-                  <td style={tdRight}>{money(getRowCredit(r))}</td>
+                <tr key={`${getRowDocNo(r, mode)}-${getRowType(r, mode)}-${i}`} style={tr}>
+                  <td style={td}>{toDisplayDate(getRowDate(r, mode))}</td>
+                  <td style={tdCode}>{getRowDocNo(r, mode)}</td>
+                  <td style={td}>{getRowType(r, mode)}</td>
+                  <td style={tdRight}>{money(getRowDebit(r, mode))}</td>
+                  <td style={tdRight}>{money(getRowCredit(r, mode))}</td>
                   <td style={{ ...tdRight, fontWeight: 900 }}>
                     {money(getRowBalance(r))}
                   </td>
