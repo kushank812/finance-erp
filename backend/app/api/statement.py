@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -9,6 +10,26 @@ from app.models.sales_invoice import SalesInvoiceHdr
 from app.models.user import User
 
 router = APIRouter(prefix="/customers", tags=["Statements"])
+
+
+def safe_date_string(value) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+
+    if isinstance(value, date):
+        return value.isoformat()
+
+    s = str(value).strip()
+    if not s:
+        return None
+
+    if "T" in s:
+        s = s.split("T")[0]
+
+    return s[:10]
 
 
 @router.get("/{customer_code}/statement")
@@ -32,33 +53,41 @@ def customer_statement(
     rows = []
 
     for inv in invoices:
+        invoice_date = safe_date_string(inv.invoice_date)
+
         rows.append(
             {
-                "date": inv.invoice_date,
+                "date": invoice_date,
                 "doc_no": inv.invoice_no,
                 "type": "Invoice",
                 "debit": float(inv.grand_total or 0),
-                "credit": 0,
+                "credit": 0.0,
             }
         )
 
         if inv.amount_received and float(inv.amount_received) > 0:
             rows.append(
                 {
-                    "date": inv.invoice_date,
+                    "date": invoice_date,
                     "doc_no": inv.invoice_no,
                     "type": "Receipt",
-                    "debit": 0,
+                    "debit": 0.0,
                     "credit": float(inv.amount_received or 0),
                 }
             )
 
-    rows.sort(key=lambda x: (x["date"], x["doc_no"], x["type"]))
+    rows.sort(
+        key=lambda x: (
+            x.get("date") or "",
+            x.get("doc_no") or "",
+            x.get("type") or "",
+        )
+    )
 
     balance = 0.0
     for r in rows:
-        balance += float(r["debit"] or 0)
-        balance -= float(r["credit"] or 0)
+        balance += float(r.get("debit") or 0)
+        balance -= float(r.get("credit") or 0)
         r["balance"] = balance
 
     return rows
