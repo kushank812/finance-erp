@@ -31,81 +31,53 @@ import {
   badgeGreen,
 } from "../components/ui/uiStyles";
 
-// change this import path only if your date.js is somewhere else
 import { toDisplayDate, toISODate } from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function firstDayOfMonthISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${yyyy}-${mm}-01`;
-}
-
-function todayDisplay() {
-  return toDisplayDate(todayISO());
-}
-
-function firstDayOfMonthDisplay() {
-  return toDisplayDate(firstDayOfMonthISO());
-}
-
 function safeDisplayDate(value) {
   if (!value) return "-";
 
-  const s = String(value).trim();
-  if (!s) return "-";
+  try {
+    let s = String(value).trim();
+    if (!s) return "-";
 
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
 
-  if (s.includes("T")) {
-    const onlyDate = s.split("T")[0];
-    if (/^\d{4}-\d{2}-\d{2}$/.test(onlyDate)) {
-      return toDisplayDate(onlyDate);
+    if (s.includes("T")) s = s.split("T")[0];
+    if (s.includes(" ")) s = s.split(" ")[0];
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      return toDisplayDate(s);
     }
-  }
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    return toDisplayDate(s);
+    return "-";
+  } catch {
+    return "-";
   }
-
-  const first10 = s.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(first10)) {
-    return toDisplayDate(first10);
-  }
-
-  return s;
 }
 
-function getCustomerAddress(customer) {
-  if (!customer) return "-";
-  return (
-    customer.customer_address_line1 ||
-    customer.address_line1 ||
-    customer.customer_address ||
-    "-"
-  );
-}
+function normalizeISODate(value) {
+  if (!value) return "";
 
-function getVendorAddress(vendor) {
-  if (!vendor) return "-";
-  return (
-    vendor.vendor_address_line1 ||
-    vendor.address_line1 ||
-    vendor.vendor_address ||
-    "-"
-  );
+  try {
+    let s = String(value).trim();
+    if (!s) return "";
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+      s = toISODate(s);
+    } else {
+      if (s.includes("T")) s = s.split("T")[0];
+      if (s.includes(" ")) s = s.split(" ")[0];
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+    return s;
+  } catch {
+    return "";
+  }
 }
 
 function getRowDate(row, mode) {
@@ -116,7 +88,7 @@ function getRowDate(row, mode) {
       row?.invoice_date ||
       row?.receipt_date ||
       row?.transaction_date ||
-      null
+      ""
     );
   }
 
@@ -126,28 +98,16 @@ function getRowDate(row, mode) {
     row?.bill_date ||
     row?.payment_date ||
     row?.transaction_date ||
-    null
+    ""
   );
 }
 
 function getRowDocNo(row, mode) {
   if (mode === "CUSTOMER") {
-    return (
-      row?.doc_no ||
-      row?.invoice_no ||
-      row?.receipt_no ||
-      row?.document_no ||
-      "-"
-    );
+    return row?.doc_no || row?.invoice_no || row?.receipt_no || row?.document_no || "-";
   }
 
-  return (
-    row?.doc_no ||
-    row?.bill_no ||
-    row?.payment_no ||
-    row?.document_no ||
-    "-"
-  );
+  return row?.doc_no || row?.bill_no || row?.payment_no || row?.document_no || "-";
 }
 
 function getRowType(row, mode) {
@@ -155,14 +115,14 @@ function getRowType(row, mode) {
     return (
       row?.type ||
       row?.doc_type ||
-      (row?.invoice_no ? "Invoice" : row?.receipt_no ? "Receipt" : "-")
+      (row?.receipt_no ? "Receipt" : row?.invoice_no || row?.doc_no ? "Invoice" : "-")
     );
   }
 
   return (
     row?.type ||
     row?.doc_type ||
-    (row?.bill_no ? "Bill" : row?.payment_no ? "Payment" : "-")
+    (row?.payment_no ? "Payment" : row?.bill_no || row?.doc_no ? "Bill" : "-")
   );
 }
 
@@ -170,13 +130,13 @@ function getRowDebit(row, mode) {
   if (row?.debit != null) return Number(row.debit || 0);
 
   if (mode === "CUSTOMER") {
-    if (row?.invoice_no || row?.doc_no) {
-      return Number(row?.grand_total || row?.amount || 0);
-    }
+    const type = String(getRowType(row, mode) || "").toLowerCase();
+    if (type === "invoice") return Number(row?.grand_total || row?.amount || 0);
     return 0;
   }
 
-  if (row?.bill_no || row?.doc_no) return Number(row?.grand_total || row?.amount || 0);
+  const type = String(getRowType(row, mode) || "").toLowerCase();
+  if (type === "bill") return Number(row?.grand_total || row?.amount || 0);
   return 0;
 }
 
@@ -184,87 +144,49 @@ function getRowCredit(row, mode) {
   if (row?.credit != null) return Number(row.credit || 0);
 
   if (mode === "CUSTOMER") {
-    if (row?.receipt_no) {
-      return Number(
-        row?.amount_received || row?.received_amount || row?.amount || 0
-      );
+    const type = String(getRowType(row, mode) || "").toLowerCase();
+    if (type === "receipt") {
+      return Number(row?.amount_received || row?.received_amount || row?.amount || 0);
     }
     return 0;
   }
 
-  if (row?.payment_no) {
+  const type = String(getRowType(row, mode) || "").toLowerCase();
+  if (type === "payment") {
     return Number(row?.amount_paid || row?.paid_amount || row?.amount || 0);
   }
   return 0;
 }
 
-function getRowBalance(row) {
-  return Number(row?.balance ?? row?.running_balance ?? row?.closing_balance ?? 0);
-}
-
-function normalizeDateTs(value) {
-  if (!value) return null;
-
-  try {
-    let s = String(value).trim();
-    if (!s) return null;
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      s = toISODate(s);
-    } else if (s.includes("T")) {
-      s = s.split("T")[0];
-    } else {
-      s = s.slice(0, 10);
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-
-    const ts = new Date(`${s}T00:00:00`).getTime();
-    return Number.isNaN(ts) ? null : ts;
-  } catch {
-    return null;
-  }
-}
-
-function startOfDayTs(displayDate) {
-  if (!displayDate) return null;
-
-  try {
-    const iso = toISODate(displayDate);
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-    const ts = new Date(`${iso}T00:00:00`).getTime();
-    return Number.isNaN(ts) ? null : ts;
-  } catch {
-    return null;
-  }
-}
-
-function endOfDayTs(displayDate) {
-  if (!displayDate) return null;
-
-  try {
-    const iso = toISODate(displayDate);
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-    const ts = new Date(`${iso}T23:59:59.999`).getTime();
-    return Number.isNaN(ts) ? null : ts;
-  } catch {
-    return null;
-  }
-}
-
 function sortRowsByDateAsc(list, mode) {
   return [...list].sort((a, b) => {
-    const da = normalizeDateTs(getRowDate(a, mode)) || 0;
-    const db = normalizeDateTs(getRowDate(b, mode)) || 0;
+    const da = normalizeISODate(getRowDate(a, mode));
+    const db = normalizeISODate(getRowDate(b, mode));
 
-    if (da !== db) return da - db;
+    if (da !== db) return da.localeCompare(db);
 
     const docA = String(getRowDocNo(a, mode) || "");
     const docB = String(getRowDocNo(b, mode) || "");
+
     return docA.localeCompare(docB, undefined, {
       numeric: true,
       sensitivity: "base",
     });
+  });
+}
+
+function rebuildRunningBalance(list, mode) {
+  let balance = 0;
+
+  return list.map((row) => {
+    const debit = getRowDebit(row, mode);
+    const credit = getRowCredit(row, mode);
+    balance += debit - credit;
+
+    return {
+      ...row,
+      balance,
+    };
   });
 }
 
@@ -295,13 +217,24 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-function isValidDisplayDate(value) {
-  if (!value) return false;
-  const s = String(value).trim();
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return false;
+function getCustomerAddress(customer) {
+  if (!customer) return "-";
+  return (
+    customer.customer_address_line1 ||
+    customer.address_line1 ||
+    customer.customer_address ||
+    "-"
+  );
+}
 
-  const iso = toISODate(s);
-  return /^\d{4}-\d{2}-\d{2}$/.test(iso);
+function getVendorAddress(vendor) {
+  if (!vendor) return "-";
+  return (
+    vendor.vendor_address_line1 ||
+    vendor.address_line1 ||
+    vendor.vendor_address ||
+    "-"
+  );
 }
 
 export default function Statement() {
@@ -313,15 +246,16 @@ export default function Statement() {
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState(firstDayOfMonthDisplay());
-  const [toDate, setToDate] = useState(todayDisplay());
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [mastersLoaded, setMastersLoaded] = useState(false);
 
-  async function loadMasters() {
+  async function loadMastersAndData(activeMode = mode) {
     setErr("");
+    setLoading(true);
 
     try {
       const [cData, vData] = await Promise.all([
@@ -329,29 +263,32 @@ export default function Statement() {
         apiGet("/vendors/"),
       ]);
 
-      setCustomers(Array.isArray(cData) ? cData : []);
-      setVendors(Array.isArray(vData) ? vData : []);
+      const customerList = Array.isArray(cData) ? cData : [];
+      const vendorList = Array.isArray(vData) ? vData : [];
+
+      setCustomers(customerList);
+      setVendors(vendorList);
       setCustomerCode("");
       setVendorCode("");
       setMastersLoaded(true);
+
+      if (activeMode === "CUSTOMER") {
+        await loadAllStatements("CUSTOMER", customerList, vendorList);
+      } else {
+        await loadAllStatements("VENDOR", customerList, vendorList);
+      }
     } catch (e) {
       setErr(String(e.message || e));
       setCustomers([]);
       setVendors([]);
-      setCustomerCode("");
-      setVendorCode("");
       setRows([]);
       setMastersLoaded(true);
+      setLoading(false);
     }
   }
 
-  async function loadAllStatements(
-    type,
-    customerList = customers,
-    vendorList = vendors
-  ) {
+  async function loadAllStatements(type, customerList = [], vendorList = []) {
     setErr("");
-    setLoading(true);
 
     try {
       if (type === "CUSTOMER") {
@@ -364,11 +301,12 @@ export default function Statement() {
 
         const results = await Promise.allSettled(
           codes.map(async (code) => {
-            const data = await apiGet(
-              `/customers/${encodeURIComponent(code)}/statement`
-            );
+            const data = await apiGet(`/customers/${encodeURIComponent(code)}/statement`);
             const list = Array.isArray(data) ? data : [];
-            return list.map((row) => ({ ...row, customer_code: code }));
+            return list.map((row) => ({
+              ...row,
+              customer_code: code,
+            }));
           })
         );
 
@@ -378,7 +316,9 @@ export default function Statement() {
 
         const failures = results.filter((r) => r.status === "rejected");
 
-        setRows(sortRowsByDateAsc(successRows, "CUSTOMER"));
+        const sorted = sortRowsByDateAsc(successRows, "CUSTOMER");
+        const balanced = rebuildRunningBalance(sorted, "CUSTOMER");
+        setRows(balanced);
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
@@ -406,11 +346,12 @@ export default function Statement() {
 
         const results = await Promise.allSettled(
           codes.map(async (code) => {
-            const data = await apiGet(
-              `/vendors/${encodeURIComponent(code)}/statement`
-            );
+            const data = await apiGet(`/vendors/${encodeURIComponent(code)}/statement`);
             const list = Array.isArray(data) ? data : [];
-            return list.map((row) => ({ ...row, vendor_code: code }));
+            return list.map((row) => ({
+              ...row,
+              vendor_code: code,
+            }));
           })
         );
 
@@ -420,7 +361,9 @@ export default function Statement() {
 
         const failures = results.filter((r) => r.status === "rejected");
 
-        setRows(sortRowsByDateAsc(successRows, "VENDOR"));
+        const sorted = sortRowsByDateAsc(successRows, "VENDOR");
+        const balanced = rebuildRunningBalance(sorted, "VENDOR");
+        setRows(balanced);
 
         if (failures.length > 0 && successRows.length === 0) {
           const firstError = failures[0]?.reason;
@@ -449,7 +392,11 @@ export default function Statement() {
 
   async function loadStatement(type, code) {
     if (!code) {
-      await loadAllStatements(type);
+      if (type === "CUSTOMER") {
+        await loadAllStatements("CUSTOMER", customers, vendors);
+      } else {
+        await loadAllStatements("VENDOR", customers, vendors);
+      }
       return;
     }
 
@@ -463,7 +410,10 @@ export default function Statement() {
           : `/vendors/${encodeURIComponent(code)}/statement`;
 
       const data = await apiGet(url);
-      setRows(sortRowsByDateAsc(Array.isArray(data) ? data : [], type));
+      const list = Array.isArray(data) ? data : [];
+      const sorted = sortRowsByDateAsc(list, type);
+      const balanced = rebuildRunningBalance(sorted, type);
+      setRows(balanced);
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -473,46 +423,34 @@ export default function Statement() {
   }
 
   useEffect(() => {
-    loadMasters();
+    loadMastersAndData(mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   useEffect(() => {
     if (!mastersLoaded) return;
 
+    setSearch("");
+    setCustomerCode("");
+    setVendorCode("");
+    setRows([]);
+
     if (mode === "CUSTOMER") {
-      setVendorCode("");
-      setCustomerCode("");
       loadAllStatements("CUSTOMER", customers, vendors);
     } else {
-      setCustomerCode("");
-      setVendorCode("");
       loadAllStatements("VENDOR", customers, vendors);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, mastersLoaded]);
+  }, [mode]);
 
   useEffect(() => {
-    if (!mastersLoaded) return;
-    if (mode !== "CUSTOMER") return;
-
-    if (!customerCode) {
-      loadAllStatements("CUSTOMER", customers, vendors);
-      return;
-    }
-
+    if (!mastersLoaded || mode !== "CUSTOMER") return;
     loadStatement("CUSTOMER", customerCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerCode]);
 
   useEffect(() => {
-    if (!mastersLoaded) return;
-    if (mode !== "VENDOR") return;
-
-    if (!vendorCode) {
-      loadAllStatements("VENDOR", customers, vendors);
-      return;
-    }
-
+    if (!mastersLoaded || mode !== "VENDOR") return;
     loadStatement("VENDOR", vendorCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorCode]);
@@ -550,16 +488,18 @@ export default function Statement() {
   }, [vendors, vendorCode]);
 
   const filteredRows = useMemo(() => {
-    const fromTs = isValidDisplayDate(fromDate) ? startOfDayTs(fromDate) : null;
-    const toTs = isValidDisplayDate(toDate) ? endOfDayTs(toDate) : null;
+    const fromIso = normalizeISODate(fromDate);
+    const toIso = normalizeISODate(toDate);
 
-    return rows.filter((r) => {
-      const rowTs = normalizeDateTs(getRowDate(r, mode));
-      if (rowTs == null) return false;
-      if (fromTs != null && rowTs < fromTs) return false;
-      if (toTs != null && rowTs > toTs) return false;
+    const out = rows.filter((r) => {
+      const rowIso = normalizeISODate(getRowDate(r, mode));
+      if (!rowIso) return false;
+      if (fromIso && rowIso < fromIso) return false;
+      if (toIso && rowIso > toIso) return false;
       return true;
     });
+
+    return rebuildRunningBalance(sortRowsByDateAsc(out, mode), mode);
   }, [rows, fromDate, toDate, mode]);
 
   const totals = useMemo(() => {
@@ -570,12 +510,12 @@ export default function Statement() {
     for (const r of filteredRows) {
       debit += getRowDebit(r, mode);
       credit += getRowCredit(r, mode);
-      closing = getRowBalance(r);
+      closing = Number(r?.balance || 0);
     }
 
     const opening =
       filteredRows.length > 0
-        ? getRowBalance(filteredRows[0]) -
+        ? Number(filteredRows[0]?.balance || 0) -
           getRowDebit(filteredRows[0], mode) +
           getRowCredit(filteredRows[0], mode)
         : 0;
@@ -618,16 +558,21 @@ export default function Statement() {
       Type: getRowType(r, mode),
       Debit: money(getRowDebit(r, mode)),
       Credit: money(getRowCredit(r, mode)),
-      Balance: money(getRowBalance(r)),
+      Balance: money(r?.balance || 0),
     }));
 
-    const fromIso = isValidDisplayDate(fromDate) ? toISODate(fromDate) : "START";
-    const toIso = isValidDisplayDate(toDate) ? toISODate(toDate) : "END";
+    const fromIso = normalizeISODate(fromDate) || "START";
+    const toIso = normalizeISODate(toDate) || "END";
 
     downloadCSV(
       `${mode}_STATEMENT_${selectedCode}_${fromIso}_${toIso}.csv`,
       out
     );
+  }
+
+  function handleClearDateFilter() {
+    setFromDate("");
+    setToDate("");
   }
 
   return (
@@ -640,10 +585,7 @@ export default function Statement() {
           <>
             <button
               type="button"
-              onClick={() => {
-                setSearch("");
-                setMode("CUSTOMER");
-              }}
+              onClick={() => setMode("CUSTOMER")}
               style={mode === "CUSTOMER" ? tabActiveBlue : tabButton}
             >
               Customer Statement
@@ -651,10 +593,7 @@ export default function Statement() {
 
             <button
               type="button"
-              onClick={() => {
-                setSearch("");
-                setMode("VENDOR");
-              }}
+              onClick={() => setMode("VENDOR")}
               style={mode === "VENDOR" ? tabActiveGreen : tabButton}
             >
               Vendor Statement
@@ -760,6 +699,14 @@ export default function Statement() {
         <div style={actionRow}>
           <button
             type="button"
+            onClick={handleClearDateFilter}
+            style={btnGhost}
+          >
+            Clear Dates
+          </button>
+
+          <button
+            type="button"
             onClick={handleExportCSV}
             style={filteredRows.length === 0 ? disabledLike(btnPrimary) : btnPrimary}
             disabled={filteredRows.length === 0}
@@ -809,7 +756,7 @@ export default function Statement() {
 
           <InfoMini
             title="Date Range"
-            value={`${fromDate || "-"} to ${toDate || "-"}`}
+            value={`${fromDate || "START"} to ${toDate || "END"}`}
           />
         </div>
       </section>
@@ -853,7 +800,7 @@ export default function Statement() {
                   <td style={tdRight}>{money(getRowDebit(r, mode))}</td>
                   <td style={tdRight}>{money(getRowCredit(r, mode))}</td>
                   <td style={{ ...tdRight, fontWeight: 900 }}>
-                    {money(getRowBalance(r))}
+                    {money(r?.balance || 0)}
                   </td>
                 </tr>
               ))}
