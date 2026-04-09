@@ -31,18 +31,11 @@ import {
   badgeGreen,
 } from "../components/ui/uiStyles";
 
+// CHANGE THIS IMPORT PATH ONLY IF YOUR date.js IS SOMEWHERE ELSE
+import { toDisplayDate, toISODate } from "../utils/date";
+
 function money(n) {
   return Number(n || 0).toFixed(2);
-}
-
-function toDisplayDate(iso) {
-  if (!iso) return "-";
-  const s = String(iso).trim();
-  const clean = s.includes("T") ? s.split("T")[0] : s;
-  const parts = clean.split("-");
-  if (parts.length !== 3) return clean;
-  const [y, m, d] = parts;
-  return `${d}/${m}/${y}`;
 }
 
 function todayISO() {
@@ -58,6 +51,41 @@ function firstDayOfMonthISO() {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   return `${yyyy}-${mm}-01`;
+}
+
+function todayDisplay() {
+  return toDisplayDate(todayISO());
+}
+
+function firstDayOfMonthDisplay() {
+  return toDisplayDate(firstDayOfMonthISO());
+}
+
+function safeDisplayDate(value) {
+  if (!value) return "-";
+
+  const s = String(value).trim();
+  if (!s) return "-";
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+
+  if (s.includes("T")) {
+    const onlyDate = s.split("T")[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(onlyDate)) {
+      return toDisplayDate(onlyDate);
+    }
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return toDisplayDate(s);
+  }
+
+  const first10 = s.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(first10)) {
+    return toDisplayDate(first10);
+  }
+
+  return s;
 }
 
 function getCustomerAddress(customer) {
@@ -179,24 +207,54 @@ function getRowBalance(row) {
 
 function normalizeDateTs(value) {
   if (!value) return null;
-  const s = String(value).trim();
-  if (!s) return null;
 
-  const d = s.includes("T") ? new Date(s) : new Date(`${s}T00:00:00`);
-  const ts = d.getTime();
-  return Number.isNaN(ts) ? null : ts;
+  try {
+    let s = String(value).trim();
+    if (!s) return null;
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+      s = toISODate(s);
+    } else if (s.includes("T")) {
+      s = s.split("T")[0];
+    } else {
+      s = s.slice(0, 10);
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+
+    const ts = new Date(`${s}T00:00:00`).getTime();
+    return Number.isNaN(ts) ? null : ts;
+  } catch {
+    return null;
+  }
 }
 
-function startOfDayTs(dateStr) {
-  if (!dateStr) return null;
-  const ts = new Date(`${dateStr}T00:00:00`).getTime();
-  return Number.isNaN(ts) ? null : ts;
+function startOfDayTs(displayDate) {
+  if (!displayDate) return null;
+
+  try {
+    const iso = toISODate(displayDate);
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+
+    const ts = new Date(`${iso}T00:00:00`).getTime();
+    return Number.isNaN(ts) ? null : ts;
+  } catch {
+    return null;
+  }
 }
 
-function endOfDayTs(dateStr) {
-  if (!dateStr) return null;
-  const ts = new Date(`${dateStr}T23:59:59.999`).getTime();
-  return Number.isNaN(ts) ? null : ts;
+function endOfDayTs(displayDate) {
+  if (!displayDate) return null;
+
+  try {
+    const iso = toISODate(displayDate);
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+
+    const ts = new Date(`${iso}T23:59:59.999`).getTime();
+    return Number.isNaN(ts) ? null : ts;
+  } catch {
+    return null;
+  }
 }
 
 function sortRowsByDateAsc(list, mode) {
@@ -242,6 +300,15 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+function isValidDisplayDate(value) {
+  if (!value) return false;
+  const s = String(value).trim();
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return false;
+
+  const iso = toISODate(s);
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso);
+}
+
 export default function Statement() {
   const location = useLocation();
 
@@ -251,8 +318,8 @@ export default function Statement() {
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState(firstDayOfMonthISO());
-  const [toDate, setToDate] = useState(todayISO());
+  const [fromDate, setFromDate] = useState(firstDayOfMonthDisplay());
+  const [toDate, setToDate] = useState(todayDisplay());
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -488,8 +555,8 @@ export default function Statement() {
   }, [vendors, vendorCode]);
 
   const filteredRows = useMemo(() => {
-    const fromTs = startOfDayTs(fromDate);
-    const toTs = endOfDayTs(toDate);
+    const fromTs = isValidDisplayDate(fromDate) ? startOfDayTs(fromDate) : null;
+    const toTs = isValidDisplayDate(toDate) ? endOfDayTs(toDate) : null;
 
     return rows.filter((r) => {
       const rowTs = normalizeDateTs(getRowDate(r, mode));
@@ -551,7 +618,7 @@ export default function Statement() {
         : vendorCode || "ALL_VENDORS";
 
     const out = filteredRows.map((r) => ({
-      Date: toDisplayDate(getRowDate(r, mode)),
+      Date: safeDisplayDate(getRowDate(r, mode)),
       DocNo: getRowDocNo(r, mode),
       Type: getRowType(r, mode),
       Debit: money(getRowDebit(r, mode)),
@@ -559,8 +626,11 @@ export default function Statement() {
       Balance: money(getRowBalance(r)),
     }));
 
+    const fromIso = isValidDisplayDate(fromDate) ? toISODate(fromDate) : "START";
+    const toIso = isValidDisplayDate(toDate) ? toISODate(toDate) : "END";
+
     downloadCSV(
-      `${mode}_STATEMENT_${selectedCode}_${fromDate || "START"}_${toDate || "END"}.csv`,
+      `${mode}_STATEMENT_${selectedCode}_${fromIso}_${toIso}.csv`,
       out
     );
   }
@@ -674,9 +744,9 @@ export default function Statement() {
           <div style={field}>
             <label style={labelStyle}>From Date</label>
             <input
-              type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
+              placeholder="dd/mm/yyyy"
               style={input}
             />
           </div>
@@ -684,9 +754,9 @@ export default function Statement() {
           <div style={field}>
             <label style={labelStyle}>To Date</label>
             <input
-              type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
+              placeholder="dd/mm/yyyy"
               style={input}
             />
           </div>
@@ -744,7 +814,7 @@ export default function Statement() {
 
           <InfoMini
             title="Date Range"
-            value={`${toDisplayDate(fromDate)} to ${toDisplayDate(toDate)}`}
+            value={`${fromDate || "-"} to ${toDate || "-"}`}
           />
         </div>
       </section>
@@ -782,7 +852,7 @@ export default function Statement() {
             <tbody>
               {filteredRows.map((r, i) => (
                 <tr key={`${getRowDocNo(r, mode)}-${getRowType(r, mode)}-${i}`} style={tr}>
-                  <td style={td}>{toDisplayDate(getRowDate(r, mode))}</td>
+                  <td style={td}>{safeDisplayDate(getRowDate(r, mode))}</td>
                   <td style={tdCode}>{getRowDocNo(r, mode)}</td>
                   <td style={td}>{getRowType(r, mode)}</td>
                   <td style={tdRight}>{money(getRowDebit(r, mode))}</td>
