@@ -31,7 +31,7 @@ import {
   badgeGreen,
 } from "../components/ui/uiStyles";
 
-// CHANGE THIS IMPORT PATH ONLY IF YOUR date.js IS SOMEWHERE ELSE
+// change this import path only if your date.js is somewhere else
 import { toDisplayDate, toISODate } from "../utils/date";
 
 function money(n) {
@@ -155,14 +155,14 @@ function getRowType(row, mode) {
     return (
       row?.type ||
       row?.doc_type ||
-      (row?.invoice_no ? "INVOICE" : row?.receipt_no ? "RECEIPT" : "-")
+      (row?.invoice_no ? "Invoice" : row?.receipt_no ? "Receipt" : "-")
     );
   }
 
   return (
     row?.type ||
     row?.doc_type ||
-    (row?.bill_no ? "BILL" : row?.payment_no ? "PAYMENT" : "-")
+    (row?.bill_no ? "Bill" : row?.payment_no ? "Payment" : "-")
   );
 }
 
@@ -170,11 +170,13 @@ function getRowDebit(row, mode) {
   if (row?.debit != null) return Number(row.debit || 0);
 
   if (mode === "CUSTOMER") {
-    if (row?.invoice_no) return Number(row?.grand_total || row?.amount || 0);
+    if (row?.invoice_no || row?.doc_no) {
+      return Number(row?.grand_total || row?.amount || 0);
+    }
     return 0;
   }
 
-  if (row?.bill_no) return Number(row?.grand_total || row?.amount || 0);
+  if (row?.bill_no || row?.doc_no) return Number(row?.grand_total || row?.amount || 0);
   return 0;
 }
 
@@ -197,12 +199,7 @@ function getRowCredit(row, mode) {
 }
 
 function getRowBalance(row) {
-  return Number(
-    row?.balance ??
-      row?.running_balance ??
-      row?.closing_balance ??
-      0
-  );
+  return Number(row?.balance ?? row?.running_balance ?? row?.closing_balance ?? 0);
 }
 
 function normalizeDateTs(value) {
@@ -235,7 +232,6 @@ function startOfDayTs(displayDate) {
   try {
     const iso = toISODate(displayDate);
     if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-
     const ts = new Date(`${iso}T00:00:00`).getTime();
     return Number.isNaN(ts) ? null : ts;
   } catch {
@@ -249,7 +245,6 @@ function endOfDayTs(displayDate) {
   try {
     const iso = toISODate(displayDate);
     if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-
     const ts = new Date(`${iso}T23:59:59.999`).getTime();
     return Number.isNaN(ts) ? null : ts;
   } catch {
