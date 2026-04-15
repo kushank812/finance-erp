@@ -44,12 +44,13 @@ export function toDateValue(dateLike) {
 export function formatDate(dateLike) {
   const d = toDateValue(dateLike);
   if (!d) return "-";
+
   try {
-    return d.toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+
+    return `${day}/${month}/${year}`;
   } catch {
     return "-";
   }

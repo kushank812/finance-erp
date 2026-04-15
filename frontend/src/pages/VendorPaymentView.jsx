@@ -23,8 +23,8 @@ function fmt(value) {
   return String(value);
 }
 
-function isoToDisplay(iso) {
-  return formatDateForDisplay(iso);
+function formatDate(value) {
+  return formatDateForDisplay(value) || "-";
 }
 
 export default function VendorPaymentView() {
@@ -102,7 +102,7 @@ export default function VendorPaymentView() {
       );
 
       setTimeout(() => {
-        nav("/purchase-bills");
+        nav("/vendor-payments");
       }, 1200);
     } catch (e) {
       setErr(String(e.message || e));
@@ -172,7 +172,7 @@ export default function VendorPaymentView() {
               <div style={{ textAlign: "right" }}>
                 <div style={bigId}>{fmt(doc.payment_no)}</div>
                 <div style={muted}>
-                  Payment Date: {isoToDisplay(doc.payment_date)}
+                  Payment Date: {formatDate(doc.payment_date)}
                 </div>
               </div>
             </div>
@@ -188,7 +188,7 @@ export default function VendorPaymentView() {
               />
               <Info
                 label="Payment Date"
-                value={isoToDisplay(doc.payment_date)}
+                value={formatDate(doc.payment_date)}
               />
               <Info label="Amount Paid" value={money(doc.amount)} />
               <Info label="Remark" value={fmt(doc.remark)} />
@@ -203,7 +203,7 @@ export default function VendorPaymentView() {
                     <InfoMini label="Bill No" value={fmt(bill.bill_no)} />
                     <InfoMini
                       label="Bill Date"
-                      value={isoToDisplay(bill.bill_date)}
+                      value={formatDate(bill.bill_date)}
                     />
                     <InfoMini label="Status" value={fmt(bill.status)} />
                     <InfoMini

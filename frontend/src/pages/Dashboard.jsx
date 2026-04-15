@@ -63,6 +63,7 @@ export default function Dashboard() {
       setData(res || {});
     } catch (e) {
       setErr(String(e?.message || e));
+      setData(null);
     } finally {
       setLoading(false);
     }

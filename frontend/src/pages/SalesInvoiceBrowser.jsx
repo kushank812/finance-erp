@@ -1,19 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
 import { useSearchParams } from "react-router-dom";
+import { formatDateForDisplay } from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
 function formatDate(value) {
-  if (!value) return "-";
-  const s = String(value).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}-${mm}-${yyyy}`;
+  return formatDateForDisplay(value) || "-";
 }
 
 export default function SalesInvoiceBrowser() {
@@ -26,7 +21,6 @@ export default function SalesInvoiceBrowser() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // optional: preselect from URL ?invoice=INV001
   useEffect(() => {
     const qInv = searchParams.get("invoice");
     if (qInv) setInvoiceNo(qInv);
@@ -47,8 +41,10 @@ export default function SalesInvoiceBrowser() {
       setDoc(null);
       return;
     }
+
     setErr("");
     setLoading(true);
+
     try {
       const data = await apiGet(`/sales-invoices/${encodeURIComponent(inv)}`);
       setDoc(data);
@@ -93,7 +89,11 @@ export default function SalesInvoiceBrowser() {
       <div style={topBar}>
         <div style={{ flex: 1, minWidth: 260 }}>
           <label style={lblDark}>Select Invoice</label>
-          <select value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} style={inp}>
+          <select
+            value={invoiceNo}
+            onChange={(e) => setInvoiceNo(e.target.value)}
+            style={inp}
+          >
             <option value="">-- Select Invoice --</option>
             {list.map((r) => (
               <option key={r.invoice_no} value={r.invoice_no}>
@@ -104,7 +104,7 @@ export default function SalesInvoiceBrowser() {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
-          <button onClick={loadList} style={btnGhost}>
+          <button onClick={loadList} style={btnGhost} type="button">
             Refresh
           </button>
           <button
@@ -112,13 +112,13 @@ export default function SalesInvoiceBrowser() {
             style={btnPrimary}
             disabled={!doc || loading}
             title={!doc ? "Select an invoice first" : ""}
+            type="button"
           >
             Print / Save PDF
           </button>
         </div>
       </div>
 
-      {/* Printable area */}
       <div id="print-area" style={paper}>
         {!invoiceNo ? (
           <div style={{ color: "#111" }}>Select an invoice to view.</div>
@@ -128,7 +128,6 @@ export default function SalesInvoiceBrowser() {
           <div style={{ color: "#111" }}>No invoice found.</div>
         ) : (
           <>
-            {/* Header */}
             <div style={docHeader}>
               <div>
                 <div style={companyName}>Finance AP/AR System</div>
@@ -143,19 +142,21 @@ export default function SalesInvoiceBrowser() {
 
             <div style={hr} />
 
-            {/* Meta grid */}
             <div style={metaGrid}>
-              <Info label="Customer Code" value={doc.customer_code} />
+              <Info label="Customer Code" value={doc.customer_code || "-"} />
               <Info label="Invoice Date" value={formatDate(doc.invoice_date)} />
-              <Info label="Due Date" value={doc.due_date ? formatDate(doc.due_date) : "-"} />
+              <Info label="Due Date" value={formatDate(doc.due_date)} />
               <Info label="Remark" value={doc.remark || "-"} />
             </div>
 
             <div style={{ height: 12 }} />
 
-            {/* Lines */}
             <div style={{ overflowX: "auto" }}>
-              <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 700 }}>
+              <table
+                width="100%"
+                cellPadding="10"
+                style={{ borderCollapse: "collapse", minWidth: 700 }}
+              >
                 <thead>
                   <tr style={{ background: "#f6f7f9" }}>
                     <th>#</th>
@@ -195,7 +196,6 @@ export default function SalesInvoiceBrowser() {
 
             <div style={{ height: 14 }} />
 
-            {/* Totals */}
             <div style={totalsWrap}>
               <TotalRow label="Subtotal" value={totals.subtotal} />
               <TotalRow label={`Tax (${totals.taxPercent}%)`} value={totals.taxAmount} />
@@ -214,7 +214,6 @@ export default function SalesInvoiceBrowser() {
         )}
       </div>
 
-      {/* Print CSS */}
       <style>{printCss}</style>
     </div>
   );
@@ -238,8 +237,6 @@ function TotalRow({ label, value, strong }) {
   );
 }
 
-/* ---- styles ---- */
-
 const topBar = {
   display: "flex",
   gap: 12,
@@ -248,7 +245,13 @@ const topBar = {
   marginBottom: 12,
 };
 
-const lblDark = { fontSize: 13, color: "#fff", display: "block", marginBottom: 6, fontWeight: 700 };
+const lblDark = {
+  fontSize: 13,
+  color: "#fff",
+  display: "block",
+  marginBottom: 6,
+  fontWeight: 700,
+};
 
 const inp = {
   width: "100%",

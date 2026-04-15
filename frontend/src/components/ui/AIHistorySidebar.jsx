@@ -1,26 +1,25 @@
 function formatWhen(value) {
   if (!value) return "";
+
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
 
-  try {
-    const now = new Date();
-    const sameDay = d.toDateString() === now.toDateString();
+  const now = new Date();
 
-    if (sameDay) {
-      return d.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
 
-    return d.toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-    });
-  } catch {
-    return "";
+  const pad = (n) => String(n).padStart(2, "0");
+
+  if (sameDay) {
+    // HH:mm
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
+
+  // dd/mm/yyyy
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 function getPreview(chat) {
@@ -69,7 +68,9 @@ export default function AIHistorySidebar({
                 >
                   <div style={chatTitle}>{chat.title || "New Chat"}</div>
                   <div style={chatPreview}>{getPreview(chat)}</div>
-                  <div style={chatMeta}>{formatWhen(chat.updatedAt || chat.createdAt)}</div>
+                  <div style={chatMeta}>
+                    {formatWhen(chat.updatedAt || chat.createdAt)}
+                  </div>
                 </button>
 
                 <button

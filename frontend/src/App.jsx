@@ -415,17 +415,17 @@ function AppRoutes({
         />
 
         <Route
-          path="/entry"
-          element={
-            <TransactionRoute
-              authReady={authReady}
-              authenticated={authenticated}
-              currentUser={currentUser}
-            >
-              <EntryScreen />
-            </TransactionRoute>
-          }
-        />
+  path="/entry"
+  element={
+    <TransactionRoute
+      authReady={authReady}
+      authenticated={authenticated}
+      currentUser={currentUser}
+    >
+      <EntryScreen currentUser={currentUser} />
+    </TransactionRoute>
+  }
+/>
 
         <Route
           path="/customers"

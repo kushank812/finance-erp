@@ -1,60 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiDelete, apiGet } from "../api/client";
+import AppDateInput from "../components/ui/AppDateInput";
+import { formatDateForDisplay, toISODate } from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function pad2(v) {
-  return String(v).padStart(2, "0");
-}
-
-/* ✅ FIXED → dd-mm-yyyy */
-function isoToDisplay(iso) {
-  if (!iso) return "-";
-  const s = String(iso).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}-${mm}-${yyyy}`;
-}
-
-function displayToISO(display) {
-  if (!display) return "";
-  const s = String(display).trim();
-  const parts = s.split("/");
-  if (parts.length !== 3) return "";
-  const [dd, mm, yyyy] = parts.map((x) => x.trim());
-  if (!dd || !mm || !yyyy) return "";
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function isValidISODate(iso) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return false;
-  const [yyyy, mm, dd] = String(iso).split("-").map(Number);
-  const dt = new Date(yyyy, mm - 1, dd);
-  return (
-    dt.getFullYear() === yyyy &&
-    dt.getMonth() === mm - 1 &&
-    dt.getDate() === dd
-  );
-}
-
-function isValidDisplayDate(display) {
-  const s = String(display || "").trim();
-  if (!s) return false;
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return false;
-  return isValidISODate(displayToISO(s));
-}
-
-function normalizeDateInput(value) {
-  const raw = String(value || "").replace(/[^\d]/g, "").slice(0, 8);
-
-  if (raw.length <= 2) return raw;
-  if (raw.length <= 4) return `${raw.slice(0, 2)}/${raw.slice(2)}`;
-  return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4)}`;
+function formatDate(value) {
+  return formatDateForDisplay(value) || "-";
 }
 
 function buildQuery(params) {
@@ -62,18 +17,31 @@ function buildQuery(params) {
 
   if (params.q?.trim()) qs.set("q", params.q.trim());
 
-  if (params.fromDate) {
-    const fromISO = displayToISO(params.fromDate);
-    if (fromISO) qs.set("from_date", fromISO);
-  }
+  const fromISO = toISODate(params.fromDate);
+  if (fromISO) qs.set("from_date", fromISO);
 
-  if (params.toDate) {
-    const toISO = displayToISO(params.toDate);
-    if (toISO) qs.set("to_date", toISO);
-  }
+  const toISO = toISODate(params.toDate);
+  if (toISO) qs.set("to_date", toISO);
 
   const s = qs.toString();
   return s ? `?${s}` : "";
+}
+
+function sortLatestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const dateA = toISODate(a?.payment_date) || "";
+    const dateB = toISODate(b?.payment_date) || "";
+
+    if (dateB !== dateA) return dateB.localeCompare(dateA);
+
+    const noA = String(a?.payment_no || "");
+    const noB = String(b?.payment_no || "");
+
+    return noB.localeCompare(noA, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 export default function VendorPaymentList({ currentUser }) {
@@ -101,7 +69,8 @@ export default function VendorPaymentList({ currentUser }) {
     try {
       const query = buildQuery(activeFilters);
       const data = await apiGet(`/vendor-payments${query}`);
-      setRows(Array.isArray(data) ? data : []);
+      const safeRows = Array.isArray(data) ? data : [];
+      setRows(sortLatestFirst(safeRows));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -112,21 +81,11 @@ export default function VendorPaymentList({ currentUser }) {
 
   useEffect(() => {
     loadData(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   async function onSearch(e) {
     e.preventDefault();
-
-    if (filters.fromDate && !isValidDisplayDate(filters.fromDate)) {
-      setErr("From Date must be in DD/MM/YYYY format.");
-      return;
-    }
-
-    if (filters.toDate && !isValidDisplayDate(filters.toDate)) {
-      setErr("To Date must be in DD/MM/YYYY format.");
-      return;
-    }
-
     await loadData(filters);
   }
 
@@ -189,30 +148,24 @@ export default function VendorPaymentList({ currentUser }) {
             }
           />
 
-          <input
-            type="text"
+          <AppDateInput
             style={input}
-            placeholder="From Date (dd/mm/yyyy)"
-            maxLength={10}
             value={filters.fromDate}
-            onChange={(e) =>
+            onChange={(value) =>
               setFilters((s) => ({
                 ...s,
-                fromDate: normalizeDateInput(e.target.value),
+                fromDate: value,
               }))
             }
           />
 
-          <input
-            type="text"
+          <AppDateInput
             style={input}
-            placeholder="To Date (dd/mm/yyyy)"
-            maxLength={10}
             value={filters.toDate}
-            onChange={(e) =>
+            onChange={(value) =>
               setFilters((s) => ({
                 ...s,
-                toDate: normalizeDateInput(e.target.value),
+                toDate: value,
               }))
             }
           />
@@ -254,7 +207,7 @@ export default function VendorPaymentList({ currentUser }) {
               {rows.map((r) => (
                 <tr key={r.payment_no}>
                   <td style={tdStrong}>{r.payment_no}</td>
-                  <td style={td}>{isoToDisplay(r.payment_date)}</td>
+                  <td style={td}>{formatDate(r.payment_date)}</td>
                   <td style={td}>{r.bill_no}</td>
                   <td style={tdRight}>{money(r.amount)}</td>
                   <td style={td}>{r.remark || "-"}</td>

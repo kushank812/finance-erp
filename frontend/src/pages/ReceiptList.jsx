@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiGet, apiDelete } from "../api/client";
-import {
-  formatDateForDisplay,
-  isValidDisplayDate,
-  normalizeDateInput,
-  toISODate,
-} from "../utils/date";
+import AppDateInput from "../components/ui/AppDateInput";
+import { formatDateForDisplay, toISODate } from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function isoToDisplay(iso) {
-  return formatDateForDisplay(iso) || "-";
+function formatDate(value) {
+  return formatDateForDisplay(value) || "-";
 }
 
 function buildQuery(params) {
@@ -21,18 +17,31 @@ function buildQuery(params) {
 
   if (params.q?.trim()) qs.set("q", params.q.trim());
 
-  if (params.fromDate) {
-    const fromISO = toISODate(params.fromDate);
-    if (fromISO) qs.set("from_date", fromISO);
-  }
+  const fromISO = toISODate(params.fromDate);
+  if (fromISO) qs.set("from_date", fromISO);
 
-  if (params.toDate) {
-    const toISO = toISODate(params.toDate);
-    if (toISO) qs.set("to_date", toISO);
-  }
+  const toISO = toISODate(params.toDate);
+  if (toISO) qs.set("to_date", toISO);
 
   const s = qs.toString();
   return s ? `?${s}` : "";
+}
+
+function sortLatestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const dateA = toISODate(a?.receipt_date) || "";
+    const dateB = toISODate(b?.receipt_date) || "";
+
+    if (dateB !== dateA) return dateB.localeCompare(dateA);
+
+    const noA = String(a?.receipt_no || "");
+    const noB = String(b?.receipt_no || "");
+
+    return noB.localeCompare(noA, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 export default function ReceiptList({ currentUser }) {
@@ -60,7 +69,8 @@ export default function ReceiptList({ currentUser }) {
     try {
       const query = buildQuery(activeFilters);
       const data = await apiGet(`/receipts${query}`);
-      setRows(Array.isArray(data) ? data : []);
+      const safeRows = Array.isArray(data) ? data : [];
+      setRows(sortLatestFirst(safeRows));
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -76,17 +86,6 @@ export default function ReceiptList({ currentUser }) {
 
   async function onSearch(e) {
     e.preventDefault();
-
-    if (filters.fromDate && !isValidDisplayDate(filters.fromDate)) {
-      setErr("From Date must be in DD/MM/YYYY or DD-MM-YYYY format.");
-      return;
-    }
-
-    if (filters.toDate && !isValidDisplayDate(filters.toDate)) {
-      setErr("To Date must be in DD/MM/YYYY or DD-MM-YYYY format.");
-      return;
-    }
-
     await loadData(filters);
   }
 
@@ -149,30 +148,24 @@ export default function ReceiptList({ currentUser }) {
             }
           />
 
-          <input
-            type="text"
+          <AppDateInput
             style={input}
-            placeholder="From Date (dd/mm/yyyy)"
-            maxLength={10}
             value={filters.fromDate}
-            onChange={(e) =>
+            onChange={(value) =>
               setFilters((s) => ({
                 ...s,
-                fromDate: normalizeDateInput(e.target.value),
+                fromDate: value,
               }))
             }
           />
 
-          <input
-            type="text"
+          <AppDateInput
             style={input}
-            placeholder="To Date (dd/mm/yyyy)"
-            maxLength={10}
             value={filters.toDate}
-            onChange={(e) =>
+            onChange={(value) =>
               setFilters((s) => ({
                 ...s,
-                toDate: normalizeDateInput(e.target.value),
+                toDate: value,
               }))
             }
           />
@@ -219,7 +212,7 @@ export default function ReceiptList({ currentUser }) {
               {rows.map((r) => (
                 <tr key={r.receipt_no}>
                   <td style={tdStrong}>{r.receipt_no}</td>
-                  <td style={td}>{isoToDisplay(r.receipt_date)}</td>
+                  <td style={td}>{formatDate(r.receipt_date)}</td>
                   <td style={td}>{r.invoice_no}</td>
                   <td style={tdRight}>{money(r.amount)}</td>
                   <td style={td}>{r.remark || "-"}</td>

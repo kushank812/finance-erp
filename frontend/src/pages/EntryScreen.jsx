@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import AIAssistantPanel from "../components/ui/AIAssistantPanel";
@@ -82,6 +82,39 @@ export default function EntryScreen({ currentUser = null }) {
   const nav = useNavigate();
   const [aiOpen, setAiOpen] = useState(false);
 
+  const role = String(currentUser?.role || "").toUpperCase();
+  const isAdmin = role === "ADMIN";
+
+  const masterShortcuts = useMemo(() => {
+    const base = [
+      {
+        label: "Customer Master",
+        subtext: "Create and maintain customer details.",
+        onClick: () => nav("/customers"),
+      },
+      {
+        label: "Item Master",
+        subtext: "Maintain items, rates, and related product data.",
+        onClick: () => nav("/items"),
+      },
+      {
+        label: "Vendor Master",
+        subtext: "Create and maintain supplier details.",
+        onClick: () => nav("/vendors"),
+      },
+    ];
+
+    if (isAdmin) {
+      base.push({
+        label: "Users",
+        subtext: "Manage users, roles, and access control.",
+        onClick: () => nav("/users"),
+      });
+    }
+
+    return base;
+  }, [isAdmin, nav]);
+
   return (
     <>
       <div style={entryPageWrap}>
@@ -108,9 +141,11 @@ export default function EntryScreen({ currentUser = null }) {
                       Open AI
                     </button>
 
-                    <button onClick={() => nav("/users")} style={btnPrimary} type="button">
-                      Open Users
-                    </button>
+                    {isAdmin ? (
+                      <button onClick={() => nav("/users")} style={btnPrimary} type="button">
+                        Open Users
+                      </button>
+                    ) : null}
                   </div>
                 }
               />
@@ -267,26 +302,14 @@ export default function EntryScreen({ currentUser = null }) {
                   </div>
 
                   <div style={shortcutGrid}>
-                    <ShortcutButton
-                      label="Customer Master"
-                      subtext="Create and maintain customer details."
-                      onClick={() => nav("/customers")}
-                    />
-                    <ShortcutButton
-                      label="Item Master"
-                      subtext="Maintain items, rates, and related product data."
-                      onClick={() => nav("/items")}
-                    />
-                    <ShortcutButton
-                      label="Vendor Master"
-                      subtext="Create and maintain supplier details."
-                      onClick={() => nav("/vendors")}
-                    />
-                    <ShortcutButton
-                      label="Users"
-                      subtext="Manage users, roles, and access control."
-                      onClick={() => nav("/users")}
-                    />
+                    {masterShortcuts.map((item) => (
+                      <ShortcutButton
+                        key={item.label}
+                        label={item.label}
+                        subtext={item.subtext}
+                        onClick={item.onClick}
+                      />
+                    ))}
                   </div>
                 </section>
 
@@ -319,7 +342,11 @@ export default function EntryScreen({ currentUser = null }) {
                     <WorkflowItem
                       step="4"
                       title="Check reports and users"
-                      desc="Open ledger, aging, statement, dashboard, and user management for review and control."
+                      desc={
+                        isAdmin
+                          ? "Open ledger, aging, statement, dashboard, and user management for review and control."
+                          : "Open ledger, aging, statement, and dashboard for review and control."
+                      }
                     />
                   </div>
                 </section>

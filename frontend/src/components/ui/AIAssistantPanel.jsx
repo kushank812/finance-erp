@@ -377,10 +377,7 @@ export default function AIAssistantPanel({
           {
             id: uid(),
             role: "assistant",
-            time: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
+            time: nowTime(),
             text:
               "I checked the latest dashboard, receivables, payables, receipts, vendor payments, and masters. Here is the automatic finance summary.",
             cards: result.cards || [],

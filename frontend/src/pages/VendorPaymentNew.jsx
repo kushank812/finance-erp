@@ -4,7 +4,7 @@ import { apiGet, apiPost } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { FormField } from "../components/ui/FormField";
-import { formatDateForDisplay } from "../utils/date";
+import { formatDateForDisplay, toISODate } from "../utils/date";
 import {
   page,
   stack,
@@ -32,8 +32,21 @@ function num(v) {
   return Number.isFinite(x) ? x : 0;
 }
 
-function isoToDisplay(iso) {
-  return formatDateForDisplay(iso);
+function formatDate(value) {
+  return formatDateForDisplay(value) || "-";
+}
+
+function sortOpenBills(rows) {
+  return [...rows].sort((a, b) => {
+    const dateA = toISODate(a?.bill_date) || "";
+    const dateB = toISODate(b?.bill_date) || "";
+    if (dateB !== dateA) return dateB.localeCompare(dateA);
+
+    return String(b?.bill_no || "").localeCompare(String(a?.bill_no || ""), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 export default function VendorPaymentNew() {
@@ -70,13 +83,9 @@ export default function VendorPaymentNew() {
       const allBills = Array.isArray(b) ? b : [];
       const allVendors = Array.isArray(v) ? v : [];
 
-      const openBills = allBills
-        .filter((r) => num(r.balance) > 0)
-        .sort((a, b) =>
-          String(a.bill_no || "").localeCompare(String(b.bill_no || ""))
-        );
+      const openBills = allBills.filter((r) => num(r.balance) > 0);
 
-      setBills(openBills);
+      setBills(sortOpenBills(openBills));
       setVendors(allVendors);
 
       if (billNo && !openBills.some((r) => r.bill_no === billNo)) {
@@ -318,7 +327,7 @@ export default function VendorPaymentNew() {
                             Vendor: {vendorName || r.vendor_code}
                           </div>
                           <div style={dropdownSub}>
-                            Bill Date: {r.bill_date ? isoToDisplay(r.bill_date) : "-"}
+                            Bill Date: {r.bill_date ? formatDate(r.bill_date) : "-"}
                           </div>
                           <div style={dropdownSub}>
                             Total: {money(r.grand_total)} | Balance: {money(r.balance)}
@@ -373,7 +382,7 @@ export default function VendorPaymentNew() {
             />
             <InfoMini
               label="Bill Date"
-              value={selected?.bill_date ? isoToDisplay(selected.bill_date) : "-"}
+              value={selected?.bill_date ? formatDate(selected.bill_date) : "-"}
             />
             <InfoMini
               label="Bill Total"
@@ -398,7 +407,7 @@ export default function VendorPaymentNew() {
             <SummaryRow label="Bill No" value={selected?.bill_no || "-"} />
             <SummaryRow
               label="Bill Date"
-              value={selected?.bill_date ? isoToDisplay(selected.bill_date) : "-"}
+              value={selected?.bill_date ? formatDate(selected.bill_date) : "-"}
             />
             <SummaryRow
               label="Open Balance"

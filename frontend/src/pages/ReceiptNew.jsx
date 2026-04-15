@@ -27,8 +27,21 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function isoToDisplay(iso) {
-  return formatDateForDisplay(iso);
+function formatDate(value) {
+  return formatDateForDisplay(value) || "-";
+}
+
+function sortOpenInvoices(rows) {
+  return [...rows].sort((a, b) => {
+    const dateA = String(a?.invoice_date || "");
+    const dateB = String(b?.invoice_date || "");
+    if (dateB !== dateA) return dateB.localeCompare(dateA);
+
+    return String(b?.invoice_no || "").localeCompare(String(a?.invoice_no || ""), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 export default function ReceiptNew() {
@@ -57,7 +70,7 @@ export default function ReceiptNew() {
       const data = await apiGet("/sales-invoices/");
       const allRows = Array.isArray(data) ? data : [];
       const openInvoices = allRows.filter((r) => Number(r.balance || 0) > 0);
-      setRows(openInvoices);
+      setRows(sortOpenInvoices(openInvoices));
 
       if (invoiceNo && !openInvoices.some((r) => r.invoice_no === invoiceNo)) {
         setInvoiceNo("");
@@ -292,8 +305,8 @@ export default function ReceiptNew() {
                             Customer: {r.customer_code || "-"}
                           </div>
                           <div style={dropdownSub}>
-                            Invoice Date: {isoToDisplay(r.invoice_date)} | Due Date:{" "}
-                            {r.due_date ? isoToDisplay(r.due_date) : "-"}
+                            Invoice Date: {formatDate(r.invoice_date)} | Due Date:{" "}
+                            {formatDate(r.due_date)}
                           </div>
                           <div style={dropdownSub}>
                             Total: {money(r.grand_total)} | Balance: {money(r.balance)}
@@ -336,11 +349,11 @@ export default function ReceiptNew() {
             <InfoMini label="Customer" value={selected?.customer_code || "-"} />
             <InfoMini
               label="Invoice Date"
-              value={selected?.invoice_date ? isoToDisplay(selected.invoice_date) : "-"}
+              value={selected?.invoice_date ? formatDate(selected.invoice_date) : "-"}
             />
             <InfoMini
               label="Due Date"
-              value={selected?.due_date ? isoToDisplay(selected.due_date) : "-"}
+              value={selected?.due_date ? formatDate(selected.due_date) : "-"}
             />
             <InfoMini
               label="Invoice Total"
@@ -364,7 +377,7 @@ export default function ReceiptNew() {
             <SummaryRow label="Invoice No" value={selected?.invoice_no || "-"} />
             <SummaryRow
               label="Invoice Date"
-              value={selected?.invoice_date ? isoToDisplay(selected.invoice_date) : "-"}
+              value={selected?.invoice_date ? formatDate(selected.invoice_date) : "-"}
             />
             <SummaryRow
               label="Open Balance"

@@ -1,269 +1,214 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { apiDelete, apiGet } from "../api/client";
-import AlertBox from "../components/ui/AlertBox";
-import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import { apiGet } from "../api/client";
+import { useSearchParams } from "react-router-dom";
 import { formatDateForDisplay } from "../utils/date";
-import {
-  page,
-  stack,
-  btnPrimary,
-  btnSecondary,
-  btnDangerMini,
-  disabledBtn,
-} from "../components/ui/uiStyles";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function isoToDisplay(iso) {
-  return formatDateForDisplay(iso);
+function formatDate(value) {
+  return formatDateForDisplay(value) || "-";
 }
 
-export default function ReceiptView() {
-  const { receiptNo } = useParams();
-  const nav = useNavigate();
+export default function SalesInvoicePrintView() {
+  const [searchParams] = useSearchParams();
 
-  const [receipt, setReceipt] = useState(null);
-  const [invoice, setInvoice] = useState(null);
+  const [list, setList] = useState([]);
+  const [invoiceNo, setInvoiceNo] = useState("");
+  const [doc, setDoc] = useState(null);
+
   const [err, setErr] = useState("");
-  const [okMsg, setOkMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const [reversing, setReversing] = useState(false);
 
   useEffect(() => {
-    let active = true;
+    const qInv = searchParams.get("invoice");
+    if (qInv) setInvoiceNo(qInv);
+  }, [searchParams]);
 
-    async function loadReceiptAndInvoice() {
-      setErr("");
-      setOkMsg("");
-      setReceipt(null);
-      setInvoice(null);
-
-      if (!receiptNo) return;
-
-      setLoading(true);
-      try {
-        const receiptData = await apiGet(
-          `/receipts/${encodeURIComponent(receiptNo)}`
-        );
-
-        if (!active) return;
-        setReceipt(receiptData || null);
-
-        if (receiptData?.invoice_no) {
-          const invoiceData = await apiGet(
-            `/sales-invoices/${encodeURIComponent(receiptData.invoice_no)}`
-          );
-          if (!active) return;
-          setInvoice(invoiceData || null);
-        }
-      } catch (e) {
-        if (active) {
-          setErr(String(e.message || e));
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadReceiptAndInvoice();
-
-    return () => {
-      active = false;
-    };
-  }, [receiptNo]);
-
-  async function onReverseReceipt() {
-    if (!receipt?.receipt_no) return;
-
-    const ok = window.confirm(
-      `Are you sure you want to reverse receipt ${receipt.receipt_no}?\n\n` +
-        `This will remove the receipt entry and recalculate the linked invoice balance/status.\n` +
-        `Use this only for wrong or mistaken receipt entries.`
-    );
-    if (!ok) return;
-
+  async function loadList() {
+    setErr("");
     try {
-      setErr("");
-      setOkMsg("");
-      setReversing(true);
-
-      const res = await apiDelete(
-        `/receipts/${encodeURIComponent(receipt.receipt_no)}`
-      );
-
-      setOkMsg(
-        res?.message || `Receipt ${receipt.receipt_no} reversed successfully.`
-      );
-
-      setTimeout(() => {
-        nav("/receipts");
-      }, 1200);
+      const data = await apiGet("/sales-invoices/");
+      setList(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr(String(e.message || e));
-    } finally {
-      setReversing(false);
     }
   }
 
+  async function loadDoc(inv) {
+    if (!inv) {
+      setDoc(null);
+      return;
+    }
+
+    setErr("");
+    setLoading(true);
+
+    try {
+      const data = await apiGet(`/sales-invoices/${encodeURIComponent(inv)}`);
+      setDoc(data);
+    } catch (e) {
+      setErr(String(e.message || e));
+      setDoc(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadList();
+  }, []);
+
+  useEffect(() => {
+    loadDoc(invoiceNo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceNo]);
+
   const totals = useMemo(() => {
-    const invoiceTotal = Number(invoice?.grand_total || 0);
-    const totalReceived = Number(invoice?.amount_received || 0);
-    const currentReceiptAmount = Number(receipt?.amount || 0);
-
-    const receivedBeforeThisReceipt =
-      totalReceived > 0 ? Math.max(totalReceived - currentReceiptAmount, 0) : 0;
-
-    const balanceAfterReceipt = Number(invoice?.balance || 0);
-
+    if (!doc) return null;
     return {
-      invoiceTotal: money(invoiceTotal),
-      receivedBeforeThisReceipt: money(receivedBeforeThisReceipt),
-      currentReceiptAmount: money(currentReceiptAmount),
-      totalReceived: money(totalReceived),
-      balanceAfterReceipt: money(balanceAfterReceipt),
+      subtotal: money(doc.subtotal),
+      taxPercent: money(doc.tax_percent),
+      taxAmount: money(doc.tax_amount),
+      grandTotal: money(doc.grand_total),
+      received: money(doc.amount_received),
+      balance: money(doc.balance),
     };
-  }, [invoice, receipt]);
-
-  const titleReceiptNo = receipt?.receipt_no || receiptNo || "-";
-  const linkedInvoiceNo = receipt?.invoice_no || invoice?.invoice_no || "-";
-  const canReverse = !!receipt && !loading && !reversing;
+  }, [doc]);
 
   return (
-    <div style={page}>
-      <PageHeaderBlock
-        eyebrowText="RECEIPTS"
-        title="Receipt Voucher"
-        subtitle={`Receipt No: ${titleReceiptNo}`}
-        actions={
-          <div className="no-print" style={toolbarWrap}>
-            <button type="button" onClick={() => nav(-1)} style={btnSecondary}>
-              Back
-            </button>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 18 }}>
+      <h2 style={{ margin: 0, color: "#fff" }}>Sales Invoice View (Print)</h2>
+      <p style={{ marginTop: 6, color: "#b8b8b8" }}>
+        View an invoice in document format and print / save as PDF.
+      </p>
 
-            <button
-              type="button"
-              onClick={onReverseReceipt}
-              style={canReverse ? btnDanger : disabledBtn(btnDanger)}
-              disabled={!canReverse}
-              title={!receipt ? "Receipt not loaded" : "Reverse this receipt"}
-            >
-              {reversing ? "Reversing..." : "Reverse Receipt"}
-            </button>
+      {err && <div style={msgErr}>{err}</div>}
 
-            <button
-              type="button"
-              onClick={() => window.print()}
-              style={btnPrimary}
-              disabled={!receipt || loading || reversing}
-            >
-              Print / Save PDF
-            </button>
-          </div>
-        }
-      />
+      <div style={topBar}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <label style={lblDark}>Select Invoice</label>
+          <select
+            value={invoiceNo}
+            onChange={(e) => setInvoiceNo(e.target.value)}
+            style={inp}
+          >
+            <option value="">-- Select Invoice --</option>
+            {list.map((r) => (
+              <option key={r.invoice_no} value={r.invoice_no}>
+                {r.invoice_no} (Bal: {money(r.balance)})
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div className="no-print" style={stack}>
-        {err ? <AlertBox kind="error" message={err} /> : null}
-        {okMsg ? <AlertBox kind="success" message={okMsg} /> : null}
+        <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
+          <button onClick={loadList} style={btnGhost} type="button">
+            Refresh
+          </button>
+          <button
+            onClick={() => window.print()}
+            style={btnPrimary}
+            disabled={!doc || loading}
+            title={!doc ? "Select an invoice first" : ""}
+            type="button"
+          >
+            Print / Save PDF
+          </button>
+        </div>
       </div>
 
       <div id="print-area" style={paper}>
-        {!receiptNo ? (
-          <div style={{ color: "#111" }}>Missing receipt number in URL.</div>
+        {!invoiceNo ? (
+          <div style={{ color: "#111" }}>Select an invoice to view.</div>
         ) : loading ? (
-          <div style={{ color: "#111" }}>Loading receipt...</div>
-        ) : !receipt ? (
-          <div style={{ color: "#111" }}>No receipt data found.</div>
+          <div style={{ color: "#111" }}>Loading invoice…</div>
+        ) : !doc ? (
+          <div style={{ color: "#111" }}>No invoice found.</div>
         ) : (
           <>
             <div style={docHeader}>
               <div>
                 <div style={companyName}>Finance AP/AR System</div>
-                <div style={muted}>CUSTOMER RECEIPT</div>
+                <div style={muted}>Sales Invoice</div>
               </div>
 
               <div style={{ textAlign: "right" }}>
-                <div style={bigId}>{receipt.receipt_no}</div>
-                <div style={muted}>Linked Invoice: {linkedInvoiceNo}</div>
+                <div style={bigId}>{doc.invoice_no}</div>
+                <div style={muted}>Status: {doc.status}</div>
               </div>
             </div>
 
             <div style={hr} />
 
             <div style={metaGrid}>
-              <Info label="Receipt No" value={receipt.receipt_no || "-"} />
-              <Info
-                label="Receipt Date"
-                value={receipt?.receipt_date ? isoToDisplay(receipt.receipt_date) : "-"}
-              />
-              <Info label="Invoice No" value={linkedInvoiceNo} />
-              <Info label="Customer Code" value={invoice?.customer_code || "-"} />
-              <Info
-                label="Invoice Date"
-                value={invoice?.invoice_date ? isoToDisplay(invoice.invoice_date) : "-"}
-              />
-              <Info label="Receipt Remark" value={receipt.remark || "-"} />
+              <Info label="Customer Code" value={doc.customer_code || "-"} />
+              <Info label="Invoice Date" value={formatDate(doc.invoice_date)} />
+              <Info label="Due Date" value={formatDate(doc.due_date)} />
+              <Info label="Remark" value={doc.remark || "-"} />
             </div>
 
-            {invoice ? (
-              <>
-                <div style={{ height: 14 }} />
-                <div style={linkedCard}>
-                  <div style={linkedTitle}>Linked Sales Invoice</div>
-                  <div style={linkedGrid}>
-                    <InfoMini label="Invoice No" value={invoice.invoice_no || "-"} />
-                    <InfoMini label="Status" value={invoice.status || "-"} />
-                    <InfoMini
-                      label="Invoice Date"
-                      value={invoice?.invoice_date ? isoToDisplay(invoice.invoice_date) : "-"}
-                    />
-                    <InfoMini label="Grand Total" value={money(invoice.grand_total)} />
-                    <InfoMini label="Received" value={money(invoice.amount_received)} />
-                    <InfoMini label="Balance" value={money(invoice.balance)} />
-                  </div>
-                </div>
-              </>
-            ) : null}
+            <div style={{ height: 12 }} />
+
+            <div style={{ overflowX: "auto" }}>
+              <table
+                width="100%"
+                cellPadding="10"
+                style={{ borderCollapse: "collapse", minWidth: 700 }}
+              >
+                <thead>
+                  <tr style={{ background: "#f6f7f9" }}>
+                    <th>#</th>
+                    <th>Item Code</th>
+                    <th align="right">Qty</th>
+                    <th align="right">Rate</th>
+                    <th align="right">Line Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(doc.lines || []).map((ln, idx) => (
+                    <tr key={ln.id ?? idx} style={{ borderTop: "1px solid #eee" }}>
+                      <td style={{ color: "#111" }}>{idx + 1}</td>
+                      <td style={{ color: "#111" }}>{ln.item_code}</td>
+                      <td style={{ color: "#111" }} align="right">
+                        {money(ln.qty)}
+                      </td>
+                      <td style={{ color: "#111" }} align="right">
+                        {money(ln.rate)}
+                      </td>
+                      <td style={{ color: "#111", fontWeight: 800 }} align="right">
+                        {money(ln.line_total)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {(doc.lines || []).length === 0 && (
+                    <tr>
+                      <td colSpan="5" style={{ padding: 12, color: "#666" }}>
+                        No line items.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
             <div style={{ height: 14 }} />
 
             <div style={totalsWrap}>
-              <TotalRow label="Invoice Total" value={totals.invoiceTotal} />
-              <TotalRow
-                label="Received Before This Receipt"
-                value={totals.receivedBeforeThisReceipt}
-              />
-              <TotalRow
-                label="This Receipt Amount"
-                value={totals.currentReceiptAmount}
-                strong
-              />
+              <TotalRow label="Subtotal" value={totals.subtotal} />
+              <TotalRow label={`Tax (${totals.taxPercent}%)`} value={totals.taxAmount} />
+              <TotalRow label="Grand Total" value={totals.grandTotal} strong />
               <div style={hr} />
-              <TotalRow label="Total Received" value={totals.totalReceived} />
-              <TotalRow
-                label="Balance After Receipt"
-                value={totals.balanceAfterReceipt}
-                strong
-              />
+              <TotalRow label="Amount Received" value={totals.received} />
+              <TotalRow label="Balance" value={totals.balance} strong />
             </div>
 
-            <div style={{ height: 18 }} />
+            <div style={{ height: 16 }} />
 
-            <div style={signRow}>
-              <div style={signBox}>
-                <div style={signLine} />
-                <div style={signLabel}>Received By</div>
-              </div>
-
-              <div style={signBox}>
-                <div style={signLine} />
-                <div style={signLabel}>Authorized Signatory</div>
-              </div>
+            <div style={{ color: "#666", fontSize: 12 }}>
+              Note: Use “Create Receipt (AR)” to update Amount Received and Balance.
             </div>
           </>
         )}
@@ -283,15 +228,6 @@ function Info({ label, value }) {
   );
 }
 
-function InfoMini({ label, value }) {
-  return (
-    <div style={infoMini}>
-      <div style={infoMiniLabel}>{label}</div>
-      <div style={infoMiniValue}>{value}</div>
-    </div>
-  );
-}
-
 function TotalRow({ label, value, strong }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -301,11 +237,30 @@ function TotalRow({ label, value, strong }) {
   );
 }
 
-const toolbarWrap = {
+const topBar = {
   display: "flex",
+  gap: 12,
   flexWrap: "wrap",
-  gap: 10,
   alignItems: "end",
+  marginBottom: 12,
+};
+
+const lblDark = {
+  fontSize: 13,
+  color: "#fff",
+  display: "block",
+  marginBottom: 6,
+  fontWeight: 700,
+};
+
+const inp = {
+  width: "100%",
+  padding: 10,
+  border: "1px solid #d0d0d0",
+  borderRadius: 10,
+  outline: "none",
+  background: "#fff",
+  color: "#111",
 };
 
 const paper = {
@@ -315,13 +270,7 @@ const paper = {
   padding: 16,
 };
 
-const docHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
+const docHeader = { display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
 const companyName = { fontSize: 18, fontWeight: 900, color: "#111" };
 const muted = { fontSize: 12, color: "#666", marginTop: 2 };
 const bigId = { fontSize: 18, fontWeight: 900, color: "#111" };
@@ -329,132 +278,62 @@ const hr = { height: 1, background: "#eee", margin: "12px 0" };
 
 const metaGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
   gap: 12,
 };
 
-const infoBox = {
-  background: "#f7f8fa",
-  border: "1px solid #eee",
-  borderRadius: 14,
-  padding: 12,
-};
-
+const infoBox = { background: "#f7f8fa", border: "1px solid #eee", borderRadius: 14, padding: 12 };
 const infoLabel = { fontSize: 12, color: "#666" };
-
-const infoValue = {
-  fontSize: 14,
-  fontWeight: 800,
-  color: "#111",
-  marginTop: 4,
-};
-
-const linkedCard = {
-  background: "#f8fbff",
-  border: "1px solid #dbe8ff",
-  borderRadius: 14,
-  padding: 12,
-};
-
-const linkedTitle = {
-  fontSize: 13,
-  fontWeight: 900,
-  color: "#0b3d91",
-  marginBottom: 10,
-};
-
-const linkedGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 10,
-};
-
-const infoMini = {
-  background: "#fff",
-  border: "1px solid #e6e6e6",
-  borderRadius: 12,
-  padding: 10,
-};
-
-const infoMiniLabel = {
-  fontSize: 12,
-  color: "#666",
-  fontWeight: 700,
-};
-
-const infoMiniValue = {
-  fontSize: 14,
-  color: "#111",
-  fontWeight: 900,
-  marginTop: 4,
-};
+const infoValue = { fontSize: 14, fontWeight: 800, color: "#111", marginTop: 4 };
 
 const totalsWrap = {
   marginLeft: "auto",
-  width: "min(420px, 100%)",
+  maxWidth: 380,
   border: "1px solid #eee",
   borderRadius: 14,
   padding: 12,
   background: "#fafafa",
 };
 
-const signRow = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 24,
-  marginTop: 30,
-};
-
-const signBox = {
-  paddingTop: 24,
-};
-
-const signLine = {
-  borderTop: "1px solid #111",
-  width: "100%",
-  marginBottom: 6,
-};
-
-const signLabel = {
-  fontSize: 12,
-  color: "#444",
-  textAlign: "center",
-  fontWeight: 700,
-};
-
-const btnDanger = {
-  ...btnDangerMini,
-  minHeight: 44,
+const btnPrimary = {
   padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #0b5cff",
+  background: "#0b5cff",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const btnGhost = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #ccc",
+  background: "white",
+  color: "#111",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const msgErr = {
+  background: "#ffecec",
+  border: "1px solid #ffb3b3",
+  padding: 10,
+  borderRadius: 12,
+  color: "#a40000",
+  marginBottom: 12,
 };
 
 const printCss = `
 @media print {
-  html, body {
-    background: white !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  #root {
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  nav {
-    display: none !important;
-  }
-
-  .no-print {
-    display: none !important;
-  }
-
+  body { background: white !important; }
+  nav { display: none !important; }
+  #root { padding: 0 !important; }
   #print-area {
     border: none !important;
     border-radius: 0 !important;
     padding: 0 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
   }
+  button, select, input, textarea { display: none !important; }
 }
 `;

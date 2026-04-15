@@ -4,26 +4,75 @@ export function pad2(value) {
   return String(value).padStart(2, "0");
 }
 
+function isLeapYear(year) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function daysInMonth(year, month) {
+  const y = Number(year);
+  const m = Number(month);
+
+  if (m < 1 || m > 12) return 0;
+  if ([1, 3, 5, 7, 8, 10, 12].includes(m)) return 31;
+  if ([4, 6, 9, 11].includes(m)) return 30;
+  return isLeapYear(y) ? 29 : 28;
+}
+
+function isValidYMD(year, month, day) {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) {
+    return false;
+  }
+
+  if (m < 1 || m > 12) return false;
+
+  const maxDay = daysInMonth(y, m);
+  return d >= 1 && d <= maxDay;
+}
+
+function cleanDateString(value) {
+  let s = String(value || "").trim();
+  if (!s) return "";
+
+  if (s.includes("T")) s = s.split("T")[0];
+  if (s.includes(" ")) s = s.split(" ")[0];
+
+  return s;
+}
+
+function parseToISO(value) {
+  const s = cleanDateString(value);
+  if (!s) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-");
+    return isValidYMD(y, m, d) ? `${y}-${m}-${d}` : "";
+  }
+
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("-");
+    return isValidYMD(y, m, d) ? `${y}-${m}-${d}` : "";
+  }
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("/");
+    return isValidYMD(y, m, d) ? `${y}-${m}-${d}` : "";
+  }
+
+  return "";
+}
+
 export function toDisplayDate(value) {
   if (!value) return "";
 
   try {
-    let s = String(value).trim();
-    if (!s) return "";
+    const iso = parseToISO(value);
+    if (!iso) return "";
 
-    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return s;
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("/");
-      return `${d}-${m}-${y}`;
-    }
-
-    if (s.includes("T")) s = s.split("T")[0];
-    if (s.includes(" ")) s = s.split(" ")[0];
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
-
-    const [y, m, d] = s.split("-");
+    const [y, m, d] = iso.split("-");
     return `${d}-${m}-${y}`;
   } catch {
     return "";
@@ -34,23 +83,7 @@ export function toInputDate(value) {
   if (!value) return "";
 
   try {
-    let s = String(value).trim();
-    if (!s) return "";
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
-
-    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("-");
-      return `${d}/${m}/${y}`;
-    }
-
-    if (s.includes("T")) s = s.split("T")[0];
-    if (s.includes(" ")) s = s.split(" ")[0];
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
-
-    const [y, m, d] = s.split("-");
-    return `${d}/${m}/${y}`;
+    return parseToISO(value);
   } catch {
     return "";
   }
@@ -60,22 +93,7 @@ export function toISODate(value) {
   if (!value) return "";
 
   try {
-    let s = String(value).trim();
-    if (!s) return "";
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("/");
-      return `${y}-${m}-${d}`;
-    }
-
-    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("-");
-      return `${y}-${m}-${d}`;
-    }
-
-    return "";
+    return parseToISO(value);
   } catch {
     return "";
   }
@@ -95,38 +113,11 @@ export function isValidDisplayDate(value) {
   const s = String(value).trim();
   if (!/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(s)) return false;
 
-  const iso = toISODate(s);
-  if (!iso) return false;
-
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(`${iso}T00:00:00`);
-
-  if (Number.isNaN(dt.getTime())) return false;
-
-  return (
-    dt.getFullYear() === y &&
-    dt.getMonth() + 1 === m &&
-    dt.getDate() === d
-  );
+  return Boolean(parseToISO(s));
 }
 
 export function normalizeISODate(value) {
-  if (!value) return "";
-
-  try {
-    let s = String(value).trim();
-    if (!s) return "";
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return toISODate(s);
-    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return toISODate(s);
-
-    if (s.includes("T")) s = s.split("T")[0];
-    if (s.includes(" ")) s = s.split(" ")[0];
-
-    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
-  } catch {
-    return "";
-  }
+  return toISODate(value);
 }
 
 export function normalizeDateInput(value) {
@@ -181,4 +172,4 @@ export const formatDateForInput = toInputDate;
 export const formatDateDDMMYYYY = toDisplayDate;
 export const parseDisplayDateToISO = toISODate;
 export const formatDateForApi = toISODate;
-export const formatDateForCalendarText = toInputDate;
+export const formatDateForCalendarText = toDisplayDate;

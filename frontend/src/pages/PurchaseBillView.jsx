@@ -4,7 +4,7 @@ import { apiDelete, apiGet, apiPatch } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import AppDateInput from "../components/ui/AppDateInput";
-import { formatDateForDisplay } from "../utils/date";
+import { formatDateForDisplay, toISODate } from "../utils/date";
 import {
   page,
   stack,
@@ -40,15 +40,20 @@ function money(n) {
 }
 
 function fmtDate(value) {
-  return formatDateForDisplay(value);
+  return formatDateForDisplay(value) || "-";
 }
 
 function buildQuery(params) {
   const qs = new URLSearchParams();
 
   if (params.q?.trim()) qs.set("q", params.q.trim());
-  if (params.fromDate) qs.set("from_date", params.fromDate);
-  if (params.toDate) qs.set("to_date", params.toDate);
+
+  const fromISO = toISODate(params.fromDate);
+  if (fromISO) qs.set("from_date", fromISO);
+
+  const toISO = toISODate(params.toDate);
+  if (toISO) qs.set("to_date", toISO);
+
   if (params.status) qs.set("status", params.status);
 
   const s = qs.toString();
@@ -111,10 +116,10 @@ function actionDisabledStyle(baseStyle) {
 
 function sortBillsLatestFirst(rows) {
   return [...rows].sort((a, b) => {
-    const dateA = a?.bill_date ? new Date(a.bill_date).getTime() : 0;
-    const dateB = b?.bill_date ? new Date(b.bill_date).getTime() : 0;
+    const dateA = toISODate(a?.bill_date) || "";
+    const dateB = toISODate(b?.bill_date) || "";
 
-    if (dateB !== dateA) return dateB - dateA;
+    if (dateB !== dateA) return dateB.localeCompare(dateA);
 
     const noA = String(a?.bill_no || "");
     const noB = String(b?.bill_no || "");

@@ -4,7 +4,7 @@ import { apiDelete, apiGet, apiPatch } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import AppDateInput from "../components/ui/AppDateInput";
-import { formatDateForDisplay } from "../utils/date";
+import { formatDateForDisplay, toISODate } from "../utils/date";
 import {
   page,
   stack,
@@ -40,15 +40,20 @@ function money(n) {
 }
 
 function fmtDate(value) {
-  return formatDateForDisplay(value);
+  return formatDateForDisplay(value) || "-";
 }
 
 function buildQuery(params) {
   const qs = new URLSearchParams();
 
   if (params.q?.trim()) qs.set("q", params.q.trim());
-  if (params.fromDate) qs.set("from_date", params.fromDate);
-  if (params.toDate) qs.set("to_date", params.toDate);
+
+  const fromISO = toISODate(params.fromDate);
+  if (fromISO) qs.set("from_date", fromISO);
+
+  const toISO = toISODate(params.toDate);
+  if (toISO) qs.set("to_date", toISO);
+
   if (params.status) qs.set("status", params.status);
 
   const s = qs.toString();
@@ -111,10 +116,10 @@ function actionDisabledStyle(baseStyle) {
 
 function sortInvoicesLatestFirst(rows) {
   return [...rows].sort((a, b) => {
-    const dateA = a?.invoice_date ? new Date(a.invoice_date).getTime() : 0;
-    const dateB = b?.invoice_date ? new Date(b.invoice_date).getTime() : 0;
+    const dateA = toISODate(a?.invoice_date) || "";
+    const dateB = toISODate(b?.invoice_date) || "";
 
-    if (dateB !== dateA) return dateB - dateA;
+    if (dateB !== dateA) return dateB.localeCompare(dateA);
 
     const noA = String(a?.invoice_no || "");
     const noB = String(b?.invoice_no || "");
@@ -443,8 +448,7 @@ export default function SalesInvoiceDirectView({ currentUser }) {
 
                   let cancelTitle = "Cancel invoice";
                   if (cancelled) cancelTitle = "Already cancelled";
-                  else if (receiptExists)
-                    cancelTitle = "Reverse receipt(s) first before cancelling";
+                  else if (receiptExists) cancelTitle = "Reverse receipt(s) first before cancelling";
 
                   let deleteTitle = "Delete invoice";
                   if (!isAdmin) {
@@ -454,8 +458,7 @@ export default function SalesInvoiceDirectView({ currentUser }) {
                   } else if (Number(row.balance || 0) !== 0) {
                     deleteTitle = "Invoice can be deleted only when balance is 0";
                   } else {
-                    deleteTitle =
-                      "Delete allowed. Linked receipts will be automatically deleted.";
+                    deleteTitle = "Delete allowed. Linked receipts will be automatically deleted.";
                   }
 
                   return (
@@ -487,9 +490,7 @@ export default function SalesInvoiceDirectView({ currentUser }) {
                               <button
                                 type="button"
                                 style={
-                                  editAllowed
-                                    ? miniBtnBlue
-                                    : actionDisabledStyle(miniBtnBlue)
+                                  editAllowed ? miniBtnBlue : actionDisabledStyle(miniBtnBlue)
                                 }
                                 disabled={!editAllowed || busy}
                                 title={editTitle}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiGet } from "../api/client";
+import { formatDateForDisplay } from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
@@ -12,13 +13,7 @@ function fmt(value) {
 }
 
 function fmtDate(value) {
-  if (!value) return "-";
-  const s = String(value).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}-${mm}-${yyyy}`;
+  return formatDateForDisplay(value) || "-";
 }
 
 function getStatusText(status) {
@@ -112,7 +107,11 @@ export default function PurchaseBillPrintView() {
         </div>
       </div>
 
-      {err ? <div className="no-print" style={msgErr}>{err}</div> : null}
+      {err ? (
+        <div className="no-print" style={msgErr}>
+          {err}
+        </div>
+      ) : null}
 
       <div id="print-area" style={paper}>
         {!billNo ? (

@@ -5,7 +5,6 @@ import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { FormField, AutoField } from "../components/ui/FormField";
 import AppDateInput from "../components/ui/AppDateInput";
-import { formatDateForDisplay } from "../utils/date";
 import {
   page,
   stack,
@@ -518,7 +517,6 @@ export default function BillingNew() {
   function getPageTitle() {
     if (!isEditMode) return "Sales Invoice";
     if (access.readOnly) return "Sales Invoice Details";
-    if (access.restricted) return "Sales Invoice Edit";
     return "Sales Invoice Edit";
   }
 

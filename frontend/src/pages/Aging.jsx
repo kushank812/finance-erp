@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
 import AppDateInput from "../components/ui/AppDateInput";
+import { formatDateForDisplay, toISODate, todayISO } from "../utils/date";
 import {
   BarChart,
   Bar,
@@ -61,28 +62,26 @@ function compactMoney(n) {
   return `${x.toFixed(0)}`;
 }
 
-function isoToDisplay(iso) {
-  if (!iso) return "-";
-  const s = String(iso).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}-${mm}-${yyyy}`;
+function isoToDisplay(value) {
+  return formatDateForDisplay(value) || "-";
 }
 
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function toSafeIso(value) {
+  return toISODate(value) || "";
 }
 
 function daysBetween(dateISOa, dateISOb) {
-  const a = new Date(dateISOa);
-  const b = new Date(dateISOb);
-  const ms = b.getTime() - a.getTime();
+  const a = toSafeIso(dateISOa);
+  const b = toSafeIso(dateISOb);
+
+  if (!a || !b) return 0;
+
+  const start = new Date(`${a}T00:00:00`);
+  const end = new Date(`${b}T00:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+
+  const ms = end.getTime() - start.getTime();
   return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
 
@@ -105,8 +104,8 @@ function sortRowsByOverdueDays(list) {
 
     if (overdueB !== overdueA) return overdueB - overdueA;
 
-    const dueA = a?.dueDate ? new Date(a.dueDate).getTime() : 0;
-    const dueB = b?.dueDate ? new Date(b.dueDate).getTime() : 0;
+    const dueA = a?.dueDate ? new Date(`${a.dueDate}T00:00:00`).getTime() : 0;
+    const dueB = b?.dueDate ? new Date(`${b.dueDate}T00:00:00`).getTime() : 0;
 
     if (dueA !== dueB) return dueA - dueB;
 
@@ -163,11 +162,13 @@ export default function Aging() {
   async function load() {
     setErr("");
     setLoading(true);
+
     try {
       const [arData, apData] = await Promise.all([
         apiGet("/sales-invoices/"),
         apiGet("/purchase-invoices/"),
       ]);
+
       setAr(Array.isArray(arData) ? arData : []);
       setAp(Array.isArray(apData) ? apData : []);
     } catch (e) {
@@ -187,24 +188,29 @@ export default function Aging() {
     const src = tab === "AR" ? ar : ap;
     const qq = q.trim().toLowerCase();
     const wantedStatus = normalizeStatus(status);
+    const asOfIso = toSafeIso(asOf) || todayISO();
 
     const mapped = src.map((r) => {
       const docNo = tab === "AR" ? r.invoice_no : r.bill_no;
       const party = tab === "AR" ? r.customer_code : r.vendor_code;
-      const docDate = tab === "AR" ? r.invoice_date : r.bill_date;
-      const dueDate = r.due_date || docDate;
-      const bal = Number(r.balance || 0);
 
-      const dOver = daysBetween(String(dueDate || docDate || asOf), asOf);
+      const rawDocDate = tab === "AR" ? r.invoice_date : r.bill_date;
+      const docDate = toSafeIso(rawDocDate);
+      const dueDate = toSafeIso(r.due_date || rawDocDate);
+
+      const bal = Number(r.balance || 0);
+      const effectiveBaseDate = dueDate || docDate || asOfIso;
+
+      const dOver = daysBetween(effectiveBaseDate, asOfIso);
       const daysOverdue = Math.max(0, dOver);
       const bucket = bucketFromDaysOverdue(dOver);
       const rowStatus = normalizeStatus(r.status);
 
       return {
-        docNo,
-        party,
-        docDate: String(docDate || ""),
-        dueDate: String(dueDate || ""),
+        docNo: String(docNo || ""),
+        party: String(party || ""),
+        docDate,
+        dueDate,
         daysOverdue,
         bucket,
         balance: bal,
@@ -270,11 +276,26 @@ export default function Aging() {
     const total = Number(totals.total || 0);
 
     return [
-      { name: "Not Due", percent: total ? (Number(totals["Not Due"]) / total) * 100 : 0 },
-      { name: "0-30", percent: total ? (Number(totals["0-30"]) / total) * 100 : 0 },
-      { name: "31-60", percent: total ? (Number(totals["31-60"]) / total) * 100 : 0 },
-      { name: "61-90", percent: total ? (Number(totals["61-90"]) / total) * 100 : 0 },
-      { name: "90+", percent: total ? (Number(totals["90+"]) / total) * 100 : 0 },
+      {
+        name: "Not Due",
+        percent: total ? (Number(totals["Not Due"]) / total) * 100 : 0,
+      },
+      {
+        name: "0-30",
+        percent: total ? (Number(totals["0-30"]) / total) * 100 : 0,
+      },
+      {
+        name: "31-60",
+        percent: total ? (Number(totals["31-60"]) / total) * 100 : 0,
+      },
+      {
+        name: "61-90",
+        percent: total ? (Number(totals["61-90"]) / total) * 100 : 0,
+      },
+      {
+        name: "90+",
+        percent: total ? (Number(totals["90+"]) / total) * 100 : 0,
+      },
     ];
   }, [totals]);
 
@@ -293,7 +314,7 @@ export default function Aging() {
     }));
 
     if (out.length === 0) return;
-    downloadCSV(`${tab}_aging_${asOf}.csv`, out);
+    downloadCSV(`${tab}_aging_${toSafeIso(asOf) || todayISO()}.csv`, out);
   }
 
   return (
@@ -354,11 +375,7 @@ export default function Aging() {
         <div style={filterGrid}>
           <div style={field}>
             <label style={labelStyle}>As of Date</label>
-            <AppDateInput
-              value={asOf}
-              onChange={setAsOf}
-              style={input}
-            />
+            <AppDateInput value={asOf} onChange={setAsOf} style={input} />
           </div>
 
           <div style={field}>
@@ -420,26 +437,10 @@ export default function Aging() {
       </section>
 
       <div style={summaryGrid}>
-        <Bucket
-          title="Not Due"
-          value={money(totals["Not Due"])}
-          badge={badgeBlue}
-        />
-        <Bucket
-          title="0–30"
-          value={money(totals["0-30"])}
-          badge={badgeGreen}
-        />
-        <Bucket
-          title="31–60"
-          value={money(totals["31-60"])}
-          badge={badgeAmber}
-        />
-        <Bucket
-          title="61–90"
-          value={money(totals["61-90"])}
-          badge={badgeGray}
-        />
+        <Bucket title="Not Due" value={money(totals["Not Due"])} badge={badgeBlue} />
+        <Bucket title="0–30" value={money(totals["0-30"])} badge={badgeGreen} />
+        <Bucket title="31–60" value={money(totals["31-60"])} badge={badgeAmber} />
+        <Bucket title="61–90" value={money(totals["61-90"])} badge={badgeGray} />
         <Bucket title="90+" value={money(totals["90+"])} danger />
         <Bucket title="Total" value={money(totals.total)} strong />
       </div>

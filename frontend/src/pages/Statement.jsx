@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
+import AppDateInput from "../components/ui/AppDateInput";
 
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
@@ -38,56 +39,11 @@ function money(n) {
 }
 
 function safeDisplayDate(value) {
-  if (!value) return "-";
-
-  try {
-    let s = String(value).trim();
-    if (!s) return "-";
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const [dd, mm, yyyy] = s.split("/");
-      return `${dd}-${mm}-${yyyy}`;
-    }
-
-    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return s;
-
-    if (s.includes("T")) s = s.split("T")[0];
-    if (s.includes(" ")) s = s.split(" ")[0];
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-      const display = toDisplayDate(s);
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(display)) {
-        const [dd, mm, yyyy] = display.split("/");
-        return `${dd}-${mm}-${yyyy}`;
-      }
-      return display;
-    }
-
-    return "-";
-  } catch {
-    return "-";
-  }
+  return toDisplayDate(value) || "-";
 }
 
 function normalizeISODate(value) {
-  if (!value) return "";
-
-  try {
-    let s = String(value).trim();
-    if (!s) return "";
-
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      s = toISODate(s);
-    } else {
-      if (s.includes("T")) s = s.split("T")[0];
-      if (s.includes(" ")) s = s.split(" ")[0];
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
-    return s;
-  } catch {
-    return "";
-  }
+  return toISODate(value) || "";
 }
 
 function getRowDate(row, mode) {
@@ -687,22 +643,12 @@ export default function Statement() {
 
           <div style={field}>
             <label style={labelStyle}>From Date</label>
-            <input
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              placeholder="dd/mm/yyyy"
-              style={input}
-            />
+            <AppDateInput value={fromDate} onChange={setFromDate} style={input} />
           </div>
 
           <div style={field}>
             <label style={labelStyle}>To Date</label>
-            <input
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              placeholder="dd/mm/yyyy"
-              style={input}
-            />
+            <AppDateInput value={toDate} onChange={setToDate} style={input} />
           </div>
         </div>
 
@@ -766,7 +712,7 @@ export default function Statement() {
 
           <InfoMini
             title="Date Range"
-            value={`${fromDate || "START"} to ${toDate || "END"}`}
+            value={`${safeDisplayDate(fromDate)} to ${safeDisplayDate(toDate)}`}
           />
         </div>
       </section>

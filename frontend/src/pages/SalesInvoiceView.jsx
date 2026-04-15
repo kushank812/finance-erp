@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet } from "../api/client";
+import { formatDateForDisplay } from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-/* ✅ FIXED → dd-mm-yyyy */
-function isoToDisplay(iso) {
-  if (!iso) return "-";
-  const parts = String(iso).split("-");
-  if (parts.length !== 3) return iso;
-  const [yyyy, mm, dd] = parts;
-  return `${dd}-${mm}-${yyyy}`;
+function formatDate(value) {
+  return formatDateForDisplay(value) || "-";
 }
 
 export default function SalesInvoiceView() {
@@ -56,7 +52,9 @@ export default function SalesInvoiceView() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}
+      >
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Sales Invoice</h2>
           <p style={{ marginTop: 6, color: "#b8b8b8" }}>
@@ -65,11 +63,14 @@ export default function SalesInvoiceView() {
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => nav(-1)} style={btnGhost}>Back</button>
+          <button onClick={() => nav(-1)} style={btnGhost} type="button">
+            Back
+          </button>
           <button
             onClick={() => window.print()}
             style={btnPrimary}
             disabled={!doc || loading}
+            type="button"
           >
             Print / Save PDF
           </button>
@@ -100,21 +101,20 @@ export default function SalesInvoiceView() {
             <div style={hr} />
 
             <div style={metaGrid}>
-              <Info label="Customer Code" value={doc.customer_code} />
-
-              {/* ✅ FIXED */}
-              <Info label="Invoice Date" value={isoToDisplay(doc.invoice_date)} />
-
-              {/* ✅ FIXED */}
-              <Info label="Due Date" value={isoToDisplay(doc.due_date)} />
-
+              <Info label="Customer Code" value={doc.customer_code || "-"} />
+              <Info label="Invoice Date" value={formatDate(doc.invoice_date)} />
+              <Info label="Due Date" value={formatDate(doc.due_date)} />
               <Info label="Remark" value={doc.remark || "-"} />
             </div>
 
             <div style={{ height: 12 }} />
 
             <div style={{ overflowX: "auto" }}>
-              <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 700 }}>
+              <table
+                width="100%"
+                cellPadding="10"
+                style={{ borderCollapse: "collapse", minWidth: 700 }}
+              >
                 <thead>
                   <tr style={{ background: "#f6f7f9" }}>
                     <th>#</th>
@@ -126,7 +126,7 @@ export default function SalesInvoiceView() {
                 </thead>
                 <tbody>
                   {(doc.lines || []).map((ln, idx) => (
-                    <tr key={idx} style={{ borderTop: "1px solid #eee" }}>
+                    <tr key={ln.id ?? idx} style={{ borderTop: "1px solid #eee" }}>
                       <td>{idx + 1}</td>
                       <td>{ln.item_code}</td>
                       <td align="right">{money(ln.qty)}</td>
@@ -136,6 +136,14 @@ export default function SalesInvoiceView() {
                       </td>
                     </tr>
                   ))}
+
+                  {(doc.lines || []).length === 0 && (
+                    <tr>
+                      <td colSpan="5" style={{ padding: 12, color: "#666" }}>
+                        No line items.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -177,23 +185,39 @@ function TotalRow({ label, value, strong }) {
   );
 }
 
-/* styles */
 const paper = { background: "white", padding: 16, borderRadius: 14 };
-const docHeader = { display: "flex", justifyContent: "space-between" };
+const docHeader = { display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
 const companyName = { fontSize: 18, fontWeight: 900, color: "#111" };
 const muted = { fontSize: 12, color: "#666" };
 const bigId = { fontSize: 18, fontWeight: 900, color: "#111" };
 const hr = { height: 1, background: "#eee", margin: "12px 0" };
 
-const metaGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 };
+const metaGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 12,
+};
 const infoBox = { background: "#f7f8fa", padding: 12, borderRadius: 10 };
 const infoLabel = { fontSize: 12, color: "#666" };
 const infoValue = { fontSize: 14, fontWeight: 800, color: "#111" };
 
 const totalsWrap = { marginLeft: "auto", maxWidth: 350 };
 
-const btnPrimary = { padding: 10, background: "#0b5cff", color: "#fff", borderRadius: 10 };
-const btnGhost = { padding: 10, background: "#eee", borderRadius: 10 };
+const btnPrimary = {
+  padding: 10,
+  background: "#0b5cff",
+  color: "#fff",
+  borderRadius: 10,
+  border: "none",
+  cursor: "pointer",
+};
+const btnGhost = {
+  padding: 10,
+  background: "#eee",
+  borderRadius: 10,
+  border: "none",
+  cursor: "pointer",
+};
 
 const msgErr = { color: "red", marginTop: 10 };
 

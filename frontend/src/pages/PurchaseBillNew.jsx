@@ -5,7 +5,6 @@ import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { FormField, AutoField } from "../components/ui/FormField";
 import AppDateInput from "../components/ui/AppDateInput";
-import { formatDateForDisplay } from "../utils/date";
 import {
   page,
   stack,
@@ -34,13 +33,13 @@ import {
   disabledBtn,
 } from "../components/ui/uiStyles";
 
-function money(n) {
-  return Number(n || 0).toFixed(2);
-}
-
 function num(n) {
   const x = Number(n);
   return Number.isFinite(x) ? x : 0;
+}
+
+function money(n) {
+  return Number(n || 0).toFixed(2);
 }
 
 function todayISO() {
@@ -571,7 +570,6 @@ export default function PurchaseBillNew() {
   function getPageTitle() {
     if (!isEditMode) return "Purchase Bill";
     if (access.readOnly) return "Purchase Bill Details";
-    if (access.restricted) return "Purchase Bill Edit";
     return "Purchase Bill Edit";
   }
 

@@ -1,20 +1,31 @@
+// src/pages/AuditLogs.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../api/client";
 import AppDateInput from "../components/ui/AppDateInput";
+import { formatDateForDisplay, toISODate } from "../utils/date";
 
 function fmtDateTime(value) {
   if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
 
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
+  try {
+    const raw = String(value).trim();
+    const datePart = raw.includes("T") ? raw.split("T")[0] : raw.split(" ")[0];
+    const timePartRaw = raw.includes("T")
+      ? raw.split("T")[1] || ""
+      : raw.includes(" ")
+      ? raw.split(" ")[1] || ""
+      : "";
 
-  return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`;
+    const displayDate = formatDateForDisplay(datePart) || raw;
+
+    let cleanTime = timePartRaw.replace("Z", "");
+    if (cleanTime.includes(".")) cleanTime = cleanTime.split(".")[0];
+    if (cleanTime.includes("+")) cleanTime = cleanTime.split("+")[0];
+
+    return cleanTime ? `${displayDate} ${cleanTime}` : displayDate;
+  } catch {
+    return String(value);
+  }
 }
 
 function safeJson(value) {
@@ -242,15 +253,15 @@ export default function AuditLogs() {
       if (customFilters.record_id.trim()) {
         params.set("record_id", customFilters.record_id.trim().toUpperCase());
       }
-      if (customFilters.date_from) {
-        const start = new Date(customFilters.date_from);
-        start.setHours(0, 0, 0, 0);
-        params.set("date_from", start.toISOString());
+
+      const fromIso = toISODate(customFilters.date_from);
+      if (fromIso) {
+        params.set("date_from", `${fromIso}T00:00:00`);
       }
-      if (customFilters.date_to) {
-        const end = new Date(customFilters.date_to);
-        end.setHours(23, 59, 59, 999);
-        params.set("date_to", end.toISOString());
+
+      const toIso = toISODate(customFilters.date_to);
+      if (toIso) {
+        params.set("date_to", `${toIso}T23:59:59.999`);
       }
 
       params.set("limit", String(limit));
