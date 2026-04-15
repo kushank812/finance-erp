@@ -6,13 +6,13 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-// ✅ DATE FIX
+/* ✅ FIXED → dd-mm-yyyy */
 function isoToDisplay(iso) {
   if (!iso) return "-";
   const parts = String(iso).split("-");
   if (parts.length !== 3) return iso;
   const [yyyy, mm, dd] = parts;
-  return `${dd}/${mm}/${yyyy}`;
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export default function SalesInvoiceView() {

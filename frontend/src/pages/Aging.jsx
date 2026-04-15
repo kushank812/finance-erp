@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
+import AppDateInput from "../components/ui/AppDateInput";
 import {
   BarChart,
   Bar,
@@ -67,7 +68,7 @@ function isoToDisplay(iso) {
   if (parts.length !== 3) return s;
   const [yyyy, mm, dd] = parts;
   if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 function todayISO() {
@@ -353,10 +354,9 @@ export default function Aging() {
         <div style={filterGrid}>
           <div style={field}>
             <label style={labelStyle}>As of Date</label>
-            <input
-              type="date"
+            <AppDateInput
               value={asOf}
-              onChange={(e) => setAsOf(e.target.value)}
+              onChange={setAsOf}
               style={input}
             />
           </div>

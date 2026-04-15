@@ -1,7 +1,9 @@
-// src/pages/Ledger.jsx
+// src/pages/Aging.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
+import AppDateInput from "../components/ui/AppDateInput";
+import { formatDateForDisplay } from "../utils/date";
 import {
   BarChart,
   Bar,
@@ -9,13 +11,10 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
   CartesianGrid,
   LineChart,
   Line,
+  Legend,
 } from "recharts";
 
 import AlertBox from "../components/ui/AlertBox";
@@ -54,7 +53,7 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function moneyCompact(n) {
+function compactMoney(n) {
   const x = Number(n || 0);
 
   if (Math.abs(x) >= 10000000) return `${(x / 10000000).toFixed(2)} Cr`;
@@ -64,110 +63,112 @@ function moneyCompact(n) {
 }
 
 function isoToDisplay(iso) {
-  if (!iso) return "-";
-  const s = String(iso).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
+  return formatDateForDisplay(iso);
 }
 
-function getStatus(row) {
-  return String(row?.status || "").toUpperCase();
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-function isCancelled(row) {
-  return getStatus(row) === "CANCELLED";
+function daysBetween(dateISOa, dateISOb) {
+  const a = new Date(dateISOa);
+  const b = new Date(dateISOb);
+  const ms = b.getTime() - a.getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
 
-function isOverdue(row) {
-  return getStatus(row) === "OVERDUE";
+function bucketFromDaysOverdue(days) {
+  if (days <= 0) return "Not Due";
+  if (days <= 30) return "0-30";
+  if (days <= 60) return "31-60";
+  if (days <= 90) return "61-90";
+  return "90+";
 }
 
-function buildStatusOptions() {
-  return ["", "PENDING", "PARTIAL", "PAID", "OVERDUE", "CANCELLED"];
+function normalizeStatus(value) {
+  return String(value || "").trim().toUpperCase();
 }
 
-function getDocNo(row, tab) {
-  return tab === "AR" ? row.invoice_no : row.bill_no;
-}
+function sortRowsByOverdueDays(list) {
+  return [...list].sort((a, b) => {
+    const overdueA = Number(a?.daysOverdue || 0);
+    const overdueB = Number(b?.daysOverdue || 0);
 
-function getPartyCode(row, tab) {
-  return tab === "AR" ? row.customer_code : row.vendor_code;
-}
+    if (overdueB !== overdueA) return overdueB - overdueA;
 
-function getDocDate(row, tab) {
-  return tab === "AR" ? row.invoice_date : row.bill_date;
-}
+    const dueA = a?.dueDate ? new Date(a.dueDate).getTime() : 0;
+    const dueB = b?.dueDate ? new Date(b.dueDate).getTime() : 0;
 
-function getSettledAmount(row, tab) {
-  return tab === "AR" ? row.amount_received : row.amount_paid;
-}
+    if (dueA !== dueB) return dueA - dueB;
 
-function sortLatestFirst(rows, tab) {
-  return [...rows].sort((a, b) => {
-    const dateA = getDocDate(a, tab) ? new Date(getDocDate(a, tab)).getTime() : 0;
-    const dateB = getDocDate(b, tab) ? new Date(getDocDate(b, tab)).getTime() : 0;
-
-    if (dateB !== dateA) return dateB - dateA;
-
-    const noA = String(getDocNo(a, tab) || "");
-    const noB = String(getDocNo(b, tab) || "");
-    return noB.localeCompare(noA, undefined, {
+    const docA = String(a?.docNo || "");
+    const docB = String(b?.docNo || "");
+    return docA.localeCompare(docB, undefined, {
       numeric: true,
       sensitivity: "base",
     });
   });
 }
 
-const PIE_COLORS = {
-  Active: "#22c55e",
-  Overdue: "#ef4444",
-  Cancelled: "#9ca3af",
-};
+function downloadCSV(filename, rows) {
+  const esc = (v) => {
+    const s = String(v ?? "");
+    if (s.includes(",") || s.includes("\n") || s.includes('"')) {
+      return `"${s.replaceAll('"', '""')}"`;
+    }
+    return s;
+  };
 
-export default function Ledger() {
-  const nav = useNavigate();
+  const header = Object.keys(rows[0] || {});
+  const lines = [
+    header.join(","),
+    ...rows.map((r) => header.map((h) => esc(r[h])).join(",")),
+  ];
+
+  const blob = new Blob([lines.join("\n")], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function Aging() {
   const location = useLocation();
 
-  const [arRows, setArRows] = useState([]);
-  const [apRows, setApRows] = useState([]);
-
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-
   const [tab, setTab] = useState("AR");
+  const [asOf, setAsOf] = useState(todayISO());
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("ALL");
+  const [onlyOpen, setOnlyOpen] = useState(true);
 
-  const [arFilters, setArFilters] = useState({
-    q: "",
-    status: "",
-  });
+  const [ar, setAr] = useState([]);
+  const [ap, setAp] = useState([]);
 
-  const [apFilters, setApFilters] = useState({
-    q: "",
-    status: "",
-  });
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function load() {
     setErr("");
     setLoading(true);
-
     try {
-      const [ar, ap] = await Promise.all([
+      const [arData, apData] = await Promise.all([
         apiGet("/sales-invoices/"),
         apiGet("/purchase-invoices/"),
       ]);
-
-      const safeAr = Array.isArray(ar) ? ar : [];
-      const safeAp = Array.isArray(ap) ? ap : [];
-
-      setArRows(sortLatestFirst(safeAr, "AR"));
-      setApRows(sortLatestFirst(safeAp, "AP"));
+      setAr(Array.isArray(arData) ? arData : []);
+      setAp(Array.isArray(apData) ? apData : []);
     } catch (e) {
       setErr(String(e.message || e));
-      setArRows([]);
-      setApRows([]);
+      setAr([]);
+      setAp([]);
     } finally {
       setLoading(false);
     }
@@ -177,152 +178,162 @@ export default function Ledger() {
     load();
   }, [location.key]);
 
-  const activeFilters = tab === "AR" ? arFilters : apFilters;
-  const setActiveFilters = tab === "AR" ? setArFilters : setApFilters;
-  const rawRows = tab === "AR" ? arRows : apRows;
+  const rows = useMemo(() => {
+    const src = tab === "AR" ? ar : ap;
+    const qq = q.trim().toLowerCase();
+    const wantedStatus = normalizeStatus(status);
 
-  const filteredRows = useMemo(() => {
-    const q = String(activeFilters.q || "").trim().toLowerCase();
-    const status = String(activeFilters.status || "").toUpperCase();
+    const mapped = src.map((r) => {
+      const docNo = tab === "AR" ? r.invoice_no : r.bill_no;
+      const party = tab === "AR" ? r.customer_code : r.vendor_code;
+      const docDate = tab === "AR" ? r.invoice_date : r.bill_date;
+      const dueDate = r.due_date || docDate;
+      const bal = Number(r.balance || 0);
 
-    const rows = rawRows.filter((r) => {
-      const numberText = String(getDocNo(r, tab) || "").toLowerCase();
-      const partyCode = String(getPartyCode(r, tab) || "").toLowerCase();
-      const rowStatus = getStatus(r);
+      const dOver = daysBetween(String(dueDate || docDate || asOf), asOf);
+      const daysOverdue = Math.max(0, dOver);
+      const bucket = bucketFromDaysOverdue(dOver);
+      const rowStatus = normalizeStatus(r.status);
 
-      const qMatch =
-        !q ||
-        numberText.includes(q) ||
-        partyCode.includes(q) ||
-        String(r.grand_total || "").toLowerCase().includes(q) ||
-        String(r.balance || "").toLowerCase().includes(q);
-
-      const statusMatch = !status || rowStatus === status;
-
-      return qMatch && statusMatch;
+      return {
+        docNo,
+        party,
+        docDate: String(docDate || ""),
+        dueDate: String(dueDate || ""),
+        daysOverdue,
+        bucket,
+        balance: bal,
+        status: rowStatus,
+        remark: r.remark || "",
+      };
     });
 
-    return sortLatestFirst(rows, tab);
-  }, [rawRows, activeFilters, tab]);
+    const filtered = mapped.filter((r) => {
+      if (onlyOpen && !(r.balance > 0)) return false;
+      if (wantedStatus !== "ALL" && r.status !== wantedStatus) return false;
 
-  const summary = useMemo(() => {
-    return filteredRows.reduce(
-      (acc, r) => {
-        const grand = Number(r.grand_total || 0);
-        const balance = Number(r.balance || 0);
-        const settled = Number(getSettledAmount(r, tab) || 0);
+      const matches =
+        !qq ||
+        String(r.docNo).toLowerCase().includes(qq) ||
+        String(r.party).toLowerCase().includes(qq) ||
+        String(r.remark).toLowerCase().includes(qq);
 
-        acc.totalDocs += 1;
-        acc.activeDocs += isCancelled(r) ? 0 : 1;
-        acc.cancelledDocs += isCancelled(r) ? 1 : 0;
-        acc.overdueDocs += isOverdue(r) ? 1 : 0;
+      return matches;
+    });
 
-        acc.totalAmount += grand;
-        acc.settledAmount += settled;
-        acc.balanceAmount += balance;
-        acc.overdueBalance += isOverdue(r) ? balance : 0;
+    return sortRowsByOverdueDays(filtered);
+  }, [tab, ar, ap, q, status, onlyOpen, asOf]);
 
-        return acc;
-      },
-      {
-        totalDocs: 0,
-        activeDocs: 0,
-        cancelledDocs: 0,
-        overdueDocs: 0,
-        totalAmount: 0,
-        settledAmount: 0,
-        balanceAmount: 0,
-        overdueBalance: 0,
+  const totals = useMemo(() => {
+    const t = {
+      "Not Due": 0,
+      "0-30": 0,
+      "31-60": 0,
+      "61-90": 0,
+      "90+": 0,
+      total: 0,
+      overdueTotal: 0,
+      recordCount: rows.length,
+      overdueCount: 0,
+    };
+
+    for (const r of rows) {
+      const bal = Number(r.balance || 0);
+      t[r.bucket] += bal;
+      t.total += bal;
+
+      if (r.daysOverdue > 0) {
+        t.overdueTotal += bal;
+        t.overdueCount += 1;
       }
-    );
-  }, [filteredRows, tab]);
+    }
 
-  const barData = useMemo(() => {
+    return t;
+  }, [rows]);
+
+  const chartData = useMemo(() => {
+    return [
+      { name: "Not Due", value: Number(totals["Not Due"] || 0) },
+      { name: "0-30", value: Number(totals["0-30"] || 0) },
+      { name: "31-60", value: Number(totals["31-60"] || 0) },
+      { name: "61-90", value: Number(totals["61-90"] || 0) },
+      { name: "90+", value: Number(totals["90+"] || 0) },
+    ];
+  }, [totals]);
+
+  const bucketPercentData = useMemo(() => {
+    const total = Number(totals.total || 0);
+
     return [
       {
-        name: "Total",
-        value: Number(summary.totalAmount || 0),
+        name: "Not Due",
+        percent: total ? (Number(totals["Not Due"]) / total) * 100 : 0,
       },
       {
-        name: tab === "AR" ? "Received" : "Paid",
-        value: Number(summary.settledAmount || 0),
+        name: "0-30",
+        percent: total ? (Number(totals["0-30"]) / total) * 100 : 0,
       },
       {
-        name: "Balance",
-        value: Number(summary.balanceAmount || 0),
+        name: "31-60",
+        percent: total ? (Number(totals["31-60"]) / total) * 100 : 0,
+      },
+      {
+        name: "61-90",
+        percent: total ? (Number(totals["61-90"]) / total) * 100 : 0,
+      },
+      {
+        name: "90+",
+        percent: total ? (Number(totals["90+"]) / total) * 100 : 0,
       },
     ];
-  }, [summary, tab]);
+  }, [totals]);
 
-  const pieData = useMemo(() => {
-    return [
-      { name: "Active", value: Number(summary.activeDocs || 0) },
-      { name: "Overdue", value: Number(summary.overdueDocs || 0) },
-      { name: "Cancelled", value: Number(summary.cancelledDocs || 0) },
-    ].filter((x) => x.value > 0);
-  }, [summary]);
+  function exportCSV() {
+    const out = rows.map((r) => ({
+      Type: tab,
+      DocNo: r.docNo,
+      Party: r.party,
+      DocDate: isoToDisplay(r.docDate),
+      DueDate: isoToDisplay(r.dueDate),
+      DaysOverdue: r.daysOverdue,
+      Bucket: r.bucket,
+      Balance: money(r.balance),
+      Status: r.status,
+      Remark: r.remark,
+    }));
 
-  const monthlyTrend = useMemo(() => {
-    const map = {};
-
-    filteredRows.forEach((r) => {
-      const d = getDocDate(r, tab);
-      if (!d) return;
-
-      const date = new Date(d);
-      if (Number.isNaN(date.getTime())) return;
-
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-
-      if (!map[key]) {
-        map[key] = {
-          month: key,
-          total: 0,
-          settled: 0,
-          balance: 0,
-        };
-      }
-
-      map[key].total += Number(r.grand_total || 0);
-      map[key].settled += Number(getSettledAmount(r, tab) || 0);
-      map[key].balance += Number(r.balance || 0);
-    });
-
-    return Object.values(map).sort((a, b) => a.month.localeCompare(b.month));
-  }, [filteredRows, tab]);
-
-  function onResetFilters() {
-    if (tab === "AR") {
-      setArFilters({ q: "", status: "" });
-    } else {
-      setApFilters({ q: "", status: "" });
-    }
-  }
-
-  function openDocument(row) {
-    if (tab === "AR") {
-      nav(`/sales-invoice-view/${encodeURIComponent(row.invoice_no)}`);
-    } else {
-      nav(`/purchase/view/${encodeURIComponent(row.bill_no)}`);
-    }
-  }
-
-  function openPartyDocument() {
-    if (tab === "AR") {
-      nav("/sales-invoices");
-    } else {
-      nav("/purchase-bills");
-    }
+    if (out.length === 0) return;
+    downloadCSV(`${tab}_aging_${asOf}.csv`, out);
   }
 
   return (
     <div style={page}>
       <PageHeaderBlock
-        eyebrowText="LEDGER"
-        title="Accounts Ledger"
-        subtitle="Track receivables and payables, review balances, and open related documents."
+        eyebrowText="AGING"
+        title="Aging Report"
+        subtitle={
+          tab === "AR"
+            ? "Customer outstanding aging as of selected date."
+            : "Vendor outstanding aging as of selected date."
+        }
         actions={
           <>
+            <button
+              type="button"
+              onClick={() => setTab("AR")}
+              style={tab === "AR" ? tabActiveBlue : tabButton}
+            >
+              AR Aging
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTab("AP")}
+              style={tab === "AP" ? tabActiveGreen : tabButton}
+            >
+              AP Aging
+            </button>
+
             <button
               type="button"
               onClick={load}
@@ -331,61 +342,44 @@ export default function Ledger() {
             >
               {loading ? "Refreshing..." : "Refresh"}
             </button>
-
-            <button type="button" onClick={openPartyDocument} style={btnPrimary}>
-              {tab === "AR" ? "Open Invoices" : "Open Purchase Bills"}
-            </button>
           </>
         }
       />
 
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
-        {loading ? <AlertBox kind="info" message="Loading ledger..." /> : null}
+        {loading ? <AlertBox kind="info" message="Loading aging report..." /> : null}
       </div>
 
       <section style={card}>
         <div style={cardHeader}>
           <div>
-            <h2 style={cardTitle}>Ledger Mode</h2>
+            <h2 style={cardTitle}>Filters</h2>
             <p style={cardSubtitle}>
-              Switch between Accounts Receivable and Accounts Payable.
+              Break open balances into aging buckets as of a selected date.
             </p>
-          </div>
-
-          <div style={tabWrap}>
-            <button
-              type="button"
-              onClick={() => setTab("AR")}
-              style={tab === "AR" ? tabActiveBlue : tabButton}
-            >
-              Accounts Receivable
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTab("AP")}
-              style={tab === "AP" ? tabActiveGreen : tabButton}
-            >
-              Accounts Payable
-            </button>
           </div>
         </div>
 
         <div style={filterGrid}>
           <div style={field}>
-            <label style={labelStyle}>
-              Search {tab === "AR" ? "Invoice / Customer" : "Bill / Vendor"}
-            </label>
+            <label style={labelStyle}>As of Date</label>
+            <AppDateInput
+              value={asOf}
+              onChange={setAsOf}
+              style={input}
+            />
+          </div>
+
+          <div style={field}>
+            <label style={labelStyle}>Search</label>
             <input
-              value={activeFilters.q}
-              onChange={(e) =>
-                setActiveFilters((prev) => ({ ...prev, q: e.target.value }))
-              }
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
               placeholder={
                 tab === "AR"
-                  ? "Invoice no / customer code / amount"
-                  : "Bill no / vendor code / amount"
+                  ? "invoice / customer / remark"
+                  : "bill / vendor / remark"
               }
               style={input}
             />
@@ -394,143 +388,106 @@ export default function Ledger() {
           <div style={field}>
             <label style={labelStyle}>Status</label>
             <select
-              value={activeFilters.status}
-              onChange={(e) =>
-                setActiveFilters((prev) => ({ ...prev, status: e.target.value }))
-              }
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
               style={input}
             >
-              {buildStatusOptions().map((status) => (
-                <option key={status || "ALL"} value={status}>
-                  {status || "ALL"}
-                </option>
-              ))}
+              <option value="ALL">ALL</option>
+              <option value="PENDING">PENDING</option>
+              <option value="PARTIAL">PARTIAL</option>
+              <option value="PAID">PAID</option>
+              <option value="OVERDUE">OVERDUE</option>
+              <option value="CANCELLED">CANCELLED</option>
             </select>
+          </div>
+
+          <div style={checkboxWrap}>
+            <label style={checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={onlyOpen}
+                onChange={(e) => setOnlyOpen(e.target.checked)}
+              />
+              Only Open (balance {">"} 0)
+            </label>
           </div>
         </div>
 
         <div style={filterActions}>
-          <button type="button" onClick={onResetFilters} style={btnSecondary}>
-            Reset Filters
+          <button
+            type="button"
+            onClick={exportCSV}
+            style={rows.length === 0 ? disabledLike(btnPrimary) : btnPrimary}
+            disabled={rows.length === 0}
+          >
+            Export CSV
+          </button>
+
+          <button type="button" onClick={() => window.print()} style={btnSecondary}>
+            Print
           </button>
         </div>
       </section>
 
       <div style={summaryGrid}>
-        <SummaryCard
-          title={tab === "AR" ? "Total Invoices" : "Total Bills"}
-          value={summary.totalDocs}
+        <Bucket
+          title="Not Due"
+          value={money(totals["Not Due"])}
           badge={badgeBlue}
         />
-        <SummaryCard
-          title="Active Documents"
-          value={summary.activeDocs}
+        <Bucket
+          title="0–30"
+          value={money(totals["0-30"])}
           badge={badgeGreen}
         />
-        <SummaryCard
-          title="Cancelled"
-          value={summary.cancelledDocs}
-          badge={badgeGray}
-        />
-        <SummaryCard
-          title="Overdue"
-          value={summary.overdueDocs}
+        <Bucket
+          title="31–60"
+          value={money(totals["31-60"])}
           badge={badgeAmber}
         />
-        <SummaryCard title="Total Amount" value={money(summary.totalAmount)} />
-        <SummaryCard
-          title={tab === "AR" ? "Received" : "Paid"}
-          value={money(summary.settledAmount)}
+        <Bucket
+          title="61–90"
+          value={money(totals["61-90"])}
+          badge={badgeGray}
         />
-        <SummaryCard
-          title="Outstanding Balance"
-          value={money(summary.balanceAmount)}
-        />
-        <SummaryCard
-          title="Overdue Balance"
-          value={money(summary.overdueBalance)}
-        />
+        <Bucket title="90+" value={money(totals["90+"])} danger />
+        <Bucket title="Total" value={money(totals.total)} strong />
+      </div>
+
+      <div style={{ height: 14 }} />
+
+      <div style={summaryGrid}>
+        <Bucket title="Open Records" value={totals.recordCount} />
+        <Bucket title="Overdue Records" value={totals.overdueCount} danger />
+        <Bucket title="Overdue Amount" value={money(totals.overdueTotal)} danger />
       </div>
 
       <section style={card}>
         <div style={cardHeader}>
           <div>
-            <h2 style={cardTitle}>Ledger Analysis</h2>
+            <h2 style={cardTitle}>Aging Analysis</h2>
             <p style={cardSubtitle}>
-              Visual overview of totals, settlements, balances, and document distribution.
+              Visual distribution of outstanding balances across aging buckets.
             </p>
           </div>
         </div>
 
         <div style={chartGrid}>
           <div style={chartCard}>
-            <div style={chartHeading}>Monthly Movement</div>
+            <div style={chartHeading}>Outstanding Amount by Bucket</div>
             <div style={chartSubHeading}>
-              Track billed value, settled value, and balance trend over time.
-            </div>
-
-            <div style={chartWrap}>
-              {monthlyTrend.length === 0 ? (
-                <div style={emptyChartText}>No trend data available.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={monthlyTrend}
-                    margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis tickFormatter={(v) => moneyCompact(v)} />
-                    <Tooltip formatter={(v) => `₹ ${money(v)}`} />
-                    <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="total"
-                      name="Total"
-                      stroke="#2563eb"
-                      strokeWidth={3}
-                      dot={{ r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="settled"
-                      name={tab === "AR" ? "Received" : "Paid"}
-                      stroke="#16a34a"
-                      strokeWidth={3}
-                      dot={{ r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="balance"
-                      name="Balance"
-                      stroke="#f59e0b"
-                      strokeWidth={3}
-                      dot={{ r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          <div style={chartCard}>
-            <div style={chartHeading}>Amount Distribution</div>
-            <div style={chartSubHeading}>
-              Compare total amount, settled amount, and outstanding balance.
+              Compare total open amount across each aging bucket.
             </div>
 
             <div style={chartWrap}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={barData}
+                  data={chartData}
                   margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
-                  <YAxis tickFormatter={(v) => moneyCompact(v)} />
+                  <YAxis tickFormatter={(v) => compactMoney(v)} />
                   <Tooltip formatter={(v) => `₹ ${money(v)}`} />
                   <Bar dataKey="value" fill="#2563eb" radius={[8, 8, 0, 0]} />
                 </BarChart>
@@ -539,35 +496,36 @@ export default function Ledger() {
           </div>
 
           <div style={chartCard}>
-            <div style={chartHeading}>Document Status Distribution</div>
+            <div style={chartHeading}>Bucket Contribution %</div>
             <div style={chartSubHeading}>
-              See how many documents are active, overdue, or cancelled.
+              Understand how much each bucket contributes to total open balance.
             </div>
 
             <div style={chartWrap}>
-              {pieData.length === 0 ? (
-                <div style={emptyChartText}>No status data available.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={58}
-                      outerRadius={96}
-                      paddingAngle={3}
-                      label
-                    >
-                      {pieData.map((entry) => (
-                        <Cell key={entry.name} fill={PIE_COLORS[entry.name]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={bucketPercentData}
+                  margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `${Number(v || 0).toFixed(0)}%`}
+                  />
+                  <Tooltip formatter={(v) => `${Number(v || 0).toFixed(2)}%`} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="percent"
+                    name="Share of Total"
+                    stroke="#7c3aed"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
@@ -577,133 +535,141 @@ export default function Ledger() {
         <div style={cardHeader}>
           <div>
             <h2 style={cardTitle}>
-              {tab === "AR" ? "Receivables Ledger" : "Payables Ledger"}
+              {tab === "AR" ? "Accounts Receivable Aging" : "Accounts Payable Aging"}
             </h2>
-            <p style={cardSubtitle}>
-              {loading
-                ? "Loading ledger records..."
-                : `${filteredRows.length} record(s) shown`}
-            </p>
+            <p style={cardSubtitle}>Rows: {rows.length}</p>
           </div>
         </div>
 
         <div style={tableWrap}>
-          <table style={{ ...table, minWidth: 1080 }}>
+          <table style={{ ...table, minWidth: 980 }}>
             <thead>
               <tr>
                 <th style={th}>{tab === "AR" ? "Invoice No" : "Bill No"}</th>
-                <th style={th}>{tab === "AR" ? "Customer" : "Vendor"}</th>
-                <th style={th}>Date</th>
+                <th style={th}>{tab === "AR" ? "Customer Code" : "Vendor Code"}</th>
+                <th style={th}>Doc Date</th>
                 <th style={th}>Due Date</th>
-                <th style={thRight}>Grand Total</th>
-                <th style={thRight}>{tab === "AR" ? "Received" : "Paid"}</th>
+                <th style={thCenter}>Days Overdue</th>
+                <th style={thCenter}>Bucket</th>
                 <th style={thRight}>Balance</th>
                 <th style={thCenter}>Status</th>
-                <th style={thCenter}>Action</th>
+                <th style={th}>Remark</th>
               </tr>
             </thead>
 
             <tbody>
-              {!loading && filteredRows.length === 0 ? (
+              {rows.map((r) => (
+                <tr key={`${r.docNo}-${r.party}-${r.docDate}`} style={tr}>
+                  <td style={tdCode}>{r.docNo}</td>
+                  <td style={td}>{r.party}</td>
+                  <td style={td}>{isoToDisplay(r.docDate)}</td>
+                  <td style={td}>{isoToDisplay(r.dueDate)}</td>
+
+                  <td
+                    style={{
+                      ...tdCenter,
+                      fontWeight: 900,
+                      color: r.daysOverdue > 0 ? "#a40000" : "#0a6a0a",
+                    }}
+                  >
+                    {r.daysOverdue}
+                  </td>
+
+                  <td style={{ ...tdCenter, fontWeight: 900 }}>{r.bucket}</td>
+
+                  <td style={{ ...tdRight, fontWeight: 900 }}>
+                    {money(r.balance)}
+                  </td>
+
+                  <td style={tdCenter}>
+                    <span style={statusBadge(r.status)}>{r.status}</span>
+                  </td>
+
+                  <td style={td}>{r.remark}</td>
+                </tr>
+              ))}
+
+              {rows.length === 0 && (
                 <tr>
                   <td colSpan="9" style={emptyTd}>
-                    No ledger records found.
+                    No aging rows found for current filters.
                   </td>
                 </tr>
-              ) : (
-                filteredRows.map((row) => {
-                  const docNo = getDocNo(row, tab);
-                  const partyCode = getPartyCode(row, tab);
-                  const dateValue = getDocDate(row, tab);
-                  const settled = getSettledAmount(row, tab);
-                  const status = getStatus(row);
-
-                  return (
-                    <tr key={docNo} style={tr}>
-                      <td style={tdCode}>{docNo}</td>
-                      <td style={td}>{partyCode || "-"}</td>
-                      <td style={td}>{isoToDisplay(dateValue)}</td>
-                      <td style={td}>{isoToDisplay(row.due_date)}</td>
-                      <td style={tdRight}>{money(row.grand_total)}</td>
-                      <td style={tdRight}>{money(settled)}</td>
-                      <td style={tdRight}>{money(row.balance)}</td>
-                      <td style={tdCenter}>
-                        <span style={statusBadge(status)}>{status}</span>
-                      </td>
-                      <td style={tdCenter}>
-                        <button
-                          type="button"
-                          onClick={() => openDocument(row)}
-                          style={btnPrimary}
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
               )}
             </tbody>
           </table>
         </div>
 
         <div style={footNote}>
-          {tab === "AR"
-            ? "Receivables ledger is built from sales invoices and receipt activity."
-            : "Payables ledger is built from purchase bills and vendor payment activity."}
+          Rule: Aging uses <b>Due Date</b>. If Due Date is missing, it falls back to
+          Doc Date. Rows are sorted by <b>Days Overdue</b> in descending order. Only
+          open balances are shown by default.
         </div>
       </section>
+
+      <style>{printCss}</style>
     </div>
   );
 }
 
-function SummaryCard({ title, value, badge }) {
+function Bucket({ title, value, strong = false, danger = false, badge = null }) {
   return (
-    <div style={summaryCard}>
-      <div style={summaryHead}>
-        <div style={summaryTitle}>{title}</div>
+    <div style={bucketCard}>
+      <div style={bucketHead}>
+        <div style={bucketTitle}>{title}</div>
         {badge ? <span style={badge}>LIVE</span> : null}
       </div>
-      <div style={summaryValue}>{value}</div>
+
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: strong ? 950 : 900,
+          color: danger ? "#a40000" : "#111",
+          marginTop: 8,
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
 function statusBadge(status) {
-  const s = String(status || "").toUpperCase();
+  const s = normalizeStatus(status);
 
   const base = {
     display: "inline-block",
-    padding: "6px 10px",
+    padding: "4px 10px",
     borderRadius: 999,
     fontSize: 12,
     fontWeight: 900,
+    border: "1px solid transparent",
   };
 
   if (s === "PAID") {
     return {
       ...base,
-      background: "#ecfff1",
-      color: "#116b2f",
-      border: "1px solid #a6e0b8",
+      background: "#eaffea",
+      color: "#0a6a0a",
+      borderColor: "#bde7bd",
     };
   }
 
   if (s === "PARTIAL") {
     return {
       ...base,
-      background: "#fff8e8",
-      color: "#8a5a00",
-      border: "1px solid #edd28a",
+      background: "#fff6db",
+      color: "#7a5a00",
+      borderColor: "#ffe2a6",
     };
   }
 
   if (s === "OVERDUE") {
     return {
       ...base,
-      background: "#fff2f2",
-      color: "#c40000",
-      border: "1px solid #efb0b0",
+      background: "#ffecec",
+      color: "#a40000",
+      borderColor: "#ffb3b3",
     };
   }
 
@@ -712,23 +678,25 @@ function statusBadge(status) {
       ...base,
       background: "#f0f0f0",
       color: "#555",
-      border: "1px solid #d5d5dd",
+      borderColor: "#d5d5d5",
     };
   }
 
   return {
     ...base,
-    background: "#eef4ff",
-    color: "#0b5cff",
-    border: "1px solid #b7cbff",
+    background: "#eef3ff",
+    color: "#0b3d91",
+    borderColor: "#cddcff",
   };
 }
 
-const tabWrap = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-};
+function disabledLike(base) {
+  return {
+    ...base,
+    opacity: 0.6,
+    cursor: "not-allowed",
+  };
+}
 
 const tabButton = {
   padding: "10px 14px",
@@ -737,8 +705,7 @@ const tabButton = {
   background: "#fff",
   color: "#334155",
   cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 14,
+  fontWeight: 800,
 };
 
 const tabActiveBlue = {
@@ -757,13 +724,31 @@ const tabActiveGreen = {
 
 const filterGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 14,
+  alignItems: "end",
+};
+
+const checkboxWrap = {
+  display: "flex",
+  alignItems: "end",
+};
+
+const checkboxLabel = {
+  color: "#111",
+  fontWeight: 800,
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  minHeight: 44,
 };
 
 const filterActions = {
   display: "flex",
+  gap: 10,
   justifyContent: "flex-end",
+  flexWrap: "wrap",
+  marginTop: 14,
 };
 
 const summaryGrid = {
@@ -772,31 +757,24 @@ const summaryGrid = {
   gap: 12,
 };
 
-const summaryCard = {
+const bucketCard = {
   background: "#fff",
   border: "1px solid #e2e8f0",
   borderRadius: 16,
   padding: 14,
 };
 
-const summaryHead = {
+const bucketHead = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: 10,
 };
 
-const summaryTitle = {
+const bucketTitle = {
   fontSize: 12,
   color: "#666",
   fontWeight: 800,
-};
-
-const summaryValue = {
-  marginTop: 8,
-  fontSize: 22,
-  fontWeight: 900,
-  color: "#111",
 };
 
 const chartGrid = {
@@ -826,17 +804,7 @@ const chartSubHeading = {
 
 const chartWrap = {
   width: "100%",
-  height: 300,
-  marginTop: 10,
-};
-
-const emptyChartText = {
-  height: "100%",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "#64748b",
-  fontWeight: 700,
+  height: 320,
 };
 
 const footNote = {
@@ -844,3 +812,12 @@ const footNote = {
   fontSize: 12,
   color: "#666",
 };
+
+const printCss = `
+@media print {
+  body { background: white !important; }
+  nav { display: none !important; }
+  button, input, select, textarea { display: none !important; }
+  #root { padding: 0 !important; }
+}
+`;

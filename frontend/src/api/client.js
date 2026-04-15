@@ -1,83 +1,85 @@
-// src/api/client.js
-
-const API_BASE = import.meta.env.VITE_API_URL?.trim();
-
-if (!API_BASE) {
-  throw new Error("VITE_API_URL is not configured.");
+export function pad2(value) {
+  return String(value).padStart(2, "0");
 }
 
-console.log("API_BASE =", API_BASE);
+export function isValidDateObject(d) {
+  return d instanceof Date && !Number.isNaN(d.getTime());
+}
 
-async function handle(res) {
-  const text = await res.text().catch(() => "");
+export function parseISODate(value) {
+  if (!value) return null;
 
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
+  const str = String(value).trim();
 
-    try {
-      const data = text ? JSON.parse(text) : null;
-      message = data?.detail || data?.message || text || message;
-    } catch {
-      message = text || message;
-    }
-
-    throw new Error(message);
+  const onlyDateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (onlyDateMatch) {
+    const [, y, m, d] = onlyDateMatch;
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    return isValidDateObject(date) ? date : null;
   }
 
-  if (!text) return null;
+  const date = new Date(str);
+  return isValidDateObject(date) ? date : null;
+}
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
+export function formatDateDDMMYYYY(value, separator = "-") {
+  const date = parseISODate(value);
+  if (!date) return "-";
+
+  const dd = pad2(date.getDate());
+  const mm = pad2(date.getMonth() + 1);
+  const yyyy = date.getFullYear();
+
+  return `${dd}${separator}${mm}${separator}${yyyy}`;
+}
+
+export function formatDateForDisplay(value) {
+  return formatDateDDMMYYYY(value, "-");
+}
+
+export function formatDateForCalendarText(value) {
+  const date = parseISODate(value);
+  if (!date) return "";
+
+  const dd = pad2(date.getDate());
+  const mm = pad2(date.getMonth() + 1);
+  const yyyy = date.getFullYear();
+
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+export function formatDateForApi(value) {
+  const date = parseISODate(value);
+  if (!date) return "";
+
+  const dd = pad2(date.getDate());
+  const mm = pad2(date.getMonth() + 1);
+  const yyyy = date.getFullYear();
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function parseDisplayDateToISO(value) {
+  if (!value) return "";
+
+  const str = String(value).trim();
+
+  let match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
+  if (match) {
+    const [, dd, mm, yyyy] = match;
+    return `${yyyy}-${mm}-${dd}`;
   }
-}
 
-async function request(path, options = {}) {
-  const url = `${API_BASE}${path}`;
-
-  try {
-    const res = await fetch(url, {
-      credentials: "include",
-      headers: {
-        Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...(options.headers || {}),
-      },
-      ...options,
-    });
-
-    return await handle(res);
-  } catch (err) {
-    throw new Error(`API request failed for ${url} - ${err.message}`);
+  match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(str);
+  if (match) {
+    const [, dd, mm, yyyy] = match;
+    return `${yyyy}-${mm}-${dd}`;
   }
-}
 
-export function apiGet(path) {
-  return request(path, { method: "GET" });
-}
+  match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (match) {
+    return str;
+  }
 
-export function apiPost(path, body) {
-  return request(path, {
-    method: "POST",
-    body: JSON.stringify(body ?? {}),
-  });
-}
-
-export function apiPut(path, body) {
-  return request(path, {
-    method: "PUT",
-    body: JSON.stringify(body ?? {}),
-  });
-}
-
-export function apiPatch(path, body) {
-  return request(path, {
-    method: "PATCH",
-    body: JSON.stringify(body ?? {}),
-  });
-}
-
-export function apiDelete(path) {
-  return request(path, { method: "DELETE" });
+  return "";
 }

@@ -6,6 +6,16 @@ function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
+function formatDate(value) {
+  if (!value) return "-";
+  const s = String(value).trim();
+  const parts = s.split("-");
+  if (parts.length !== 3) return s;
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return s;
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 export default function SalesInvoiceBrowser() {
   const [searchParams] = useSearchParams();
 
@@ -136,8 +146,8 @@ export default function SalesInvoiceBrowser() {
             {/* Meta grid */}
             <div style={metaGrid}>
               <Info label="Customer Code" value={doc.customer_code} />
-              <Info label="Invoice Date" value={String(doc.invoice_date || "")} />
-              <Info label="Due Date" value={doc.due_date ? String(doc.due_date) : "-"} />
+              <Info label="Invoice Date" value={formatDate(doc.invoice_date)} />
+              <Info label="Due Date" value={doc.due_date ? formatDate(doc.due_date) : "-"} />
               <Info label="Remark" value={doc.remark || "-"} />
             </div>
 
@@ -148,8 +158,8 @@ export default function SalesInvoiceBrowser() {
               <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", minWidth: 700 }}>
                 <thead>
                   <tr style={{ background: "#f6f7f9" }}>
-                    <th align="left">#</th>
-                    <th align="left">Item Code</th>
+                    <th>#</th>
+                    <th>Item Code</th>
                     <th align="right">Qty</th>
                     <th align="right">Rate</th>
                     <th align="right">Line Total</th>

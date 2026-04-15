@@ -4,6 +4,7 @@ import { apiGet, apiPost } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { FormField } from "../components/ui/FormField";
+import { formatDateForDisplay } from "../utils/date";
 import {
   page,
   stack,
@@ -27,13 +28,7 @@ function money(n) {
 }
 
 function isoToDisplay(iso) {
-  if (!iso) return "-";
-  const s = String(iso).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
+  return formatDateForDisplay(iso);
 }
 
 export default function ReceiptNew() {

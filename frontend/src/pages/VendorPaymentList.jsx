@@ -10,6 +10,7 @@ function pad2(v) {
   return String(v).padStart(2, "0");
 }
 
+/* ✅ FIXED → dd-mm-yyyy */
 function isoToDisplay(iso) {
   if (!iso) return "-";
   const s = String(iso).trim();
@@ -17,7 +18,7 @@ function isoToDisplay(iso) {
   if (parts.length !== 3) return s;
   const [yyyy, mm, dd] = parts;
   if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 function displayToISO(display) {
@@ -111,7 +112,6 @@ export default function VendorPaymentList({ currentUser }) {
 
   useEffect(() => {
     loadData(filters);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   async function onSearch(e) {

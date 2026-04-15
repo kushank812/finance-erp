@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { apiDelete, apiGet, apiPatch } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
+import AppDateInput from "../components/ui/AppDateInput";
+import { formatDateForDisplay } from "../utils/date";
 import {
   page,
   stack,
@@ -38,13 +40,7 @@ function money(n) {
 }
 
 function fmtDate(value) {
-  if (!value) return "-";
-  const s = String(value).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
+  return formatDateForDisplay(value);
 }
 
 function buildQuery(params) {
@@ -311,21 +307,19 @@ export default function SalesInvoiceDirectView({ currentUser }) {
 
           <div style={field}>
             <label style={labelStyle}>From Date</label>
-            <input
-              type="date"
+            <AppDateInput
               style={input}
               value={filters.fromDate}
-              onChange={(e) => setFilters((s) => ({ ...s, fromDate: e.target.value }))}
+              onChange={(value) => setFilters((s) => ({ ...s, fromDate: value }))}
             />
           </div>
 
           <div style={field}>
             <label style={labelStyle}>To Date</label>
-            <input
-              type="date"
+            <AppDateInput
               style={input}
               value={filters.toDate}
-              onChange={(e) => setFilters((s) => ({ ...s, toDate: e.target.value }))}
+              onChange={(value) => setFilters((s) => ({ ...s, toDate: value }))}
             />
           </div>
 

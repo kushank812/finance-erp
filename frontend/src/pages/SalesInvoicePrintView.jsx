@@ -13,7 +13,7 @@ function isoToDisplay(iso) {
   if (parts.length !== 3) return s;
   const [yyyy, mm, dd] = parts;
   if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export default function SalesInvoicePrintView() {
@@ -172,7 +172,7 @@ export default function SalesInvoicePrintView() {
 
             <div style={totalsWrap}>
               <TotalRow label="Subtotal" value={totals.subtotal} />
-              <TotalRow label={`Tax (${totals.taxPercent}%)`} value={totals.taxAmount} />
+              <TotalRow label={`Tax (${totals.taxPercent}%)`} value={totals.taxAmount} strong={false} />
               <TotalRow label="Grand Total" value={totals.grandTotal} strong />
               <div style={hr} />
               <TotalRow label="Amount Received" value={totals.received} />

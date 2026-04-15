@@ -1,6 +1,6 @@
-// src/pages/AuditLogs.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../api/client";
+import AppDateInput from "../components/ui/AppDateInput";
 
 function fmtDateTime(value) {
   if (!value) return "—";
@@ -14,7 +14,7 @@ function fmtDateTime(value) {
   const min = String(d.getMinutes()).padStart(2, "0");
   const ss = String(d.getSeconds()).padStart(2, "0");
 
-  return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+  return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`;
 }
 
 function safeJson(value) {
@@ -436,19 +436,17 @@ export default function AuditLogs() {
           </Field>
 
           <Field label="Date From">
-            <input
-              type="date"
+            <AppDateInput
               value={filters.date_from}
-              onChange={(e) => setFilter("date_from", e.target.value)}
+              onChange={(value) => setFilter("date_from", value)}
               style={inputStyle}
             />
           </Field>
 
           <Field label="Date To">
-            <input
-              type="date"
+            <AppDateInput
               value={filters.date_to}
-              onChange={(e) => setFilter("date_to", e.target.value)}
+              onChange={(value) => setFilter("date_to", value)}
               style={inputStyle}
             />
           </Field>

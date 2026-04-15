@@ -4,6 +4,8 @@ import { apiGet, apiPost, apiPut } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { FormField, AutoField } from "../components/ui/FormField";
+import AppDateInput from "../components/ui/AppDateInput";
+import { formatDateForDisplay } from "../utils/date";
 import {
   page,
   stack,
@@ -34,36 +36,11 @@ import {
 
 const emptyLine = { item_code: "", qty: 1, rate: 0 };
 
-function pad2(v) {
-  return String(v).padStart(2, "0");
-}
-
 function todayISO() {
   const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function todayDisplay() {
-  return isoToDisplay(todayISO());
-}
-
-function isoToDisplay(iso) {
-  if (!iso) return "";
-  const s = String(iso).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-function displayToISO(display) {
-  if (!display) return "";
-  const s = String(display).trim();
-  const parts = s.split("/");
-  if (parts.length !== 3) return "";
-  const [dd, mm, yyyy] = parts.map((x) => x.trim());
-  if (!dd || !mm || !yyyy) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -78,27 +55,6 @@ function isValidISODate(iso) {
   );
 }
 
-function isValidDisplayDate(display) {
-  const s = String(display || "").trim();
-  if (!s) return false;
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return false;
-  return isValidISODate(displayToISO(s));
-}
-
-function normalizeDateInput(value) {
-  const raw = String(value || "").replace(/[^\d]/g, "").slice(0, 8);
-
-  if (raw.length <= 2) return raw;
-  if (raw.length <= 4) return `${raw.slice(0, 2)}/${raw.slice(2)}`;
-  return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4)}`;
-}
-
-function handleDateTyping(setter) {
-  return (e) => {
-    setter(normalizeDateInput(e.target.value));
-  };
-}
-
 function round2(n) {
   return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
 }
@@ -111,10 +67,8 @@ function normalizeInvoiceToForm(inv) {
   return {
     customerCode: inv?.customer_code || "",
     customerSearch: "",
-    invoiceDate: inv?.invoice_date
-      ? isoToDisplay(String(inv.invoice_date))
-      : todayDisplay(),
-    dueDate: inv?.due_date ? isoToDisplay(String(inv.due_date)) : "",
+    invoiceDate: inv?.invoice_date ? String(inv.invoice_date) : todayISO(),
+    dueDate: inv?.due_date ? String(inv.due_date) : "",
     taxPercent: Number(inv?.tax_percent || 0),
     remark: inv?.remark || "",
     status: getStatusValue(inv),
@@ -240,7 +194,7 @@ export default function BillingNew() {
 
   const [customerCode, setCustomerCode] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(todayDisplay());
+  const [invoiceDate, setInvoiceDate] = useState(todayISO());
   const [dueDate, setDueDate] = useState("");
   const [taxPercent, setTaxPercent] = useState(0);
   const [remark, setRemark] = useState("");
@@ -432,7 +386,7 @@ export default function BillingNew() {
   function clearForm() {
     setCustomerCode("");
     setCustomerSearch("");
-    setInvoiceDate(todayDisplay());
+    setInvoiceDate(todayISO());
     setDueDate("");
     setTaxPercent(0);
     setRemark("");
@@ -448,13 +402,13 @@ export default function BillingNew() {
       return null;
     }
 
-    if (!invoiceDate || !isValidDisplayDate(invoiceDate)) {
-      setErr("Invoice Date must be in DD/MM/YYYY format.");
+    if (!invoiceDate || !isValidISODate(invoiceDate)) {
+      setErr("Invoice Date is invalid.");
       return null;
     }
 
-    if (dueDate && !isValidDisplayDate(dueDate)) {
-      setErr("Due Date must be in DD/MM/YYYY format.");
+    if (dueDate && !isValidISODate(dueDate)) {
+      setErr("Due Date is invalid.");
       return null;
     }
 
@@ -487,8 +441,8 @@ export default function BillingNew() {
 
     return {
       customer_code: customerCode,
-      invoice_date: displayToISO(invoiceDate),
-      due_date: dueDate ? displayToISO(dueDate) : null,
+      invoice_date: invoiceDate,
+      due_date: dueDate || null,
       tax_percent: Number(taxPercent || 0),
       remark: remark || null,
       lines: cleanLines,
@@ -496,13 +450,13 @@ export default function BillingNew() {
   }
 
   function validateRestricted() {
-    if (dueDate && !isValidDisplayDate(dueDate)) {
-      setErr("Due Date must be in DD/MM/YYYY format.");
+    if (dueDate && !isValidISODate(dueDate)) {
+      setErr("Due Date is invalid.");
       return null;
     }
 
     return {
-      due_date: dueDate ? displayToISO(dueDate) : null,
+      due_date: dueDate || null,
       remark: remark || null,
     };
   }
@@ -546,9 +500,9 @@ export default function BillingNew() {
         }
 
         if (updated?.invoice_date) {
-          setInvoiceDate(isoToDisplay(String(updated.invoice_date)));
+          setInvoiceDate(String(updated.invoice_date));
         }
-        setDueDate(updated?.due_date ? isoToDisplay(String(updated.due_date)) : "");
+        setDueDate(updated?.due_date ? String(updated.due_date) : "");
       } else {
         const created = await apiPost("/sales-invoices/", payload);
         setOkMsg(`✅ Invoice "${created?.invoice_no || ""}" saved successfully.`);
@@ -663,12 +617,9 @@ export default function BillingNew() {
 
           <div style={field}>
             <label style={labelStyle}>Invoice Date</label>
-            <input
-              type="text"
+            <AppDateInput
               value={invoiceDate}
-              onChange={handleDateTyping(setInvoiceDate)}
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
+              onChange={setInvoiceDate}
               style={disableFullEditFields ? disabledInput : input}
               disabled={disableFullEditFields}
             />
@@ -676,12 +627,9 @@ export default function BillingNew() {
 
           <div style={field}>
             <label style={labelStyle}>Due Date</label>
-            <input
-              type="text"
+            <AppDateInput
               value={dueDate}
-              onChange={handleDateTyping(setDueDate)}
-              placeholder="dd/mm/yyyy"
-              maxLength={10}
+              onChange={setDueDate}
               style={!canChangeDueDateRemark ? disabledInput : input}
               disabled={!canChangeDueDateRemark}
             />

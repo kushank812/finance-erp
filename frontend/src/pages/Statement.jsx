@@ -44,13 +44,23 @@ function safeDisplayDate(value) {
     let s = String(value).trim();
     if (!s) return "-";
 
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+      const [dd, mm, yyyy] = s.split("/");
+      return `${dd}-${mm}-${yyyy}`;
+    }
+
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return s;
 
     if (s.includes("T")) s = s.split("T")[0];
     if (s.includes(" ")) s = s.split(" ")[0];
 
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-      return toDisplayDate(s);
+      const display = toDisplayDate(s);
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(display)) {
+        const [dd, mm, yyyy] = display.split("/");
+        return `${dd}-${mm}-${yyyy}`;
+      }
+      return display;
     }
 
     return "-";

@@ -18,7 +18,7 @@ function fmtDate(value) {
   if (parts.length !== 3) return s;
   const [yyyy, mm, dd] = parts;
   if (!yyyy || !mm || !dd) return s;
-  return `${dd}/${mm}/${yyyy}`;
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 function getStatusText(status) {

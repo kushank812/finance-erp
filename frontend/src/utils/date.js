@@ -11,7 +11,38 @@ export function toDisplayDate(value) {
     let s = String(value).trim();
     if (!s) return "";
 
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return s;
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+      const [d, m, y] = s.split("/");
+      return `${d}-${m}-${y}`;
+    }
+
+    if (s.includes("T")) s = s.split("T")[0];
+    if (s.includes(" ")) s = s.split(" ")[0];
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+
+    const [y, m, d] = s.split("-");
+    return `${d}-${m}-${y}`;
+  } catch {
+    return "";
+  }
+}
+
+export function toInputDate(value) {
+  if (!value) return "";
+
+  try {
+    let s = String(value).trim();
+    if (!s) return "";
+
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+      const [d, m, y] = s.split("-");
+      return `${d}/${m}/${y}`;
+    }
 
     if (s.includes("T")) s = s.split("T")[0];
     if (s.includes(" ")) s = s.split(" ")[0];
@@ -33,10 +64,18 @@ export function toISODate(value) {
     if (!s) return "";
 
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return "";
 
-    const [d, m, y] = s.split("/");
-    return `${y}-${m}-${d}`;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+      const [d, m, y] = s.split("/");
+      return `${y}-${m}-${d}`;
+    }
+
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+      const [d, m, y] = s.split("-");
+      return `${y}-${m}-${d}`;
+    }
+
+    return "";
   } catch {
     return "";
   }
@@ -46,11 +85,15 @@ export function safeDisplayDate(value) {
   return toDisplayDate(value) || "-";
 }
 
+export function safeInputDate(value) {
+  return toInputDate(value) || "";
+}
+
 export function isValidDisplayDate(value) {
   if (!value) return false;
 
   const s = String(value).trim();
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return false;
+  if (!/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(s)) return false;
 
   const iso = toISODate(s);
   if (!iso) return false;
@@ -75,6 +118,7 @@ export function normalizeISODate(value) {
     if (!s) return "";
 
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return toISODate(s);
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return toISODate(s);
 
     if (s.includes("T")) s = s.split("T")[0];
     if (s.includes(" ")) s = s.split(" ")[0];
@@ -94,6 +138,10 @@ export function todayDisplay() {
   return toDisplayDate(todayISO());
 }
 
+export function todayInput() {
+  return toInputDate(todayISO());
+}
+
 export function firstDayOfMonthISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
@@ -103,6 +151,10 @@ export function firstDayOfMonthDisplay() {
   return toDisplayDate(firstDayOfMonthISO());
 }
 
+export function firstDayOfMonthInput() {
+  return toInputDate(firstDayOfMonthISO());
+}
+
 export function startOfYearISO() {
   const d = new Date();
   return `${d.getFullYear()}-01-01`;
@@ -110,4 +162,8 @@ export function startOfYearISO() {
 
 export function startOfYearDisplay() {
   return toDisplayDate(startOfYearISO());
+}
+
+export function startOfYearInput() {
+  return toInputDate(startOfYearISO());
 }
