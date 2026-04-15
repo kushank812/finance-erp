@@ -96,16 +96,18 @@ async function request(path, options = {}) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = `${API_BASE}${normalizedPath}`;
 
+  const mergedHeaders = {
+    Accept: "application/json",
+    ...(options.body !== undefined && options.body !== null
+      ? { "Content-Type": "application/json" }
+      : {}),
+    ...(options.headers || {}),
+  };
+
   const finalOptions = {
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      ...(options.body !== undefined && options.body !== null
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...(options.headers || {}),
-    },
     ...options,
+    credentials: "include",
+    headers: mergedHeaders,
   };
 
   let res;
