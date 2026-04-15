@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { apiGet } from "../api/client";
-import AIAssistantPanel from "../components/ui/AIAssistantPanel";
 import {
   BarChart,
   Bar,
@@ -48,12 +46,9 @@ const STATUS_COLORS = {
 };
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
 
   async function load() {
     setErr("");
@@ -180,13 +175,7 @@ export default function Dashboard() {
   return (
     <>
       <div style={pageWrap}>
-        <div
-          className={`dashboard-grid ${aiOpen ? "dashboard-grid-ai-open" : ""}`}
-          style={{
-            ...dashboardGrid,
-            gridTemplateColumns: aiOpen ? "minmax(0, 1fr) 380px" : "minmax(0, 1fr)",
-          }}
-        >
+        <div className="dashboard-grid" style={dashboardGrid}>
           <main className="dashboard-main" style={mainCol}>
             <div style={topWrap}>
               <div>
@@ -200,14 +189,6 @@ export default function Dashboard() {
               <div style={topButtons}>
                 <button onClick={load} style={btnGhost} disabled={loading}>
                   {loading ? "Refreshing..." : "Refresh"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => navigate("/ai")}
-                  style={btnAi}
-                >
-                  Open AI
                 </button>
               </div>
             </div>
@@ -541,40 +522,8 @@ export default function Dashboard() {
               </>
             )}
           </main>
-
-          {aiOpen ? (
-            <aside className="dashboard-ai" style={aiCol}>
-              <div style={aiHeaderRow}>
-                <div style={aiTitle}>AI Finance Assistant</div>
-                <button
-                  type="button"
-                  onClick={() => setAiOpen(false)}
-                  style={aiCloseBtn}
-                >
-                  ×
-                </button>
-              </div>
-
-              <AIAssistantPanel
-                title="AI Finance Assistant"
-                height="calc(100vh - 180px)"
-              />
-            </aside>
-          ) : null}
         </div>
       </div>
-
-      {!aiOpen ? (
-        <button
-          type="button"
-          onClick={() => setAiOpen(true)}
-          style={floatingAiBtn}
-          title="Open AI Assistant"
-          aria-label="Open AI Assistant"
-        >
-          <span style={floatingAiText}>AI</span>
-        </button>
-      ) : null}
 
       <style>{responsiveCss}</style>
     </>
@@ -769,48 +718,12 @@ const dashboardGrid = {
   display: "grid",
   gap: 18,
   alignItems: "start",
-  transition: "grid-template-columns 0.25s ease",
 };
 
 const mainCol = {
   minWidth: 0,
   padding: 18,
   boxSizing: "border-box",
-};
-
-const aiCol = {
-  width: "100%",
-  minWidth: 0,
-  maxWidth: 380,
-  position: "sticky",
-  top: 86,
-  alignSelf: "start",
-};
-
-const aiHeaderRow = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  marginBottom: 10,
-};
-
-const aiTitle = {
-  color: "#fff",
-  fontWeight: 900,
-  fontSize: 16,
-};
-
-const aiCloseBtn = {
-  width: 36,
-  height: 36,
-  borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.06)",
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: 22,
-  lineHeight: 1,
 };
 
 const topWrap = {
@@ -924,42 +837,6 @@ const btnGhost = {
   fontWeight: 800,
 };
 
-const btnAi = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid rgba(96,165,250,0.35)",
-  background: "linear-gradient(135deg, #1d4ed8, #2563eb)",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 800,
-  boxShadow: "0 10px 22px rgba(37,99,235,0.24)",
-};
-
-const floatingAiBtn = {
-  position: "fixed",
-  right: 20,
-  bottom: 20,
-  zIndex: 40,
-  width: 60,
-  height: 60,
-  borderRadius: "50%",
-  border: "1px solid rgba(96,165,250,0.35)",
-  background: "linear-gradient(135deg, #1d4ed8, #2563eb)",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 900,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  boxShadow: "0 14px 28px rgba(37,99,235,0.28)",
-};
-
-const floatingAiText = {
-  fontSize: 18,
-  fontWeight: 900,
-  letterSpacing: 0.5,
-};
-
 const msgErr = {
   background: "#fef2f2",
   border: "1px solid #fecaca",
@@ -992,23 +869,9 @@ const tooltipValue = {
 };
 
 const responsiveCss = `
-@media (max-width: 1200px) {
-  .dashboard-grid-ai-open {
-    grid-template-columns: minmax(0, 1fr) 340px !important;
-  }
-}
-
 @media (max-width: 1024px) {
-  .dashboard-grid,
-  .dashboard-grid-ai-open {
+  .dashboard-grid {
     grid-template-columns: 1fr !important;
-  }
-
-  .dashboard-ai {
-    position: static !important;
-    top: auto !important;
-    max-width: 100% !important;
-    margin-top: 8px !important;
   }
 }
 

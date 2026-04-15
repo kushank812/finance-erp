@@ -240,6 +240,7 @@ export default function AIAssistantPanel({
   currentUser = null,
   title = "AI Finance Assistant",
   height = "calc(100vh - 140px)",
+  onClose = null,
 }) {
   const navigate = useNavigate();
   const scrollRef = useRef(null);
@@ -470,7 +471,9 @@ export default function AIAssistantPanel({
           id: uid(),
           role: "assistant",
           time: nowTime(),
-          text: String(e?.message || e || "Something went wrong while processing the command."),
+          text: String(
+            e?.message || e || "Something went wrong while processing the command."
+          ),
           cards: [],
         },
       ]);
@@ -490,7 +493,7 @@ export default function AIAssistantPanel({
   return (
     <div style={{ ...panelWrap, height }}>
       <div style={panelHeader}>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div style={panelTitle}>{title}</div>
           <div style={panelSubtitle}>
             {effectiveUser?.role === "VIEWER"
@@ -499,11 +502,29 @@ export default function AIAssistantPanel({
           </div>
         </div>
 
-        <div style={statusBadge}>
-          <span style={statusDot} />
-          <span>
-            {userLoading ? "Loading Session" : effectiveUser?.role === "VIEWER" ? "Read Only" : "Ready"}
-          </span>
+        <div style={headerActions}>
+          <div style={statusBadge}>
+            <span style={statusDot} />
+            <span>
+              {userLoading
+                ? "Loading Session"
+                : effectiveUser?.role === "VIEWER"
+                ? "Read Only"
+                : "Ready"}
+            </span>
+          </div>
+
+          {typeof onClose === "function" ? (
+            <button
+              type="button"
+              onClick={onClose}
+              style={closeBtn}
+              title="Close AI Assistant"
+              aria-label="Close AI Assistant"
+            >
+              ×
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -629,7 +650,7 @@ export default function AIAssistantPanel({
 const panelWrap = {
   width: "100%",
   minWidth: 320,
-  maxWidth: 420,
+  maxWidth: 440,
   display: "flex",
   flexDirection: "column",
   borderRadius: 22,
@@ -664,6 +685,13 @@ const panelSubtitle = {
   marginTop: 2,
 };
 
+const headerActions = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flex: "0 0 auto",
+};
+
 const statusBadge = {
   display: "inline-flex",
   alignItems: "center",
@@ -683,6 +711,22 @@ const statusDot = {
   borderRadius: 999,
   background: "#49e58e",
   boxShadow: "0 0 12px rgba(73,229,142,0.9)",
+};
+
+const closeBtn = {
+  width: 34,
+  height: 34,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.08)",
+  color: "#ffffff",
+  fontSize: 22,
+  lineHeight: 1,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flex: "0 0 auto",
 };
 
 const panelBody = {

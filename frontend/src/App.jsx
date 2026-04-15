@@ -39,6 +39,7 @@ import ChangePassword from "./pages/ChangePassword";
 import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
 import AuditLogs from "./pages/AuditLogs";
+import GlobalAIAssistant from "./components/ui/GlobalAIAssistant";
 
 function isAdmin(user) {
   return user?.role === "ADMIN";
@@ -357,6 +358,9 @@ function Layout({ authenticated, currentUser, logout, children }) {
       </nav>
 
       <div style={pagePad}>{children}</div>
+
+      <GlobalAIAssistant />
+
       <style>{responsiveCss}</style>
     </div>
   );
@@ -370,7 +374,11 @@ function AppRoutes({
   refreshAuth,
 }) {
   return (
-    <Layout authenticated={authenticated} currentUser={currentUser} logout={logout}>
+    <Layout
+      authenticated={authenticated}
+      currentUser={currentUser}
+      logout={logout}
+    >
       <Routes>
         <Route
           path="/login"
@@ -909,7 +917,8 @@ const subLink = {
 
 const subLinkActive = {
   color: "#fff",
-  background: "linear-gradient(135deg, rgba(37,99,235,0.30), rgba(29,78,216,0.24))",
+  background:
+    "linear-gradient(135deg, rgba(37,99,235,0.30), rgba(29,78,216,0.24))",
   border: "1px solid rgba(96,165,250,0.40)",
 };
 
