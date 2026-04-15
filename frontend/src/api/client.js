@@ -1,9 +1,7 @@
 // src/api/client.js
 
-const RAW_API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  `${window.location.protocol}//${window.location.hostname}:8000`;
-
+const ENV_API_BASE = (import.meta.env.VITE_API_BASE || "").trim();
+const RAW_API_BASE = ENV_API_BASE || "http://127.0.0.1:8000";
 const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
 async function parseError(res) {
@@ -55,7 +53,8 @@ async function handle(res) {
 }
 
 async function request(path, options = {}) {
-  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${API_BASE}${normalizedPath}`;
 
   const finalOptions = {
     credentials: "include",
@@ -69,7 +68,15 @@ async function request(path, options = {}) {
     ...options,
   };
 
-  const res = await fetch(url, finalOptions);
+  let res;
+  try {
+    res = await fetch(url, finalOptions);
+  } catch {
+    throw new Error(
+      `Unable to connect to backend at ${API_BASE}. Check VITE_API_BASE, backend status, CORS, and cookie settings.`
+    );
+  }
+
   return handle(res);
 }
 
