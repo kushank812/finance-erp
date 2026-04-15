@@ -35,6 +35,7 @@ import SalesInvoicePrintView from "./pages/SalesInvoicePrintView";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
+import AIWorkspacePage from "./pages/AIWorkspacePage";
 
 import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
@@ -199,8 +200,11 @@ function Layout({ authenticated, currentUser, logout, children }) {
         items: [
           { label: "Dashboard", to: "/dashboard" },
           ...(canDoTransactions(currentUser)
-            ? [{ label: "Entry", to: "/entry" }]
-            : []),
+            ? [
+                { label: "Entry", to: "/entry" },
+                { label: "Open AI", to: "/ai" },
+              ]
+            : [{ label: "Open AI", to: "/ai" }]),
         ],
       },
 
@@ -403,6 +407,15 @@ function AppRoutes({
           element={
             <ProtectedRoute authReady={authReady} authenticated={authenticated}>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/ai"
+          element={
+            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
+              <AIWorkspacePage currentUser={currentUser} />
             </ProtectedRoute>
           }
         />
