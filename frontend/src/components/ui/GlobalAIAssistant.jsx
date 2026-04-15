@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AIAssistantPanel from "./AIAssistantPanel";
 
 function SparkIcon() {
@@ -27,6 +27,26 @@ function SparkIcon() {
 
 export default function GlobalAIAssistant() {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    if (open) {
+      window.addEventListener("keydown", onKeyDown);
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [open]);
 
   return (
     <>
@@ -58,23 +78,33 @@ export default function GlobalAIAssistant() {
       </button>
 
       <div
+        onClick={() => setOpen(false)}
         style={{
-          position: "fixed",
-          right: 18,
-          bottom: 88,
-          width: "min(440px, calc(100vw - 24px))",
-          maxWidth: "calc(100vw - 24px)",
-          height: "min(780px, calc(100vh - 110px))",
-          maxHeight: "calc(100vh - 110px)",
-          zIndex: 9998,
-          display: open ? "block" : "none",
+          ...overlay,
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+        }}
+      />
+
+      <div
+        style={{
+          ...panelShell,
+          opacity: open ? 1 : 0,
+          transform: open
+            ? "translateY(0) scale(1)"
+            : "translateY(18px) scale(0.98)",
+          pointerEvents: open ? "auto" : "none",
         }}
       >
-        <AIAssistantPanel
-          onClose={() => setOpen(false)}
-          height="min(780px, calc(100vh - 110px))"
-        />
+        <div onClick={(e) => e.stopPropagation()} style={panelInner}>
+          <AIAssistantPanel
+            onClose={() => setOpen(false)}
+            height="100%"
+          />
+        </div>
       </div>
+
+      <style>{responsiveCss}</style>
     </>
   );
 }
@@ -132,3 +162,54 @@ const iconWrap = {
   background: "rgba(255,255,255,0.10)",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.16)",
 };
+
+const overlay = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 9996,
+  background: "rgba(2, 6, 23, 0.28)",
+  backdropFilter: "blur(6px)",
+  transition: "opacity 0.22s ease",
+};
+
+const panelShell = {
+  position: "fixed",
+  right: 18,
+  bottom: 84,
+  width: "min(440px, calc(100vw - 24px))",
+  maxWidth: "calc(100vw - 24px)",
+  height: "min(780px, calc(100vh - 108px))",
+  maxHeight: "calc(100vh - 108px)",
+  zIndex: 9998,
+  transition: "opacity 0.22s ease, transform 0.22s ease",
+  transformOrigin: "bottom right",
+};
+
+const panelInner = {
+  width: "100%",
+  height: "100%",
+};
+
+const responsiveCss = `
+@media (max-width: 640px) {
+  .global-ai-panel-mobile {
+    right: 12px;
+    left: 12px;
+    bottom: 76px;
+    width: auto;
+    max-width: none;
+    height: calc(100vh - 96px);
+    max-height: calc(100vh - 96px);
+  }
+}
+
+@media (max-width: 640px) {
+  button[aria-label="Open AI Assistant"],
+  button[aria-label="Close AI Assistant"] {
+    right: 14px !important;
+    bottom: 14px !important;
+    width: 50px !important;
+    height: 50px !important;
+  }
+}
+`;

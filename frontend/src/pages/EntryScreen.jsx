@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
-import AIAssistantPanel from "../components/ui/AIAssistantPanel";
 import {
   page,
   card,
@@ -80,7 +79,6 @@ function WorkflowItem({ step, title, desc }) {
 
 export default function EntryScreen({ currentUser = null }) {
   const nav = useNavigate();
-  const [aiOpen, setAiOpen] = useState(false);
 
   const role = String(currentUser?.role || "").toUpperCase();
   const isAdmin = role === "ADMIN";
@@ -116,281 +114,236 @@ export default function EntryScreen({ currentUser = null }) {
   }, [isAdmin, nav]);
 
   return (
-    <>
-      <div style={entryPageWrap}>
-        <div
-          className={`entry-grid ${aiOpen ? "entry-grid-ai-open" : ""}`}
-          style={{
-            ...entryGrid,
-            gridTemplateColumns: aiOpen ? "minmax(0, 1fr) 380px" : "minmax(0, 1fr)",
-          }}
-        >
-          <main className="entry-main" style={entryMainCol}>
-            <div style={page}>
-              <PageHeaderBlock
-                eyebrowText="ENTRY"
-                title="Billing & Accounting Entry"
-                subtitle="Start daily AP/AR work from one place. Create transactions, open reports, manage masters, and move through your ERP workflow faster."
-                actions={
-                  <div style={headerActions}>
-                    <button onClick={() => nav("/dashboard")} style={btnSecondary} type="button">
-                      Open Dashboard
-                    </button>
+    <div style={entryPageWrap}>
+      <div className="entry-grid" style={entryGrid}>
+        <main className="entry-main" style={entryMainCol}>
+          <div style={page}>
+            <PageHeaderBlock
+              eyebrowText="ENTRY"
+              title="Billing & Accounting Entry"
+              subtitle="Start daily AP/AR work from one place. Create transactions, open reports, manage masters, and move through your ERP workflow faster."
+              actions={
+                <div style={headerActions}>
+                  <button onClick={() => nav("/dashboard")} style={btnSecondary} type="button">
+                    Open Dashboard
+                  </button>
 
-                    <button onClick={() => nav("/ai")} style={btnGhost} type="button">
-                      Open AI
+                  {isAdmin ? (
+                    <button onClick={() => nav("/users")} style={btnPrimary} type="button">
+                      Open Users
                     </button>
+                  ) : null}
+                </div>
+              }
+            />
 
-                    {isAdmin ? (
-                      <button onClick={() => nav("/users")} style={btnPrimary} type="button">
-                        Open Users
-                      </button>
-                    ) : null}
-                  </div>
-                }
+            <div style={sectionStatGrid}>
+              <SectionStatCard
+                title="Accounts Receivable"
+                desc="Create invoices, record receipts, and monitor customer collections."
+                pillText="AR"
+                pillStyle={badgeBlue}
               />
+              <SectionStatCard
+                title="Accounts Payable"
+                desc="Create purchase bills, record vendor payments, and control payables."
+                pillText="AP"
+                pillStyle={badgeGreen}
+              />
+              <SectionStatCard
+                title="Reports & Review"
+                desc="Check ledger, aging, statements, and operational follow-up from one workflow."
+                pillText="REPORTS"
+                pillStyle={badgeAmber}
+              />
+            </div>
 
-              <div style={sectionStatGrid}>
-                <SectionStatCard
-                  title="Accounts Receivable"
-                  desc="Create invoices, record receipts, and monitor customer collections."
-                  pillText="AR"
-                  pillStyle={badgeBlue}
-                />
-                <SectionStatCard
-                  title="Accounts Payable"
-                  desc="Create purchase bills, record vendor payments, and control payables."
-                  pillText="AP"
-                  pillStyle={badgeGreen}
-                />
-                <SectionStatCard
-                  title="Reports & Review"
-                  desc="Check ledger, aging, statements, and operational follow-up from one workflow."
-                  pillText="REPORTS"
-                  pillStyle={badgeAmber}
-                />
+            <section style={card}>
+              <div style={cardHeader}>
+                <div>
+                  <h2 style={cardTitle}>Primary Transactions</h2>
+                  <p style={cardSubtitle}>
+                    These are the main finance actions users perform every day.
+                  </p>
+                </div>
               </div>
 
+              <div style={quickGrid}>
+                <QuickActionCard
+                  title="Create Sales Invoice"
+                  desc="Create a customer invoice, add item lines, calculate totals, and generate receivables."
+                  action="Create Invoice"
+                  onClick={() => nav("/billing")}
+                  badgeText="AR"
+                  badgeStyle={badgeBlue}
+                />
+
+                <QuickActionCard
+                  title="Record Customer Receipt"
+                  desc="Capture customer payment against open invoices and reduce outstanding balance."
+                  action="Create Receipt"
+                  onClick={() => nav("/receipt/new")}
+                  badgeText="AR"
+                  badgeStyle={badgeBlue}
+                />
+
+                <QuickActionCard
+                  title="Create Purchase Bill"
+                  desc="Enter supplier bill details to create payables and update purchase-side records."
+                  action="Create Bill"
+                  onClick={() => nav("/purchase/new")}
+                  badgeText="AP"
+                  badgeStyle={badgeGreen}
+                />
+
+                <QuickActionCard
+                  title="Record Vendor Payment"
+                  desc="Post payment to vendors and reduce open payable balances properly."
+                  action="Pay Vendor"
+                  onClick={() => nav("/purchase/pay")}
+                  badgeText="AP"
+                  badgeStyle={badgeGreen}
+                />
+              </div>
+            </section>
+
+            <div style={twoColGrid}>
               <section style={card}>
                 <div style={cardHeader}>
                   <div>
-                    <h2 style={cardTitle}>Primary Transactions</h2>
+                    <h2 style={cardTitle}>Document Access</h2>
                     <p style={cardSubtitle}>
-                      These are the main finance actions users perform every day.
+                      Open your saved transaction documents and review existing records.
                     </p>
                   </div>
                 </div>
 
-                <div style={quickGrid}>
-                  <QuickActionCard
-                    title="Create Sales Invoice"
-                    desc="Create a customer invoice, add item lines, calculate totals, and generate receivables."
-                    action="Create Invoice"
-                    onClick={() => nav("/billing")}
-                    badgeText="AR"
-                    badgeStyle={badgeBlue}
+                <div style={shortcutGrid}>
+                  <ShortcutButton
+                    label="Sales Invoices"
+                    subtext="Open invoice list, view status, and print records."
+                    onClick={() => nav("/sales-invoices")}
                   />
-
-                  <QuickActionCard
-                    title="Record Customer Receipt"
-                    desc="Capture customer payment against open invoices and reduce outstanding balance."
-                    action="Create Receipt"
-                    onClick={() => nav("/receipt/new")}
-                    badgeText="AR"
-                    badgeStyle={badgeBlue}
+                  <ShortcutButton
+                    label="Receipts"
+                    subtext="Open customer receipt records and verify collections."
+                    onClick={() => nav("/receipts")}
                   />
-
-                  <QuickActionCard
-                    title="Create Purchase Bill"
-                    desc="Enter supplier bill details to create payables and update purchase-side records."
-                    action="Create Bill"
-                    onClick={() => nav("/purchase/new")}
-                    badgeText="AP"
-                    badgeStyle={badgeGreen}
+                  <ShortcutButton
+                    label="Purchase Bills"
+                    subtext="Review supplier bills and payable records."
+                    onClick={() => nav("/purchase-bills")}
                   />
-
-                  <QuickActionCard
-                    title="Record Vendor Payment"
-                    desc="Post payment to vendors and reduce open payable balances properly."
-                    action="Pay Vendor"
-                    onClick={() => nav("/purchase/pay")}
-                    badgeText="AP"
-                    badgeStyle={badgeGreen}
+                  <ShortcutButton
+                    label="Vendor Payments"
+                    subtext="Review recorded vendor payments and payment history."
+                    onClick={() => nav("/vendor-payments")}
                   />
                 </div>
               </section>
 
-              <div style={twoColGrid}>
-                <section style={card}>
-                  <div style={cardHeader}>
-                    <div>
-                      <h2 style={cardTitle}>Document Access</h2>
-                      <p style={cardSubtitle}>
-                        Open your saved transaction documents and review existing records.
-                      </p>
-                    </div>
+              <section style={card}>
+                <div style={cardHeader}>
+                  <div>
+                    <h2 style={cardTitle}>Reporting & Analysis</h2>
+                    <p style={cardSubtitle}>
+                      Open finance reports to monitor balances, due amounts, and follow-up priorities.
+                    </p>
                   </div>
+                </div>
 
-                  <div style={shortcutGrid}>
-                    <ShortcutButton
-                      label="Sales Invoices"
-                      subtext="Open invoice list, view status, and print records."
-                      onClick={() => nav("/sales-invoices")}
-                    />
-                    <ShortcutButton
-                      label="Receipts"
-                      subtext="Open customer receipt records and verify collections."
-                      onClick={() => nav("/receipts")}
-                    />
-                    <ShortcutButton
-                      label="Purchase Bills"
-                      subtext="Review supplier bills and payable records."
-                      onClick={() => nav("/purchase-bills")}
-                    />
-                    <ShortcutButton
-                      label="Vendor Payments"
-                      subtext="Review recorded vendor payments and payment history."
-                      onClick={() => nav("/vendor-payments")}
-                    />
-                  </div>
-                </section>
-
-                <section style={card}>
-                  <div style={cardHeader}>
-                    <div>
-                      <h2 style={cardTitle}>Reporting & Analysis</h2>
-                      <p style={cardSubtitle}>
-                        Open finance reports to monitor balances, due amounts, and follow-up priorities.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={shortcutGrid}>
-                    <ShortcutButton
-                      label="Ledger"
-                      subtext="Track receivable and payable movement with balances."
-                      onClick={() => nav("/ledger")}
-                    />
-                    <ShortcutButton
-                      label="Aging Report"
-                      subtext="Analyze overdue buckets and collection urgency."
-                      onClick={() => nav("/aging")}
-                    />
-                    <ShortcutButton
-                      label="Statement"
-                      subtext="Review party-wise account statement and transaction trail."
-                      onClick={() => nav("/statement")}
-                    />
-                    <ShortcutButton
-                      label="Dashboard"
-                      subtext="See high-level KPIs, counts, and balance summaries."
-                      onClick={() => nav("/dashboard")}
-                    />
-                  </div>
-                </section>
-              </div>
-
-              <div style={twoColGrid}>
-                <section style={mastersCard}>
-                  <div style={mastersHeader}>
-                    <div>
-                      <h2 style={cardTitle}>Masters</h2>
-                      <p style={cardSubtitle}>
-                        Maintain clean master records before creating transactions.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={shortcutGrid}>
-                    {masterShortcuts.map((item) => (
-                      <ShortcutButton
-                        key={item.label}
-                        label={item.label}
-                        subtext={item.subtext}
-                        onClick={item.onClick}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section style={card}>
-                  <div style={cardHeader}>
-                    <div>
-                      <h2 style={cardTitle}>Recommended Workflow</h2>
-                      <p style={cardSubtitle}>
-                        Use this sequence to operate the project smoothly during demo or daily work.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={workflowList}>
-                    <WorkflowItem
-                      step="1"
-                      title="Maintain master data"
-                      desc="Create customer, vendor, and item records first so transaction entry stays clean."
-                    />
-                    <WorkflowItem
-                      step="2"
-                      title="Create finance transactions"
-                      desc="Enter invoices and purchase bills, then record receipts and vendor payments."
-                    />
-                    <WorkflowItem
-                      step="3"
-                      title="Review documents"
-                      desc="Open saved invoices, receipts, bills, and payments to verify statuses and balances."
-                    />
-                    <WorkflowItem
-                      step="4"
-                      title="Check reports and users"
-                      desc={
-                        isAdmin
-                          ? "Open ledger, aging, statement, dashboard, and user management for review and control."
-                          : "Open ledger, aging, statement, and dashboard for review and control."
-                      }
-                    />
-                  </div>
-                </section>
-              </div>
+                <div style={shortcutGrid}>
+                  <ShortcutButton
+                    label="Ledger"
+                    subtext="Track receivable and payable movement with balances."
+                    onClick={() => nav("/ledger")}
+                  />
+                  <ShortcutButton
+                    label="Aging Report"
+                    subtext="Analyze overdue buckets and collection urgency."
+                    onClick={() => nav("/aging")}
+                  />
+                  <ShortcutButton
+                    label="Statement"
+                    subtext="Review party-wise account statement and transaction trail."
+                    onClick={() => nav("/statement")}
+                  />
+                  <ShortcutButton
+                    label="Dashboard"
+                    subtext="See high-level KPIs, counts, and balance summaries."
+                    onClick={() => nav("/dashboard")}
+                  />
+                </div>
+              </section>
             </div>
-          </main>
 
-          {aiOpen ? (
-            <aside className="entry-ai" style={entryAiCol}>
-              <div style={aiHeaderRow}>
-                <div style={aiTitle}>AI Finance Assistant</div>
-                <button
-                  type="button"
-                  onClick={() => setAiOpen(false)}
-                  style={aiCloseBtn}
-                >
-                  ×
-                </button>
-              </div>
+            <div style={twoColGrid}>
+              <section style={mastersCard}>
+                <div style={mastersHeader}>
+                  <div>
+                    <h2 style={cardTitle}>Masters</h2>
+                    <p style={cardSubtitle}>
+                      Maintain clean master records before creating transactions.
+                    </p>
+                  </div>
+                </div>
 
-              <AIAssistantPanel
-                currentUser={currentUser}
-                title="AI Finance Assistant"
-                height="calc(100vh - 180px)"
-              />
-            </aside>
-          ) : null}
-        </div>
+                <div style={shortcutGrid}>
+                  {masterShortcuts.map((item) => (
+                    <ShortcutButton
+                      key={item.label}
+                      label={item.label}
+                      subtext={item.subtext}
+                      onClick={item.onClick}
+                    />
+                  ))}
+                </div>
+              </section>
+
+              <section style={card}>
+                <div style={cardHeader}>
+                  <div>
+                    <h2 style={cardTitle}>Recommended Workflow</h2>
+                    <p style={cardSubtitle}>
+                      Use this sequence to operate the project smoothly during demo or daily work.
+                    </p>
+                  </div>
+                </div>
+
+                <div style={workflowList}>
+                  <WorkflowItem
+                    step="1"
+                    title="Maintain master data"
+                    desc="Create customer, vendor, and item records first so transaction entry stays clean."
+                  />
+                  <WorkflowItem
+                    step="2"
+                    title="Create finance transactions"
+                    desc="Enter invoices and purchase bills, then record receipts and vendor payments."
+                  />
+                  <WorkflowItem
+                    step="3"
+                    title="Review documents"
+                    desc="Open saved invoices, receipts, bills, and payments to verify statuses and balances."
+                  />
+                  <WorkflowItem
+                    step="4"
+                    title="Check reports and users"
+                    desc={
+                      isAdmin
+                        ? "Open ledger, aging, statement, dashboard, and user management for review and control."
+                        : "Open ledger, aging, statement, and dashboard for review and control."
+                    }
+                  />
+                </div>
+              </section>
+            </div>
+          </div>
+        </main>
       </div>
 
-      {!aiOpen ? (
-        <button
-          type="button"
-          onClick={() => setAiOpen(true)}
-          style={floatingAiBtn}
-          title="Open AI Assistant"
-          aria-label="Open AI Assistant"
-        >
-          <span style={floatingAiText}>AI</span>
-        </button>
-      ) : null}
-
       <style>{responsiveCss}</style>
-    </>
+    </div>
   );
 }
 
@@ -406,73 +359,12 @@ const entryGrid = {
   display: "grid",
   gap: 18,
   alignItems: "start",
-  transition: "grid-template-columns 0.25s ease",
 };
 
 const entryMainCol = {
   minWidth: 0,
   padding: 18,
   boxSizing: "border-box",
-};
-
-const entryAiCol = {
-  width: "100%",
-  minWidth: 0,
-  maxWidth: 380,
-  position: "sticky",
-  top: 86,
-  alignSelf: "start",
-};
-
-const aiHeaderRow = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  marginBottom: 10,
-};
-
-const aiTitle = {
-  color: "#fff",
-  fontWeight: 900,
-  fontSize: 16,
-};
-
-const aiCloseBtn = {
-  width: 36,
-  height: 36,
-  borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.06)",
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: 22,
-  lineHeight: 1,
-};
-
-const floatingAiBtn = {
-  position: "fixed",
-  right: 20,
-  bottom: 20,
-  zIndex: 40,
-  width: 60,
-  height: 60,
-  borderRadius: "50%",
-  border: "1px solid rgba(96,165,250,0.35)",
-  background: "linear-gradient(135deg, #1d4ed8, #2563eb)",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 900,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  boxShadow: "0 14px 28px rgba(37,99,235,0.28)",
-};
-
-const floatingAiText = {
-  fontSize: 18,
-  fontWeight: 900,
-  letterSpacing: 0.5,
 };
 
 const headerActions = {
@@ -654,26 +546,6 @@ const mastersHeader = {
 };
 
 const responsiveCss = `
-@media (max-width: 1200px) {
-  .entry-grid-ai-open {
-    grid-template-columns: minmax(0, 1fr) 340px !important;
-  }
-}
-
-@media (max-width: 1024px) {
-  .entry-grid,
-  .entry-grid-ai-open {
-    grid-template-columns: 1fr !important;
-  }
-
-  .entry-ai {
-    position: static !important;
-    top: auto !important;
-    max-width: 100% !important;
-    margin-top: 8px !important;
-  }
-}
-
 @media (max-width: 640px) {
   body {
     overflow-x: hidden;
