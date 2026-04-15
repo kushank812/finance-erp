@@ -52,18 +52,13 @@ export default function GlobalAIAssistant() {
           position: "fixed",
           right: 24,
           bottom: 112,
-          width: "min(440px, calc(100vw - 32px))",
-          maxWidth: "calc(100vw - 32px)",
-          height: "min(780px, calc(100vh - 140px))",
+          width: "min(440px, calc(100vw - 24px))",
           maxHeight: "calc(100vh - 140px)",
           zIndex: 9998,
           display: open ? "block" : "none",
         }}
       >
-        <AIAssistantPanel
-          onClose={() => setOpen(false)}
-          height="min(780px, calc(100vh - 140px))"
-        />
+        <AIAssistantPanel open={open} onClose={() => setOpen(false)} />
       </div>
     </>
   );
