@@ -174,3 +174,4 @@ export const formatDateForInput = toInputDate;
 export const formatDateDDMMYYYY = toDisplayDate;
 export const parseDisplayDateToISO = toISODate;
 export const formatDateForApi = toISODate;
+export const formatDateForCalendarText = toInputDate;
