@@ -391,7 +391,7 @@ function AppRoutes({
           path="/login"
           element={
             <PublicOnlyRoute authReady={authReady} authenticated={authenticated}>
-              <Login onLoginSuccess={refreshAuth} />
+              <Login refreshAuth={refreshAuth} />
             </PublicOnlyRoute>
           }
         />
@@ -415,17 +415,17 @@ function AppRoutes({
         />
 
         <Route
-  path="/entry"
-  element={
-    <TransactionRoute
-      authReady={authReady}
-      authenticated={authenticated}
-      currentUser={currentUser}
-    >
-      <EntryScreen currentUser={currentUser} />
-    </TransactionRoute>
-  }
-/>
+          path="/entry"
+          element={
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <EntryScreen currentUser={currentUser} />
+            </TransactionRoute>
+          }
+        />
 
         <Route
           path="/customers"
