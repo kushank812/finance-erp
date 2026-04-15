@@ -6,7 +6,7 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { apiGet, apiPost } from "./api/client";
 
@@ -39,52 +39,6 @@ import ChangePassword from "./pages/ChangePassword";
 import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
 import AuditLogs from "./pages/AuditLogs";
-
-function linkStyle(isActive) {
-  return {
-    color: isActive ? "#ffffff" : "#9bb7ff",
-    textDecoration: "none",
-    fontWeight: 800,
-    fontSize: 13,
-    fontFamily: "inherit",
-    lineHeight: 1.2,
-    padding: "8px 14px",
-    borderRadius: 14,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    whiteSpace: "nowrap",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: isActive ? "rgba(11,92,255,0.22)" : "rgba(255,255,255,0.04)",
-    boxSizing: "border-box",
-    flex: "0 0 auto",
-  };
-}
-
-function navChipStyle() {
-  return {
-    ...linkStyle(false),
-    appearance: "none",
-    WebkitAppearance: "none",
-    MozAppearance: "none",
-    outline: "none",
-    cursor: "default",
-    background: "rgba(255,255,255,0.04)",
-  };
-}
-
-function groupLabelStyle() {
-  return {
-    color: "#7f8ba3",
-    fontSize: 11,
-    fontWeight: 900,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    whiteSpace: "nowrap",
-    padding: "0 2px",
-    flex: "0 0 auto",
-  };
-}
 
 function isAdmin(user) {
   return user?.role === "ADMIN";
@@ -234,140 +188,171 @@ function PublicOnlyRoute({ children, authReady, authenticated }) {
 }
 
 function Layout({ authenticated, currentUser, logout, children }) {
+  const location = useLocation();
+  const [openGroup, setOpenGroup] = useState("Home");
+
+  const navGroups = useMemo(() => {
+    const groups = [
+      {
+        title: "Home",
+        items: [
+          { label: "Dashboard", to: "/dashboard" },
+          ...(canDoTransactions(currentUser)
+            ? [{ label: "Entry", to: "/entry" }]
+            : []),
+        ],
+      },
+
+      ...(canDoTransactions(currentUser)
+        ? [
+            {
+              title: "AR",
+              items: [
+                { label: "Create Invoice", to: "/billing" },
+                { label: "Invoices", to: "/sales-invoices" },
+                { label: "Create Receipt", to: "/receipt/new" },
+                { label: "Receipts", to: "/receipts" },
+              ],
+            },
+            {
+              title: "AP",
+              items: [
+                { label: "Create Bill", to: "/purchase/new" },
+                { label: "Bills", to: "/purchase-bills" },
+                { label: "Create Payment", to: "/purchase/pay" },
+                { label: "Payments", to: "/vendor-payments" },
+              ],
+            },
+          ]
+        : []),
+
+      ...(canViewReports(currentUser)
+        ? [
+            {
+              title: "Reports",
+              items: [
+                { label: "Ledger", to: "/ledger" },
+                { label: "Aging", to: "/aging" },
+                { label: "Statement", to: "/statement" },
+              ],
+            },
+          ]
+        : []),
+
+      ...(canViewMasters(currentUser)
+        ? [
+            {
+              title: "Masters",
+              items: [
+                { label: "Customers", to: "/customers" },
+                { label: "Items", to: "/items" },
+                { label: "Vendors", to: "/vendors" },
+                ...(canManageUsers(currentUser)
+                  ? [{ label: "Users", to: "/users" }]
+                  : []),
+              ],
+            },
+          ]
+        : []),
+
+      ...(canViewAudit(currentUser)
+        ? [
+            {
+              title: "Admin",
+              items: [{ label: "Audit Logs", to: "/audit" }],
+            },
+          ]
+        : []),
+
+      {
+        title: "Account",
+        items: [{ label: "Change Password", to: "/change-password" }],
+      },
+    ];
+
+    return groups;
+  }, [currentUser]);
+
+  useEffect(() => {
+    const activeGroup =
+      navGroups.find((group) =>
+        group.items.some((item) => location.pathname.startsWith(item.to))
+      )?.title || "Home";
+
+    setOpenGroup(activeGroup);
+  }, [location.pathname, navGroups]);
+
   if (!authenticated) return children;
 
   return (
     <div style={shell}>
       <nav style={navStyle}>
         <div style={navInner}>
-          <div style={brand}>Finance AP/AR</div>
+          <div style={topRow}>
+            <div style={brandBlock}>
+              <div style={brandIcon}>F</div>
+              <div>
+                <div style={brandTitle}>Finance AP/AR</div>
+                <div style={brandSub}>
+                  Accounts Receivable / Accounts Payable
+                </div>
+              </div>
+            </div>
 
-          <div className="linksRow" style={linksRow}>
-            <span style={groupLabelStyle()}>Home</span>
+            <div style={userBlock}>
+              <div style={userChip}>
+                {currentUser?.full_name || currentUser?.user_id || "User"}
+                {currentUser?.role ? ` • ${currentUser.role}` : ""}
+              </div>
 
-            <NavLink to="/dashboard" style={({ isActive }) => linkStyle(isActive)}>
-              Dashboard
-            </NavLink>
-
-            <NavLink to="/entry" style={({ isActive }) => linkStyle(isActive)}>
-              Entry
-            </NavLink>
-
-            <div style={divider} />
-
-            <span style={groupLabelStyle()}>AR</span>
-
-            <NavLink to="/billing" style={({ isActive }) => linkStyle(isActive)}>
-              Create Invoice
-            </NavLink>
-
-            <NavLink
-              to="/sales-invoices"
-              style={({ isActive }) => linkStyle(isActive)}
-            >
-              Invoices
-            </NavLink>
-
-            <NavLink
-              to="/receipt/new"
-              style={({ isActive }) => linkStyle(isActive)}
-            >
-              Create Receipt
-            </NavLink>
-
-            <NavLink to="/receipts" style={({ isActive }) => linkStyle(isActive)}>
-              Receipts
-            </NavLink>
-
-            <div style={divider} />
-
-            <span style={groupLabelStyle()}>AP</span>
-
-            <NavLink
-              to="/purchase/new"
-              style={({ isActive }) => linkStyle(isActive)}
-            >
-              Create Bill
-            </NavLink>
-
-            <NavLink
-              to="/purchase-bills"
-              style={({ isActive }) => linkStyle(isActive)}
-            >
-              Bills
-            </NavLink>
-
-            <NavLink
-              to="/purchase/pay"
-              style={({ isActive }) => linkStyle(isActive)}
-            >
-              Create Payment
-            </NavLink>
-
-            <NavLink
-              to="/vendor-payments"
-              style={({ isActive }) => linkStyle(isActive)}
-            >
-              Payments
-            </NavLink>
-
-            <div style={divider} />
-
-            <span style={groupLabelStyle()}>Reports</span>
-
-            <NavLink to="/ledger" style={({ isActive }) => linkStyle(isActive)}>
-              Ledger
-            </NavLink>
-
-            <NavLink to="/aging" style={({ isActive }) => linkStyle(isActive)}>
-              Aging
-            </NavLink>
-
-            <NavLink to="/statement" style={({ isActive }) => linkStyle(isActive)}>
-              Statement
-            </NavLink>
-
-            <div style={divider} />
-
-            <span style={groupLabelStyle()}>Masters</span>
-
-            <NavLink to="/customers" style={({ isActive }) => linkStyle(isActive)}>
-              Customers
-            </NavLink>
-
-            <NavLink to="/items" style={({ isActive }) => linkStyle(isActive)}>
-              Items
-            </NavLink>
-
-            <NavLink to="/vendors" style={({ isActive }) => linkStyle(isActive)}>
-              Vendors
-            </NavLink>
-
-            {canManageUsers(currentUser) ? (
-              <NavLink to="/users" style={({ isActive }) => linkStyle(isActive)}>
-                Users
-              </NavLink>
-            ) : null}
-
-            {canViewAudit(currentUser) ? (
-              <NavLink to="/audit" style={({ isActive }) => linkStyle(isActive)}>
-                Audit
-              </NavLink>
-            ) : null}
-
-            <div style={divider} />
-
-            <NavLink
-              to="/change-password"
-              style={({ isActive }) => linkStyle(isActive)}
-            >
-              Change Password
-            </NavLink>
-
-            <button type="button" onClick={logout} style={navChipStyle()}>
-              Logout
-            </button>
+              <button type="button" onClick={logout} style={logoutBtn}>
+                Logout
+              </button>
+            </div>
           </div>
+
+          <div style={groupTabsWrap}>
+            {navGroups.map((group) => {
+              const isOpen = openGroup === group.title;
+
+              return (
+                <button
+                  key={group.title}
+                  type="button"
+                  onClick={() =>
+                    setOpenGroup((prev) =>
+                      prev === group.title ? "" : group.title
+                    )
+                  }
+                  style={{
+                    ...groupTabBtn,
+                    ...(isOpen ? groupTabBtnActive : {}),
+                  }}
+                >
+                  {group.title}
+                </button>
+              );
+            })}
+          </div>
+
+          {openGroup ? (
+            <div style={submenuWrap}>
+              {navGroups
+                .find((group) => group.title === openGroup)
+                ?.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    style={({ isActive }) => ({
+                      ...subLink,
+                      ...(isActive ? subLinkActive : {}),
+                    })}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+            </div>
+          ) : null}
         </div>
       </nav>
 
@@ -786,79 +771,156 @@ function NotFound() {
 
 const shell = {
   minHeight: "100vh",
-  background: "#0b1220",
+  background:
+    "radial-gradient(circle at top left, rgba(37,99,235,0.16), transparent 24%), #0b1220",
 };
 
 const navStyle = {
   position: "sticky",
   top: 0,
   zIndex: 50,
-  background: "rgba(11,18,32,0.92)",
-  backdropFilter: "blur(10px)",
+  background: "rgba(11,18,32,0.94)",
+  backdropFilter: "blur(12px)",
   borderBottom: "1px solid rgba(255,255,255,0.08)",
+  boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
 };
 
 const navInner = {
-  maxWidth: 1200,
+  maxWidth: 1280,
   margin: "0 auto",
-  padding: "10px 12px",
+  padding: "14px 18px 16px",
+};
+
+const topRow = {
   display: "flex",
-  gap: 12,
+  justifyContent: "space-between",
   alignItems: "center",
+  gap: 14,
   flexWrap: "wrap",
 };
 
-const brand = {
-  color: "#fff",
-  fontWeight: 950,
-  letterSpacing: 0.2,
-  marginRight: 6,
+const brandBlock = {
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
 };
 
-const linksRow = {
+const brandIcon = {
+  width: 44,
+  height: 44,
+  borderRadius: 14,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+  color: "#fff",
+  fontWeight: 900,
+  fontSize: 22,
+  boxShadow: "0 12px 24px rgba(37,99,235,0.28)",
+};
+
+const brandTitle = {
+  color: "#fff",
+  fontWeight: 900,
+  fontSize: 22,
+  lineHeight: 1.1,
+};
+
+const brandSub = {
+  color: "#94a3b8",
+  fontSize: 12,
+  marginTop: 4,
+};
+
+const userBlock = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const userChip = {
+  color: "#dbeafe",
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 999,
+  padding: "9px 14px",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const logoutBtn = {
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.04)",
+  color: "#fff",
+  borderRadius: 999,
+  padding: "9px 16px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const groupTabsWrap = {
   display: "flex",
   gap: 10,
-  alignItems: "center",
-  flexWrap: "nowrap",
-  overflowX: "auto",
-  paddingBottom: 4,
-  WebkitOverflowScrolling: "touch",
-  scrollbarWidth: "thin",
-  scrollbarColor: "#a5b8ff transparent",
+  flexWrap: "wrap",
+  marginTop: 16,
 };
 
-const divider = {
-  width: 1,
-  height: 22,
-  background: "rgba(255,255,255,0.10)",
-  flex: "0 0 auto",
+const groupTabBtn = {
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  color: "#cbd5e1",
+  borderRadius: 14,
+  padding: "10px 16px",
+  fontWeight: 900,
+  fontSize: 13,
+  letterSpacing: 0.2,
+  cursor: "pointer",
+};
+
+const groupTabBtnActive = {
+  color: "#ffffff",
+  background: "rgba(37,99,235,0.18)",
+  border: "1px solid rgba(96,165,250,0.38)",
+  boxShadow: "0 8px 20px rgba(37,99,235,0.16)",
+};
+
+const submenuWrap = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+  marginTop: 14,
+  padding: 14,
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.08)",
+};
+
+const subLink = {
+  textDecoration: "none",
+  color: "#cbd5e1",
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  padding: "10px 14px",
+  borderRadius: 12,
+  fontSize: 13,
+  fontWeight: 800,
+};
+
+const subLinkActive = {
+  color: "#fff",
+  background: "linear-gradient(135deg, rgba(37,99,235,0.30), rgba(29,78,216,0.24))",
+  border: "1px solid rgba(96,165,250,0.40)",
 };
 
 const pagePad = {
-  maxWidth: 1200,
+  maxWidth: 1280,
   margin: "0 auto",
   padding: 18,
 };
 
 const responsiveCss = `
-.linksRow::-webkit-scrollbar {
-  height: 6px;
-}
-
-.linksRow::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.linksRow::-webkit-scrollbar-thumb {
-  background: rgba(160,180,255,0.55);
-  border-radius: 10px;
-}
-
-.linksRow::-webkit-scrollbar-thumb:hover {
-  background: rgba(190,205,255,0.85);
-}
-
-@media (max-width: 520px) {
+@media (max-width: 700px) {
   body { overflow-x: hidden; }
 }
 `;
