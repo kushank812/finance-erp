@@ -2,6 +2,34 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiPost } from "../api/client";
 
+function getErrorMessage(error) {
+  if (!error) return "Login failed.";
+
+  if (typeof error === "string") return error;
+
+  if (typeof error?.message === "string") return error.message;
+
+  if (typeof error?.detail === "string") return error.detail;
+
+  if (typeof error?.error === "string") return error.error;
+
+  if (typeof error?.message === "object" && error?.message !== null) {
+    if (typeof error.message.detail === "string") return error.message.detail;
+    if (typeof error.message.message === "string") return error.message.message;
+    try {
+      return JSON.stringify(error.message);
+    } catch {
+      return "Login failed.";
+    }
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Login failed.";
+  }
+}
+
 export default function Login({ refreshAuth }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -22,8 +50,15 @@ export default function Login({ refreshAuth }) {
 
     const loginValue = loginId.trim();
 
-    if (!loginValue) return setErr("User ID or Email is required.");
-    if (!password) return setErr("Password is required.");
+    if (!loginValue) {
+      setErr("User ID or Email is required.");
+      return;
+    }
+
+    if (!password) {
+      setErr("Password is required.");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -37,7 +72,8 @@ export default function Login({ refreshAuth }) {
       await refreshAuth();
       navigate(redirectTo, { replace: true });
     } catch (e2) {
-      setErr(String(e2.message || e2));
+      setErr(getErrorMessage(e2));
+      console.error("Login failed:", e2);
     } finally {
       setLoading(false);
     }
@@ -162,8 +198,6 @@ function Feature({ text }) {
     </div>
   );
 }
-
-/* ---------------- styles ---------------- */
 
 const page = {
   minHeight: "100vh",
