@@ -127,22 +127,34 @@ function MessageBubble({ msg }) {
       <div
         style={{
           maxWidth: "88%",
-          borderRadius: 16,
-          padding: "10px 12px",
+          borderRadius: 18,
+          padding: "12px 14px",
           whiteSpace: "pre-wrap",
-          lineHeight: 1.45,
+          lineHeight: 1.5,
           fontSize: 13,
           border: isUser
-            ? "1px solid rgba(64, 206, 255, 0.28)"
+            ? "1px solid rgba(96,165,250,0.32)"
             : "1px solid rgba(255,255,255,0.08)",
           background: isUser
-            ? "linear-gradient(135deg, rgba(39,190,255,0.22), rgba(90,120,255,0.18))"
-            : "rgba(255,255,255,0.04)",
-          color: "#f5f7ff",
-          boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
+            ? "linear-gradient(135deg, rgba(37,99,235,0.26), rgba(59,130,246,0.18))"
+            : "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.03))",
+          color: "#f8fbff",
+          boxShadow: isUser
+            ? "0 14px 30px rgba(37,99,235,0.16)"
+            : "0 12px 26px rgba(0,0,0,0.20)",
+          backdropFilter: "blur(10px)",
         }}
       >
-        <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12, opacity: 0.9 }}>
+        <div
+          style={{
+            fontWeight: 800,
+            marginBottom: 5,
+            fontSize: 11,
+            opacity: 0.9,
+            letterSpacing: 0.3,
+            textTransform: "uppercase",
+          }}
+        >
           {isUser ? "You" : "AI Assistant"}
         </div>
 
@@ -150,9 +162,9 @@ function MessageBubble({ msg }) {
 
         <div
           style={{
-            marginTop: 6,
+            marginTop: 8,
             fontSize: 11,
-            opacity: 0.7,
+            opacity: 0.66,
             textAlign: "right",
           }}
         >
@@ -160,7 +172,7 @@ function MessageBubble({ msg }) {
         </div>
 
         {Array.isArray(msg.cards) && msg.cards.length > 0 ? (
-          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
             {msg.cards.map((card, index) => (
               <AssistantCard key={`${card.title || "card"}_${index}`} card={card} />
             ))}
@@ -231,6 +243,25 @@ function SendIcon() {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SparkBadgeIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: "block" }}
+    >
+      <path
+        d="M12 3L13.9 8.1L19 10L13.9 11.9L12 17L10.1 11.9L5 10L10.1 8.1L12 3Z"
+        fill="currentColor"
       />
     </svg>
   );
@@ -494,7 +525,13 @@ export default function AIAssistantPanel({
     <div style={{ ...panelWrap, height }}>
       <div style={panelHeader}>
         <div style={{ minWidth: 0 }}>
-          <div style={panelTitle}>{title}</div>
+          <div style={titleRow}>
+            <div style={titleBadge}>
+              <SparkBadgeIcon />
+            </div>
+            <div style={panelTitle}>{title}</div>
+          </div>
+
           <div style={panelSubtitle}>
             {effectiveUser?.role === "VIEWER"
               ? "Read-only AI summaries, reports, search, reminders, and safe navigation"
@@ -507,7 +544,7 @@ export default function AIAssistantPanel({
             <span style={statusDot} />
             <span>
               {userLoading
-                ? "Loading Session"
+                ? "Loading"
                 : effectiveUser?.role === "VIEWER"
                 ? "Read Only"
                 : "Ready"}
@@ -554,7 +591,7 @@ export default function AIAssistantPanel({
           {loading ? (
             <div style={{ display: "flex", justifyContent: "flex-start" }}>
               <div style={loadingBubble}>
-                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 11 }}>
                   AI Assistant
                 </div>
                 <div style={typingRow}>
@@ -639,7 +676,7 @@ export default function AIAssistantPanel({
 
         <div style={footerHint}>
           Try: <span style={hintStrong}>Open ledger</span>,{" "}
-          <span style={hintStrong}>Open statement</span>, or{" "}
+          <span style={hintStrong}>Open statement</span>,{" "}
           <span style={hintStrong}>Open aging report</span>
         </div>
       </div>
@@ -653,24 +690,46 @@ const panelWrap = {
   maxWidth: 440,
   display: "flex",
   flexDirection: "column",
-  borderRadius: 22,
+  borderRadius: 24,
   overflow: "hidden",
   background:
-    "linear-gradient(180deg, rgba(12,18,36,0.98) 0%, rgba(14,19,42,0.96) 100%)",
+    "linear-gradient(180deg, rgba(9,14,28,0.98) 0%, rgba(13,18,34,0.98) 100%)",
   border: "1px solid rgba(255,255,255,0.08)",
-  boxShadow: "0 22px 60px rgba(0,0,0,0.35)",
+  boxShadow:
+    "0 28px 80px rgba(0,0,0,0.42), 0 0 0 1px rgba(255,255,255,0.03) inset",
   color: "#f5f7ff",
+  backdropFilter: "blur(18px)",
 };
 
 const panelHeader = {
-  padding: "14px 16px",
+  padding: "16px 16px 14px",
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
+  alignItems: "flex-start",
   gap: 12,
   borderBottom: "1px solid rgba(255,255,255,0.07)",
   background:
-    "linear-gradient(135deg, rgba(37,205,207,0.18), rgba(111,82,255,0.18))",
+    "linear-gradient(135deg, rgba(37,99,235,0.18), rgba(99,102,241,0.14) 45%, rgba(16,185,129,0.10) 100%)",
+};
+
+const titleRow = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const titleBadge = {
+  width: 28,
+  height: 28,
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(255,255,255,0.12)",
+  color: "#ffffff",
+  border: "1px solid rgba(255,255,255,0.12)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10)",
+  flex: "0 0 auto",
 };
 
 const panelTitle = {
@@ -682,7 +741,8 @@ const panelTitle = {
 const panelSubtitle = {
   fontSize: 12,
   color: "rgba(235,240,255,0.78)",
-  marginTop: 2,
+  marginTop: 8,
+  lineHeight: 1.45,
 };
 
 const headerActions = {
@@ -700,9 +760,11 @@ const statusBadge = {
   borderRadius: 999,
   background: "rgba(255,255,255,0.08)",
   border: "1px solid rgba(255,255,255,0.10)",
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 800,
   whiteSpace: "nowrap",
+  color: "#eef4ff",
+  backdropFilter: "blur(10px)",
 };
 
 const statusDot = {
@@ -736,7 +798,7 @@ const panelBody = {
   display: "grid",
   gap: 14,
   background:
-    "radial-gradient(circle at top left, rgba(73,157,255,0.08), transparent 30%), radial-gradient(circle at bottom right, rgba(94,224,193,0.08), transparent 28%)",
+    "radial-gradient(circle at top left, rgba(59,130,246,0.10), transparent 30%), radial-gradient(circle at bottom right, rgba(16,185,129,0.08), transparent 28%)",
 };
 
 const promptSection = {
@@ -749,7 +811,7 @@ const sectionLabel = {
   textTransform: "uppercase",
   letterSpacing: 0.9,
   fontWeight: 900,
-  color: "rgba(220,228,255,0.72)",
+  color: "rgba(220,228,255,0.68)",
 };
 
 const chipsWrap = {
@@ -767,11 +829,12 @@ const chipBtn = {
   fontSize: 12,
   fontWeight: 700,
   cursor: "pointer",
+  backdropFilter: "blur(10px)",
 };
 
 const loadingBubble = {
   maxWidth: "70%",
-  borderRadius: 16,
+  borderRadius: 18,
   padding: "10px 12px",
   background: "rgba(255,255,255,0.04)",
   border: "1px solid rgba(255,255,255,0.08)",
@@ -793,8 +856,9 @@ const typingDot = {
 const cardBox = {
   borderRadius: 16,
   padding: 12,
-  background: "rgba(9, 17, 34, 0.68)",
+  background: "rgba(255,255,255,0.04)",
   border: "1px solid rgba(255,255,255,0.08)",
+  backdropFilter: "blur(10px)",
 };
 
 const cardTitle = {
@@ -927,19 +991,19 @@ const inputShell = {
   alignItems: "center",
   gap: 10,
   borderRadius: 999,
-  border: "1px solid rgba(102, 130, 255, 0.22)",
+  border: "1px solid rgba(102,130,255,0.20)",
   background:
-    "linear-gradient(180deg, rgba(18,26,52,0.96) 0%, rgba(14,21,44,0.96) 100%)",
+    "linear-gradient(180deg, rgba(17,24,39,0.96) 0%, rgba(12,18,32,0.96) 100%)",
   padding: "8px 10px 8px 14px",
   boxShadow:
-    "inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(71,107,255,0.05)",
+    "inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(71,107,255,0.04)",
   minHeight: 58,
 };
 
 const inputShellListening = {
-  border: "1px solid rgba(111, 192, 255, 0.4)",
+  border: "1px solid rgba(111,192,255,0.36)",
   boxShadow:
-    "0 0 0 1px rgba(111,192,255,0.08) inset, 0 0 24px rgba(63,136,255,0.10)",
+    "0 0 0 1px rgba(111,192,255,0.06) inset, 0 0 20px rgba(63,136,255,0.10)",
 };
 
 const inputArea = {
@@ -962,7 +1026,7 @@ const inputStyle = {
   background: "transparent",
   backgroundColor: "transparent",
   color: "#ffffff",
-  fontSize: 16,
+  fontSize: 15,
   lineHeight: 1.4,
   fontFamily: "inherit",
   height: 24,
@@ -1022,6 +1086,7 @@ const speechErrorText = {
 const footerHint = {
   fontSize: 12,
   color: "rgba(226,232,255,0.72)",
+  lineHeight: 1.45,
 };
 
 const hintStrong = {
