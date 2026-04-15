@@ -1,85 +1,114 @@
-export function pad2(value) {
-  return String(value).padStart(2, "0");
+// src/api/client.js
+
+const RAW_API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
+
+const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+
+async function parseError(res) {
+  const contentType = res.headers.get("content-type") || "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const data = await res.json();
+      return (
+        data?.detail ||
+        data?.message ||
+        data?.error ||
+        `HTTP ${res.status}`
+      );
+    }
+
+    const text = await res.text();
+    return text || `HTTP ${res.status}`;
+  } catch {
+    return `HTTP ${res.status}`;
+  }
 }
 
-export function isValidDateObject(d) {
-  return d instanceof Date && !Number.isNaN(d.getTime());
-}
+async function handle(res) {
+  const contentType = res.headers.get("content-type") || "";
 
-export function parseISODate(value) {
-  if (!value) return null;
-
-  const str = String(value).trim();
-
-  const onlyDateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
-  if (onlyDateMatch) {
-    const [, y, m, d] = onlyDateMatch;
-    const date = new Date(Number(y), Number(m) - 1, Number(d));
-    return isValidDateObject(date) ? date : null;
+  if (!res.ok) {
+    const message = await parseError(res);
+    throw new Error(message);
   }
 
-  const date = new Date(str);
-  return isValidDateObject(date) ? date : null;
-}
-
-export function formatDateDDMMYYYY(value, separator = "-") {
-  const date = parseISODate(value);
-  if (!date) return "-";
-
-  const dd = pad2(date.getDate());
-  const mm = pad2(date.getMonth() + 1);
-  const yyyy = date.getFullYear();
-
-  return `${dd}${separator}${mm}${separator}${yyyy}`;
-}
-
-export function formatDateForDisplay(value) {
-  return formatDateDDMMYYYY(value, "-");
-}
-
-export function formatDateForCalendarText(value) {
-  const date = parseISODate(value);
-  if (!date) return "";
-
-  const dd = pad2(date.getDate());
-  const mm = pad2(date.getMonth() + 1);
-  const yyyy = date.getFullYear();
-
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-export function formatDateForApi(value) {
-  const date = parseISODate(value);
-  if (!date) return "";
-
-  const dd = pad2(date.getDate());
-  const mm = pad2(date.getMonth() + 1);
-  const yyyy = date.getFullYear();
-
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-export function parseDisplayDateToISO(value) {
-  if (!value) return "";
-
-  const str = String(value).trim();
-
-  let match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
-  if (match) {
-    const [, dd, mm, yyyy] = match;
-    return `${yyyy}-${mm}-${dd}`;
+  if (
+    contentType.includes(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ) ||
+    contentType.includes("application/pdf") ||
+    contentType.includes("application/octet-stream") ||
+    contentType.includes("text/csv")
+  ) {
+    return await res.blob();
   }
 
-  match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(str);
-  if (match) {
-    const [, dd, mm, yyyy] = match;
-    return `${yyyy}-${mm}-${dd}`;
+  if (contentType.includes("application/json")) {
+    return await res.json();
   }
 
-  match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
-  if (match) {
-    return str;
-  }
-
-  return "";
+  const text = await res.text();
+  return text || null;
 }
+
+async function request(path, options = {}) {
+  const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const finalOptions = {
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      ...(options.body !== undefined && options.body !== null
+        ? { "Content-Type": "application/json" }
+        : {}),
+      ...(options.headers || {}),
+    },
+    ...options,
+  };
+
+  const res = await fetch(url, finalOptions);
+  return handle(res);
+}
+
+export async function apiGet(path, headers = {}) {
+  return request(path, {
+    method: "GET",
+    headers,
+  });
+}
+
+export async function apiPost(path, body, headers = {}) {
+  return request(path, {
+    method: "POST",
+    body: body === undefined ? undefined : JSON.stringify(body),
+    headers,
+  });
+}
+
+export async function apiPut(path, body, headers = {}) {
+  return request(path, {
+    method: "PUT",
+    body: body === undefined ? undefined : JSON.stringify(body),
+    headers,
+  });
+}
+
+export async function apiPatch(path, body, headers = {}) {
+  return request(path, {
+    method: "PATCH",
+    body: body === undefined ? undefined : JSON.stringify(body),
+    headers,
+  });
+}
+
+export async function apiDelete(path, headers = {}) {
+  return request(path, {
+    method: "DELETE",
+    headers,
+  });
+}
+
+export { API_BASE };
