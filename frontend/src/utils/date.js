@@ -167,3 +167,10 @@ export function startOfYearDisplay() {
 export function startOfYearInput() {
   return toInputDate(startOfYearISO());
 }
+
+/* backward-compatible aliases used by existing pages */
+export const formatDateForDisplay = toDisplayDate;
+export const formatDateForInput = toInputDate;
+export const formatDateDDMMYYYY = toDisplayDate;
+export const parseDisplayDateToISO = toISODate;
+export const formatDateForApi = toISODate;
