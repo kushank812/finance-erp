@@ -101,7 +101,7 @@ export default function ReceiptView() {
       );
 
       setTimeout(() => {
-        nav("/sales-invoices");
+        nav("/receipts");
       }, 1200);
     } catch (e) {
       setErr(String(e.message || e));

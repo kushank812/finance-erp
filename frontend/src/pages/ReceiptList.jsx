@@ -1,60 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { apiGet, apiDelete } from "../api/client";
+import {
+  formatDateForDisplay,
+  isValidDisplayDate,
+  normalizeDateInput,
+  toISODate,
+} from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function pad2(v) {
-  return String(v).padStart(2, "0");
-}
-
-/* ✅ FIXED → dd-mm-yyyy */
 function isoToDisplay(iso) {
-  if (!iso) return "-";
-  const s = String(iso).trim();
-  const parts = s.split("-");
-  if (parts.length !== 3) return s;
-  const [yyyy, mm, dd] = parts;
-  if (!yyyy || !mm || !dd) return s;
-  return `${dd}-${mm}-${yyyy}`;
-}
-
-function displayToISO(display) {
-  if (!display) return "";
-  const s = String(display).trim();
-  const parts = s.split("/");
-  if (parts.length !== 3) return "";
-  const [dd, mm, yyyy] = parts.map((x) => x.trim());
-  if (!dd || !mm || !yyyy) return "";
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function isValidISODate(iso) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return false;
-  const [yyyy, mm, dd] = String(iso).split("-").map(Number);
-  const dt = new Date(yyyy, mm - 1, dd);
-  return (
-    dt.getFullYear() === yyyy &&
-    dt.getMonth() === mm - 1 &&
-    dt.getDate() === dd
-  );
-}
-
-function isValidDisplayDate(display) {
-  const s = String(display || "").trim();
-  if (!s) return false;
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return false;
-  return isValidISODate(displayToISO(s));
-}
-
-function normalizeDateInput(value) {
-  const raw = String(value || "").replace(/[^\d]/g, "").slice(0, 8);
-
-  if (raw.length <= 2) return raw;
-  if (raw.length <= 4) return `${raw.slice(0, 2)}/${raw.slice(2)}`;
-  return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4)}`;
+  return formatDateForDisplay(iso) || "-";
 }
 
 function buildQuery(params) {
@@ -63,12 +22,12 @@ function buildQuery(params) {
   if (params.q?.trim()) qs.set("q", params.q.trim());
 
   if (params.fromDate) {
-    const fromISO = displayToISO(params.fromDate);
+    const fromISO = toISODate(params.fromDate);
     if (fromISO) qs.set("from_date", fromISO);
   }
 
   if (params.toDate) {
-    const toISO = displayToISO(params.toDate);
+    const toISO = toISODate(params.toDate);
     if (toISO) qs.set("to_date", toISO);
   }
 
@@ -112,18 +71,19 @@ export default function ReceiptList({ currentUser }) {
 
   useEffect(() => {
     loadData(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   async function onSearch(e) {
     e.preventDefault();
 
     if (filters.fromDate && !isValidDisplayDate(filters.fromDate)) {
-      setErr("From Date must be in DD/MM/YYYY format.");
+      setErr("From Date must be in DD/MM/YYYY or DD-MM-YYYY format.");
       return;
     }
 
     if (filters.toDate && !isValidDisplayDate(filters.toDate)) {
-      setErr("To Date must be in DD/MM/YYYY format.");
+      setErr("To Date must be in DD/MM/YYYY or DD-MM-YYYY format.");
       return;
     }
 
@@ -222,7 +182,12 @@ export default function ReceiptList({ currentUser }) {
           <button type="submit" style={btnPrimary} disabled={loading}>
             {loading ? "Loading..." : "Search"}
           </button>
-          <button type="button" style={btnGhost} onClick={onReset} disabled={loading}>
+          <button
+            type="button"
+            style={btnGhost}
+            onClick={onReset}
+            disabled={loading}
+          >
             Reset
           </button>
         </div>

@@ -5,9 +5,8 @@ import {
   NavLink,
   Navigate,
   useLocation,
-  useNavigate,
 } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { apiGet, apiPost } from "./api/client";
 
@@ -36,11 +35,56 @@ import SalesInvoicePrintView from "./pages/SalesInvoicePrintView";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
-import AIWorkspacePage from "./pages/AIWorkspacePage";
 
 import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
 import AuditLogs from "./pages/AuditLogs";
+
+function linkStyle(isActive) {
+  return {
+    color: isActive ? "#ffffff" : "#9bb7ff",
+    textDecoration: "none",
+    fontWeight: 800,
+    fontSize: 13,
+    fontFamily: "inherit",
+    lineHeight: 1.2,
+    padding: "8px 14px",
+    borderRadius: 14,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    whiteSpace: "nowrap",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: isActive ? "rgba(11,92,255,0.22)" : "rgba(255,255,255,0.04)",
+    boxSizing: "border-box",
+    flex: "0 0 auto",
+  };
+}
+
+function navChipStyle() {
+  return {
+    ...linkStyle(false),
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    outline: "none",
+    cursor: "default",
+    background: "rgba(255,255,255,0.04)",
+  };
+}
+
+function groupLabelStyle() {
+  return {
+    color: "#7f8ba3",
+    fontSize: 11,
+    fontWeight: 900,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    whiteSpace: "nowrap",
+    padding: "0 2px",
+    flex: "0 0 auto",
+  };
+}
 
 function isAdmin(user) {
   return user?.role === "ADMIN";
@@ -101,7 +145,6 @@ function ProtectedRoute({ children, authReady, authenticated }) {
   const location = useLocation();
 
   if (!authReady) return <FullPageLoader />;
-
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
@@ -113,13 +156,11 @@ function AdminRoute({ children, authReady, authenticated, currentUser }) {
   const location = useLocation();
 
   if (!authReady) return <FullPageLoader />;
-
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
-
   if (!isAdmin(currentUser)) {
-    return <Navigate to="/entry" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -129,13 +170,11 @@ function MastersRoute({ children, authReady, authenticated, currentUser }) {
   const location = useLocation();
 
   if (!authReady) return <FullPageLoader />;
-
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
-
   if (!canViewMasters(currentUser)) {
-    return <Navigate to="/entry" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -145,11 +184,9 @@ function TransactionRoute({ children, authReady, authenticated, currentUser }) {
   const location = useLocation();
 
   if (!authReady) return <FullPageLoader />;
-
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
-
   if (!canDoTransactions(currentUser)) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -161,29 +198,30 @@ function ReportsRoute({ children, authReady, authenticated, currentUser }) {
   const location = useLocation();
 
   if (!authReady) return <FullPageLoader />;
-
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
-
   if (!canViewReports(currentUser)) {
-    return <Navigate to="/entry" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
 }
 
-function DocumentViewRoute({ children, authReady, authenticated, currentUser }) {
+function DocumentViewRoute({
+  children,
+  authReady,
+  authenticated,
+  currentUser,
+}) {
   const location = useLocation();
 
   if (!authReady) return <FullPageLoader />;
-
   if (!authenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
-
   if (!canViewDocuments(currentUser)) {
-    return <Navigate to="/entry" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -191,263 +229,144 @@ function DocumentViewRoute({ children, authReady, authenticated, currentUser }) 
 
 function PublicOnlyRoute({ children, authReady, authenticated }) {
   if (!authReady) return <FullPageLoader />;
-
-  if (authenticated) {
-    return <Navigate to="/entry" replace />;
-  }
-
+  if (authenticated) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
-function topLinkStyle(isActive) {
-  return {
-    color: isActive ? "#ffffff" : "#c7d2fe",
-    textDecoration: "none",
-    fontWeight: 800,
-    fontSize: 14,
-    lineHeight: 1.2,
-    padding: "10px 14px",
-    borderRadius: 12,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    whiteSpace: "nowrap",
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: isActive ? "rgba(37,99,235,0.28)" : "rgba(255,255,255,0.04)",
-    transition: "all 0.18s ease",
-  };
-}
-
-function topButtonStyle(active = false) {
-  return {
-    color: active ? "#ffffff" : "#c7d2fe",
-    textDecoration: "none",
-    fontWeight: 800,
-    fontSize: 14,
-    lineHeight: 1.2,
-    padding: "10px 14px",
-    borderRadius: 12,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    whiteSpace: "nowrap",
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: active ? "rgba(37,99,235,0.22)" : "rgba(255,255,255,0.04)",
-    transition: "all 0.18s ease",
-    cursor: "pointer",
-    userSelect: "none",
-  };
-}
-
-function navChipStyle() {
-  return {
-    color: "#dbe5ff",
-    textDecoration: "none",
-    fontWeight: 700,
-    fontSize: 13,
-    lineHeight: 1.2,
-    padding: "10px 14px",
-    borderRadius: 12,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    whiteSpace: "nowrap",
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.04)",
-  };
-}
-
-function DropdownMenu({ label, items }) {
-  const [open, setOpen] = useState(false);
-
-  if (!items?.length) return null;
-
-  return (
-    <div
-      style={{ position: "relative", flex: "0 0 auto" }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button
-        type="button"
-        style={topButtonStyle(open)}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span>{label}</span>
-        <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.9 }}>▼</span>
-      </button>
-
-      {open && (
-        <div style={dropdownMenuStyle}>
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              style={({ isActive }) => ({
-                ...dropdownItemStyle,
-                background: isActive ? "rgba(37,99,235,0.18)" : "transparent",
-                color: isActive ? "#ffffff" : "#dbe5ff",
-              })}
-              onClick={() => setOpen(false)}
-            >
-              <div style={{ fontWeight: 700 }}>{item.label}</div>
-              {item.hint ? (
-                <div style={{ fontSize: 12, color: "#93a4c3", marginTop: 2 }}>
-                  {item.hint}
-                </div>
-              ) : null}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LogoutButton({ onLogout }) {
-  const [loading, setLoading] = useState(false);
-
-  async function handleLogout() {
-    try {
-      setLoading(true);
-      await onLogout();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleLogout}
-      style={{
-        ...navChipStyle(),
-        cursor: loading ? "not-allowed" : "pointer",
-      }}
-      disabled={loading}
-    >
-      {loading ? "Logging out..." : "Logout"}
-    </button>
-  );
-}
-
-function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
-  const location = useLocation();
-  const onLoginPage = location.pathname === "/login";
-
-  if (onLoginPage) {
-    return <div style={shell}>{children}</div>;
-  }
-
-  if (!authReady) {
-    return <FullPageLoader />;
-  }
-
-  if (!authenticated) {
-    return <div style={shell}>{children}</div>;
-  }
-
-  const homeItems = [
-    { to: "/dashboard", label: "Dashboard", hint: "Overview and KPIs" },
-    { to: "/ai", label: "AI Workspace", hint: "Insights and assistant" },
-    ...(canDoTransactions(currentUser)
-      ? [{ to: "/entry", label: "Entry", hint: "Quick transaction entry" }]
-      : []),
-  ];
-
-  const arItems = [
-    ...(canDoTransactions(currentUser)
-      ? [{ to: "/billing", label: "Create Invoice", hint: "Create sales invoice" }]
-      : []),
-    ...(canViewDocuments(currentUser)
-      ? [{ to: "/sales-invoices", label: "Invoices", hint: "View all invoices" }]
-      : []),
-    ...(canDoTransactions(currentUser)
-      ? [{ to: "/receipt/new", label: "Receipt", hint: "Record customer receipt" }]
-      : []),
-    ...(canViewDocuments(currentUser)
-      ? [{ to: "/receipts", label: "Receipts", hint: "View receipt history" }]
-      : []),
-  ];
-
-  const apItems = [
-    ...(canDoTransactions(currentUser)
-      ? [{ to: "/purchase/new", label: "Purchase Bill", hint: "Create vendor bill" }]
-      : []),
-    ...(canViewDocuments(currentUser)
-      ? [{ to: "/purchase-bills", label: "Bills", hint: "View purchase bills" }]
-      : []),
-    ...(canDoTransactions(currentUser)
-      ? [{ to: "/purchase/pay", label: "Vendor Payment", hint: "Record payment" }]
-      : []),
-    ...(canViewDocuments(currentUser)
-      ? [{ to: "/vendor-payments", label: "Payments", hint: "View payment history" }]
-      : []),
-  ];
-
-  const reportItems = canViewReports(currentUser)
-    ? [
-        { to: "/ledger", label: "Ledger", hint: "AR and AP movement" },
-        { to: "/aging", label: "Aging", hint: "Outstanding buckets" },
-        { to: "/statement", label: "Statement", hint: "Customer or vendor statement" },
-      ]
-    : [];
-
-  const masterItems = canViewMasters(currentUser)
-    ? [
-        { to: "/customers", label: "Customers", hint: "Customer master" },
-        { to: "/items", label: "Items", hint: "Item master" },
-        { to: "/vendors", label: "Vendors", hint: "Vendor master" },
-        ...(canManageUsers(currentUser)
-          ? [{ to: "/users", label: "Users", hint: "User administration" }]
-          : []),
-      ]
-    : [];
-
-  const adminItems = canViewAudit(currentUser)
-    ? [{ to: "/audit", label: "Audit Logs", hint: "Activity history" }]
-    : [];
+function Layout({ authenticated, currentUser, logout, children }) {
+  if (!authenticated) return children;
 
   return (
     <div style={shell}>
       <nav style={navStyle}>
         <div style={navInner}>
-          <div style={brandBlock}>
-            <NavLink to="/entry" style={{ textDecoration: "none" }}>
-              <div style={brand}>Finance AP/AR</div>
+          <div style={brand}>Finance AP/AR</div>
+
+          <div className="linksRow" style={linksRow}>
+            <span style={groupLabelStyle()}>Home</span>
+
+            <NavLink to="/dashboard" style={({ isActive }) => linkStyle(isActive)}>
+              Dashboard
             </NavLink>
-            <div style={brandSub}>Accounts Receivable & Payable</div>
-          </div>
 
-          <div style={navCenter}>
-            <DropdownMenu label="Home" items={homeItems} />
-            {arItems.length > 0 && <DropdownMenu label="AR" items={arItems} />}
-            {apItems.length > 0 && <DropdownMenu label="AP" items={apItems} />}
-            {reportItems.length > 0 && (
-              <DropdownMenu label="Reports" items={reportItems} />
-            )}
-            {masterItems.length > 0 && (
-              <DropdownMenu label="Masters" items={masterItems} />
-            )}
-            {adminItems.length > 0 && (
-              <DropdownMenu label="Admin" items={adminItems} />
-            )}
-          </div>
+            <NavLink to="/entry" style={({ isActive }) => linkStyle(isActive)}>
+              Entry
+            </NavLink>
 
-          <div style={navRight}>
+            <div style={divider} />
+
+            <span style={groupLabelStyle()}>AR</span>
+
+            <NavLink to="/billing" style={({ isActive }) => linkStyle(isActive)}>
+              Create Invoice
+            </NavLink>
+
+            <NavLink
+              to="/sales-invoices"
+              style={({ isActive }) => linkStyle(isActive)}
+            >
+              Invoices
+            </NavLink>
+
+            <NavLink
+              to="/receipt/new"
+              style={({ isActive }) => linkStyle(isActive)}
+            >
+              Create Receipt
+            </NavLink>
+
+            <NavLink to="/receipts" style={({ isActive }) => linkStyle(isActive)}>
+              Receipts
+            </NavLink>
+
+            <div style={divider} />
+
+            <span style={groupLabelStyle()}>AP</span>
+
+            <NavLink
+              to="/purchase/new"
+              style={({ isActive }) => linkStyle(isActive)}
+            >
+              Create Bill
+            </NavLink>
+
+            <NavLink
+              to="/purchase-bills"
+              style={({ isActive }) => linkStyle(isActive)}
+            >
+              Bills
+            </NavLink>
+
+            <NavLink
+              to="/purchase/pay"
+              style={({ isActive }) => linkStyle(isActive)}
+            >
+              Create Payment
+            </NavLink>
+
+            <NavLink
+              to="/vendor-payments"
+              style={({ isActive }) => linkStyle(isActive)}
+            >
+              Payments
+            </NavLink>
+
+            <div style={divider} />
+
+            <span style={groupLabelStyle()}>Reports</span>
+
+            <NavLink to="/ledger" style={({ isActive }) => linkStyle(isActive)}>
+              Ledger
+            </NavLink>
+
+            <NavLink to="/aging" style={({ isActive }) => linkStyle(isActive)}>
+              Aging
+            </NavLink>
+
+            <NavLink to="/statement" style={({ isActive }) => linkStyle(isActive)}>
+              Statement
+            </NavLink>
+
+            <div style={divider} />
+
+            <span style={groupLabelStyle()}>Masters</span>
+
+            <NavLink to="/customers" style={({ isActive }) => linkStyle(isActive)}>
+              Customers
+            </NavLink>
+
+            <NavLink to="/items" style={({ isActive }) => linkStyle(isActive)}>
+              Items
+            </NavLink>
+
+            <NavLink to="/vendors" style={({ isActive }) => linkStyle(isActive)}>
+              Vendors
+            </NavLink>
+
+            {canManageUsers(currentUser) ? (
+              <NavLink to="/users" style={({ isActive }) => linkStyle(isActive)}>
+                Users
+              </NavLink>
+            ) : null}
+
+            {canViewAudit(currentUser) ? (
+              <NavLink to="/audit" style={({ isActive }) => linkStyle(isActive)}>
+                Audit
+              </NavLink>
+            ) : null}
+
+            <div style={divider} />
+
             <NavLink
               to="/change-password"
-              style={({ isActive }) => topLinkStyle(isActive)}
+              style={({ isActive }) => linkStyle(isActive)}
             >
               Change Password
             </NavLink>
 
-            <div style={navChipStyle()}>
-              {currentUser?.full_name || currentUser?.user_id || "User"}
-              {currentUser?.role ? ` • ${currentUser.role}` : ""}
-            </div>
-
-            <LogoutButton onLogout={onLogout} />
+            <button type="button" onClick={logout} style={navChipStyle()}>
+              Logout
+            </button>
           </div>
         </div>
       </nav>
@@ -458,20 +377,21 @@ function Layout({ children, authenticated, authReady, currentUser, onLogout }) {
   );
 }
 
-function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth }) {
+function AppRoutes({
+  authReady,
+  authenticated,
+  currentUser,
+  logout,
+  refreshAuth,
+}) {
   return (
-    <Layout
-      authenticated={authenticated}
-      authReady={authReady}
-      currentUser={currentUser}
-      onLogout={logout}
-    >
+    <Layout authenticated={authenticated} currentUser={currentUser} logout={logout}>
       <Routes>
         <Route
           path="/login"
           element={
             <PublicOnlyRoute authReady={authReady} authenticated={authenticated}>
-              <Login refreshAuth={refreshAuth} />
+              <Login onLoginSuccess={refreshAuth} />
             </PublicOnlyRoute>
           }
         />
@@ -480,7 +400,7 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           path="/"
           element={
             <ProtectedRoute authReady={authReady} authenticated={authenticated}>
-              <Navigate to="/entry" replace />
+              <Navigate to="/dashboard" replace />
             </ProtectedRoute>
           }
         />
@@ -490,15 +410,6 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
           element={
             <ProtectedRoute authReady={authReady} authenticated={authenticated}>
               <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/ai"
-          element={
-            <ProtectedRoute authReady={authReady} authenticated={authenticated}>
-              <AIWorkspacePage currentUser={currentUser} />
             </ProtectedRoute>
           }
         />
@@ -817,31 +728,19 @@ function AppRoutes({ authReady, authenticated, currentUser, logout, refreshAuth 
   );
 }
 
-function AppShell() {
-  const navigate = useNavigate();
-
+export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  const bootstrapped = useRef(false);
-
-  async function refreshAuth(options = {}) {
-    const { silent = false } = options;
-
-    if (!silent) {
-      setAuthReady(false);
-    }
-
+  async function refreshAuth() {
     try {
       const me = await apiGet("/auth/me");
       setAuthenticated(true);
       setCurrentUser(me);
-      return true;
     } catch {
       setAuthenticated(false);
       setCurrentUser(null);
-      return false;
     } finally {
       setAuthReady(true);
     }
@@ -855,32 +754,23 @@ function AppShell() {
     } finally {
       setAuthenticated(false);
       setCurrentUser(null);
-      setAuthReady(true);
-      navigate("/login", { replace: true });
+      window.location.href = "/login";
     }
   }
 
   useEffect(() => {
-    if (bootstrapped.current) return;
-    bootstrapped.current = true;
     refreshAuth();
   }, []);
 
   return (
-    <AppRoutes
-      authReady={authReady}
-      authenticated={authenticated}
-      currentUser={currentUser}
-      logout={logout}
-      refreshAuth={refreshAuth}
-    />
-  );
-}
-
-export default function App() {
-  return (
     <Router>
-      <AppShell />
+      <AppRoutes
+        authReady={authReady}
+        authenticated={authenticated}
+        currentUser={currentUser}
+        logout={logout}
+        refreshAuth={refreshAuth}
+      />
     </Router>
   );
 }
@@ -902,104 +792,73 @@ const shell = {
 const navStyle = {
   position: "sticky",
   top: 0,
-  zIndex: 60,
-  background:
-    "linear-gradient(180deg, rgba(6,13,27,0.96) 0%, rgba(11,18,32,0.94) 100%)",
-  backdropFilter: "blur(12px)",
+  zIndex: 50,
+  background: "rgba(11,18,32,0.92)",
+  backdropFilter: "blur(10px)",
   borderBottom: "1px solid rgba(255,255,255,0.08)",
-  boxShadow: "0 12px 32px rgba(0,0,0,0.22)",
 };
 
 const navInner = {
-  maxWidth: 1400,
+  maxWidth: 1200,
   margin: "0 auto",
-  padding: "14px 18px",
+  padding: "10px 12px",
   display: "flex",
+  gap: 12,
   alignItems: "center",
-  justifyContent: "space-between",
-  gap: 16,
   flexWrap: "wrap",
-};
-
-const brandBlock = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  minWidth: 180,
 };
 
 const brand = {
-  color: "#ffffff",
+  color: "#fff",
   fontWeight: 950,
-  fontSize: 24,
   letterSpacing: 0.2,
-  lineHeight: 1.05,
+  marginRight: 6,
 };
 
-const brandSub = {
-  color: "#8ea3c7",
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: 0.3,
-};
-
-const navCenter = {
+const linksRow = {
   display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
   gap: 10,
-  flex: 1,
-  minWidth: 320,
-  flexWrap: "wrap",
-};
-
-const navRight = {
-  display: "flex",
   alignItems: "center",
-  justifyContent: "flex-end",
-  gap: 10,
-  flexWrap: "wrap",
+  flexWrap: "nowrap",
+  overflowX: "auto",
+  paddingBottom: 4,
+  WebkitOverflowScrolling: "touch",
+  scrollbarWidth: "thin",
+  scrollbarColor: "#a5b8ff transparent",
 };
 
-const dropdownMenuStyle = {
-  position: "absolute",
-  top: "calc(100% + 10px)",
-  left: 0,
-  minWidth: 250,
-  background: "rgba(10,18,34,0.98)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 16,
-  padding: 10,
-  boxShadow: "0 18px 48px rgba(0,0,0,0.34)",
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-};
-
-const dropdownItemStyle = {
-  textDecoration: "none",
-  padding: "12px 12px",
-  borderRadius: 12,
-  transition: "all 0.16s ease",
-  border: "1px solid transparent",
+const divider = {
+  width: 1,
+  height: 22,
+  background: "rgba(255,255,255,0.10)",
+  flex: "0 0 auto",
 };
 
 const pagePad = {
-  maxWidth: 1400,
+  maxWidth: 1200,
   margin: "0 auto",
   padding: 18,
 };
 
 const responsiveCss = `
-@media (max-width: 1100px) {
-  .nav-hide-mobile {
-    display: none !important;
-  }
+.linksRow::-webkit-scrollbar {
+  height: 6px;
 }
 
-@media (max-width: 820px) {
-  body {
-    overflow-x: hidden;
-  }
+.linksRow::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.linksRow::-webkit-scrollbar-thumb {
+  background: rgba(160,180,255,0.55);
+  border-radius: 10px;
+}
+
+.linksRow::-webkit-scrollbar-thumb:hover {
+  background: rgba(190,205,255,0.85);
+}
+
+@media (max-width: 520px) {
+  body { overflow-x: hidden; }
 }
 `;

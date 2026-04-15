@@ -129,6 +129,14 @@ export function normalizeISODate(value) {
   }
 }
 
+export function normalizeDateInput(value) {
+  const raw = String(value || "").replace(/[^\d]/g, "").slice(0, 8);
+
+  if (raw.length <= 2) return raw;
+  if (raw.length <= 4) return `${raw.slice(0, 2)}/${raw.slice(2)}`;
+  return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4)}`;
+}
+
 export function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -168,7 +176,6 @@ export function startOfYearInput() {
   return toInputDate(startOfYearISO());
 }
 
-/* backward-compatible aliases used by existing pages */
 export const formatDateForDisplay = toDisplayDate;
 export const formatDateForInput = toInputDate;
 export const formatDateDDMMYYYY = toDisplayDate;
