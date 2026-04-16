@@ -221,7 +221,6 @@ function Layout({ authenticated, currentUser, logout, children }) {
               title: "AP",
               items: [
                 { label: "Create Bill", to: "/purchase/new" },
-                { label: "Bills", to: "/purchase-bills" },
                 { label: "Create Payment", to: "/purchase/pay" },
                 { label: "Payments", to: "/vendor-payments" },
               ],
