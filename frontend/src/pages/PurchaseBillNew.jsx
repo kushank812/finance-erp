@@ -607,10 +607,19 @@ export default function PurchaseBillNew() {
               style={btnSecondary}
               disabled={saving || pageLoading}
             >
-              Back to Bills
+              View Bills
             </button>
 
-            {isEditMode ? (
+            {!isEditMode ? (
+              <button
+                type="button"
+                onClick={() => nav("/purchase/new")}
+                style={btnGhost}
+                disabled={saving || pageLoading}
+              >
+                Refresh Form
+              </button>
+            ) : (
               <button
                 type="button"
                 onClick={() => nav(`/purchase/view/${encodeURIComponent(billNo)}`)}
@@ -619,7 +628,7 @@ export default function PurchaseBillNew() {
               >
                 View Bill
               </button>
-            ) : null}
+            )}
           </>
         }
       />

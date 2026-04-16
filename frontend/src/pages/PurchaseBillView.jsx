@@ -280,13 +280,23 @@ export default function PurchaseBillView({ currentUser }) {
         subtitle="Search, view, edit, cancel, and delete purchase bills."
         actions={
           !isViewer ? (
-            <button
-              style={btnPrimary}
-              onClick={() => nav("/purchase/new")}
-              type="button"
-            >
-              + Create Bill
-            </button>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                style={btnSecondary}
+                onClick={() => nav("/purchase-bills")}
+                type="button"
+              >
+                View Bills
+              </button>
+
+              <button
+                style={btnPrimary}
+                onClick={() => nav("/purchase/new")}
+                type="button"
+              >
+                + Create Bill
+              </button>
+            </div>
           ) : null
         }
       />
