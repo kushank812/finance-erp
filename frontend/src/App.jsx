@@ -192,9 +192,10 @@ function PublicOnlyRoute({ children, authReady, authenticated }) {
 function Layout({ authenticated, currentUser, logout, children }) {
   const location = useLocation();
   const [openGroup, setOpenGroup] = useState("Home");
+  const [scrolled, setScrolled] = useState(false);
 
   const navGroups = useMemo(() => {
-    const groups = [
+    return [
       {
         title: "Home",
         items: [
@@ -214,7 +215,9 @@ function Layout({ authenticated, currentUser, logout, children }) {
               title: "AR",
               items: [
                 { label: "Create Invoice", to: "/billing" },
+                { label: "Invoices", to: "/sales-invoices" },
                 { label: "Create Receipt", to: "/receipt/new" },
+                { label: "Receipts", to: "/receipts" },
               ],
             },
             {
@@ -276,30 +279,71 @@ function Layout({ authenticated, currentUser, logout, children }) {
         items: [{ label: "Change Password", to: "/change-password" }],
       },
     ];
-
-    return groups;
   }, [currentUser]);
 
   useEffect(() => {
     const activeGroup =
       navGroups.find((group) =>
-        group.items.some((item) => location.pathname.startsWith(item.to))
+        group.items.some((item) => {
+          if (item.to === "/dashboard") return location.pathname === "/dashboard";
+          return location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
+        })
       )?.title || "Home";
 
     setOpenGroup(activeGroup);
   }, [location.pathname, navGroups]);
 
+  useEffect(() => {
+    function onScroll() {
+      setScrolled(window.scrollY > 16);
+    }
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   if (!authenticated) return children;
+
+  const currentGroup =
+    navGroups.find((group) => group.title === openGroup) || navGroups[0];
 
   return (
     <div style={shell}>
-      <nav style={navStyle}>
+      <nav
+        style={{
+          ...navStyle,
+          paddingTop: scrolled ? 8 : 14,
+          paddingBottom: scrolled ? 10 : 16,
+          boxShadow: scrolled
+            ? "0 10px 24px rgba(0,0,0,0.28)"
+            : "0 16px 36px rgba(0,0,0,0.20)",
+        }}
+      >
         <div style={navInner}>
           <div style={topRow}>
             <div style={brandBlock}>
-              <div style={brandIcon}>F</div>
+              <div
+                style={{
+                  ...brandIcon,
+                  width: scrolled ? 42 : 50,
+                  height: scrolled ? 42 : 50,
+                  fontSize: scrolled ? 20 : 24,
+                  borderRadius: scrolled ? 14 : 16,
+                }}
+              >
+                F
+              </div>
+
               <div>
-                <div style={brandTitle}>Finance AP/AR</div>
+                <div
+                  style={{
+                    ...brandTitle,
+                    fontSize: scrolled ? 18 : 22,
+                  }}
+                >
+                  Finance AP/AR
+                </div>
                 <div style={brandSub}>
                   Accounts Receivable / Accounts Payable
                 </div>
@@ -307,18 +351,36 @@ function Layout({ authenticated, currentUser, logout, children }) {
             </div>
 
             <div style={userBlock}>
-              <div style={userChip}>
+              <div
+                style={{
+                  ...userChip,
+                  padding: scrolled ? "8px 13px" : "10px 15px",
+                  fontSize: scrolled ? 12 : 13,
+                }}
+              >
                 {currentUser?.full_name || currentUser?.user_id || "User"}
                 {currentUser?.role ? ` • ${currentUser.role}` : ""}
               </div>
 
-              <button type="button" onClick={logout} style={logoutBtn}>
+              <button
+                type="button"
+                onClick={logout}
+                style={{
+                  ...logoutBtn,
+                  padding: scrolled ? "8px 15px" : "10px 17px",
+                }}
+              >
                 Logout
               </button>
             </div>
           </div>
 
-          <div style={groupTabsWrap}>
+          <div
+            style={{
+              ...groupTabsWrap,
+              marginTop: scrolled ? 12 : 16,
+            }}
+          >
             {navGroups.map((group) => {
               const isOpen = openGroup === group.title;
 
@@ -333,6 +395,9 @@ function Layout({ authenticated, currentUser, logout, children }) {
                   }
                   style={{
                     ...groupTabBtn,
+                    padding: scrolled ? "9px 14px" : "11px 16px",
+                    fontSize: scrolled ? 12 : 13,
+                    borderRadius: scrolled ? 12 : 14,
                     ...(isOpen ? groupTabBtnActive : {}),
                   }}
                 >
@@ -343,21 +408,29 @@ function Layout({ authenticated, currentUser, logout, children }) {
           </div>
 
           {openGroup ? (
-            <div style={submenuWrap}>
-              {navGroups
-                .find((group) => group.title === openGroup)
-                ?.items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    style={({ isActive }) => ({
-                      ...subLink,
-                      ...(isActive ? subLinkActive : {}),
-                    })}
-                  >
-                    {item.label}
-                  </NavLink>
-                ))}
+            <div
+              style={{
+                ...submenuWrap,
+                marginTop: scrolled ? 10 : 14,
+                padding: scrolled ? 10 : 14,
+                borderRadius: scrolled ? 16 : 18,
+              }}
+            >
+              {currentGroup?.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  style={({ isActive }) => ({
+                    ...subLink,
+                    padding: scrolled ? "9px 13px" : "10px 14px",
+                    fontSize: scrolled ? 12 : 13,
+                    borderRadius: scrolled ? 11 : 12,
+                    ...(isActive ? subLinkActive : {}),
+                  })}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
             </div>
           ) : null}
         </div>
@@ -795,23 +868,25 @@ function NotFound() {
 const shell = {
   minHeight: "100vh",
   background:
-    "radial-gradient(circle at top left, rgba(37,99,235,0.16), transparent 24%), #0b1220",
+    "radial-gradient(circle at top left, rgba(37,99,235,0.16), transparent 24%), #081225",
 };
 
 const navStyle = {
   position: "sticky",
   top: 0,
-  zIndex: 50,
-  background: "rgba(11,18,32,0.94)",
-  backdropFilter: "blur(12px)",
-  borderBottom: "1px solid rgba(255,255,255,0.08)",
-  boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+  zIndex: 90,
+  background: "rgba(7,16,34,0.82)",
+  backdropFilter: "blur(14px)",
+  WebkitBackdropFilter: "blur(14px)",
+  borderBottom: "1px solid rgba(148,163,184,0.12)",
+  transition:
+    "padding 180ms ease, box-shadow 180ms ease, background 180ms ease",
 };
 
 const navInner = {
-  maxWidth: 1280,
+  maxWidth: 1440,
   margin: "0 auto",
-  padding: "14px 18px 16px",
+  padding: "0 18px",
 };
 
 const topRow = {
@@ -826,33 +901,34 @@ const brandBlock = {
   display: "flex",
   alignItems: "center",
   gap: 14,
+  minWidth: 0,
 };
 
 const brandIcon = {
-  width: 44,
-  height: 44,
-  borderRadius: 14,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-  color: "#fff",
+  background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+  color: "#ffffff",
   fontWeight: 900,
-  fontSize: 22,
-  boxShadow: "0 12px 24px rgba(37,99,235,0.28)",
+  boxShadow: "0 16px 34px rgba(37,99,235,0.28)",
+  transition: "all 180ms ease",
+  flex: "0 0 auto",
 };
 
 const brandTitle = {
-  color: "#fff",
+  color: "#ffffff",
   fontWeight: 900,
-  fontSize: 22,
-  lineHeight: 1.1,
+  lineHeight: 1.05,
+  letterSpacing: -0.25,
+  transition: "font-size 180ms ease",
 };
 
 const brandSub = {
-  color: "#94a3b8",
+  color: "#8ea3c7",
   fontSize: 12,
   marginTop: 4,
+  lineHeight: 1.2,
 };
 
 const userBlock = {
@@ -863,88 +939,125 @@ const userBlock = {
 };
 
 const userChip = {
-  color: "#dbeafe",
-  background: "rgba(255,255,255,0.05)",
+  color: "#e2e8f0",
+  background: "rgba(255,255,255,0.045)",
   border: "1px solid rgba(255,255,255,0.10)",
   borderRadius: 999,
-  padding: "9px 14px",
-  fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 800,
+  letterSpacing: 0.1,
+  whiteSpace: "nowrap",
+  transition: "all 180ms ease",
 };
 
 const logoutBtn = {
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.04)",
-  color: "#fff",
+  color: "#ffffff",
   borderRadius: 999,
-  padding: "9px 16px",
   fontWeight: 800,
   cursor: "pointer",
+  whiteSpace: "nowrap",
+  transition:
+    "transform 140ms ease, background 140ms ease, border-color 140ms ease, padding 180ms ease",
 };
 
 const groupTabsWrap = {
   display: "flex",
   gap: 10,
   flexWrap: "wrap",
-  marginTop: 16,
+  transition: "margin-top 180ms ease",
 };
 
 const groupTabBtn = {
   border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.04)",
-  color: "#cbd5e1",
+  background: "rgba(255,255,255,0.035)",
+  color: "#d7e1f3",
   borderRadius: 14,
-  padding: "10px 16px",
   fontWeight: 900,
-  fontSize: 13,
-  letterSpacing: 0.2,
+  letterSpacing: 0.15,
   cursor: "pointer",
+  minHeight: 40,
+  transition:
+    "all 150ms ease, padding 180ms ease, border-radius 180ms ease, font-size 180ms ease",
 };
 
 const groupTabBtnActive = {
   color: "#ffffff",
-  background: "rgba(37,99,235,0.18)",
-  border: "1px solid rgba(96,165,250,0.38)",
-  boxShadow: "0 8px 20px rgba(37,99,235,0.16)",
+  background: "linear-gradient(180deg, rgba(37,99,235,0.30), rgba(29,78,216,0.18))",
+  border: "1px solid rgba(96,165,250,0.42)",
+  boxShadow: "0 10px 24px rgba(37,99,235,0.16)",
 };
 
 const submenuWrap = {
   display: "flex",
   gap: 10,
   flexWrap: "wrap",
-  marginTop: 14,
-  padding: 14,
-  borderRadius: 18,
-  background: "rgba(255,255,255,0.04)",
+  background: "rgba(255,255,255,0.035)",
   border: "1px solid rgba(255,255,255,0.08)",
+  transition:
+    "all 180ms ease, padding 180ms ease, border-radius 180ms ease, margin-top 180ms ease",
 };
 
 const subLink = {
   textDecoration: "none",
-  color: "#cbd5e1",
-  background: "rgba(255,255,255,0.04)",
+  color: "#d5deed",
+  background: "rgba(255,255,255,0.035)",
   border: "1px solid rgba(255,255,255,0.10)",
-  padding: "10px 14px",
-  borderRadius: 12,
-  fontSize: 13,
   fontWeight: 800,
+  minHeight: 38,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  whiteSpace: "nowrap",
+  transition:
+    "all 150ms ease, padding 180ms ease, border-radius 180ms ease, font-size 180ms ease",
 };
 
 const subLinkActive = {
-  color: "#fff",
-  background:
-    "linear-gradient(135deg, rgba(37,99,235,0.30), rgba(29,78,216,0.24))",
+  color: "#ffffff",
+  background: "linear-gradient(180deg, rgba(59,130,246,0.32), rgba(37,99,235,0.18))",
   border: "1px solid rgba(96,165,250,0.40)",
+  boxShadow: "0 10px 22px rgba(37,99,235,0.14)",
 };
 
 const pagePad = {
-  maxWidth: 1280,
+  maxWidth: 1440,
   margin: "0 auto",
-  padding: 18,
+  padding: "18px",
 };
 
 const responsiveCss = `
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+button:hover {
+  filter: brightness(1.03);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 1024px) {
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-user-row-stack {
+    width: 100%;
+  }
+}
+
 @media (max-width: 700px) {
-  body { overflow-x: hidden; }
+  body {
+    overflow-x: hidden;
+  }
 }
 `;
