@@ -36,6 +36,27 @@ def compute_balance(grand_total, amount_done) -> Decimal:
     return balance
 
 
+def is_overdue(
+    *,
+    due_date: date | None = None,
+    balance=None,
+    cancelled: bool = False,
+    today: date | None = None,
+) -> bool:
+    if cancelled:
+        return False
+
+    bal = normalize_amount(balance)
+    if bal <= 0:
+        return False
+
+    if not due_date:
+        return False
+
+    reference_date = today or date.today()
+    return due_date < reference_date
+
+
 def compute_status(
     grand_total,
     amount_done=None,
@@ -46,18 +67,19 @@ def compute_status(
     today: date | None = None,
 ) -> str:
     """
-    Generic finance status calculator.
+    Generic finance payment-status calculator.
 
     Use for:
     - Sales Invoice: amount_done = amount_received
     - Purchase Bill: amount_done = amount_paid
 
-    Priority:
+    This function returns PAYMENT STATUS only:
     1. Cancelled
     2. Paid
     3. Partial
-    4. Overdue
-    5. Pending
+    4. Pending
+
+    Overdue is computed separately using is_overdue(...).
     """
     if cancelled:
         return STATUS_CANCELLED
@@ -75,11 +97,6 @@ def compute_status(
     if total > 0 and bal < total:
         return STATUS_PARTIAL
 
-    reference_date = today or date.today()
-
-    if due_date and due_date < reference_date:
-        return STATUS_OVERDUE
-
     return STATUS_PENDING
 
 
@@ -95,6 +112,8 @@ def status_counts_from_rows(rows, *, today: date | None = None) -> dict[str, int
         },
         ...
     ]
+
+    Returns payment-status counts only.
     """
     counts = {
         STATUS_PENDING: 0,
@@ -119,6 +138,25 @@ def status_counts_from_rows(rows, *, today: date | None = None) -> dict[str, int
     return counts
 
 
+def overdue_count_from_rows(rows, *, today: date | None = None) -> int:
+    """
+    Counts all open overdue rows, including both PENDING and PARTIAL documents.
+    """
+    reference_date = today or date.today()
+    count = 0
+
+    for row in rows:
+        if is_overdue(
+            due_date=row.get("due_date"),
+            balance=row.get("balance"),
+            cancelled=bool(row.get("cancelled", False)),
+            today=reference_date,
+        ):
+            count += 1
+
+    return count
+
+
 def amount_if_overdue(
     grand_total,
     amount_done=None,
@@ -128,19 +166,17 @@ def amount_if_overdue(
     cancelled: bool = False,
     today: date | None = None,
 ):
-    status = compute_status(
-        grand_total=grand_total,
-        amount_done=amount_done,
+    if balance is None:
+        bal = compute_balance(grand_total, amount_done)
+    else:
+        bal = normalize_amount(balance)
+
+    if not is_overdue(
         due_date=due_date,
-        balance=balance,
+        balance=bal,
         cancelled=cancelled,
         today=today,
-    )
-
-    if status != STATUS_OVERDUE:
+    ):
         return Decimal("0")
 
-    if balance is not None:
-        return normalize_amount(balance)
-
-    return compute_balance(grand_total, amount_done)
+    return bal
