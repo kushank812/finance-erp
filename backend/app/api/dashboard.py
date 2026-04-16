@@ -11,12 +11,12 @@ from app.models.sales_invoice import SalesInvoiceHdr, SalesReceipt
 from app.models.vendor_payment import VendorPayment
 from app.utils.status import (
     STATUS_CANCELLED,
-    STATUS_OVERDUE,
     STATUS_PAID,
     STATUS_PARTIAL,
     STATUS_PENDING,
     amount_if_overdue,
     compute_status,
+    overdue_count_from_rows,
     status_counts_from_rows,
 )
 
@@ -75,7 +75,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
     sales_pending_count = sales_counts[STATUS_PENDING]
     sales_partial_count = sales_counts[STATUS_PARTIAL]
     sales_paid_count = sales_counts[STATUS_PAID]
-    sales_overdue_count = sales_counts[STATUS_OVERDUE]
+    sales_overdue_count = overdue_count_from_rows(sales_rows, today=today)
     sales_cancelled_count = sales_counts[STATUS_CANCELLED]
 
     overdue_receivables_total = 0
@@ -116,7 +116,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
     purchase_pending_count = purchase_counts[STATUS_PENDING]
     purchase_partial_count = purchase_counts[STATUS_PARTIAL]
     purchase_paid_count = purchase_counts[STATUS_PAID]
-    purchase_overdue_count = purchase_counts[STATUS_OVERDUE]
+    purchase_overdue_count = overdue_count_from_rows(purchase_rows, today=today)
     purchase_cancelled_count = purchase_counts[STATUS_CANCELLED]
 
     overdue_payables_total = 0
