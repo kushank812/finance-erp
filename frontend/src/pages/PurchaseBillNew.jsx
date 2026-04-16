@@ -601,14 +601,27 @@ export default function PurchaseBillNew() {
         subtitle={getPageSubtitle()}
         actions={
           <>
-           <button
-  type="button"
-  onClick={() => nav("/purchase-bills")}
-  style={btnSecondary}
-  disabled={saving || pageLoading}
->
-  Bills
-</button>
+            <button
+              type="button"
+              onClick={() => nav("/purchase-bills")}
+              style={btnSecondary}
+              disabled={saving || pageLoading}
+            >
+              View Bills
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setErr("");
+                setOk("");
+                clearAll();
+              }}
+              style={btnGhost}
+              disabled={saving || pageLoading || isEditMode}
+            >
+              Refresh Form
+            </button>
 
             {isEditMode ? (
               <button
