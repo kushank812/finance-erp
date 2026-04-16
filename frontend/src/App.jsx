@@ -277,7 +277,7 @@ function Layout({ authenticated, currentUser, logout, children }) {
               items: [
                 { label: "Create Bill", to: "/purchase/new" },
                 { label: "Create Payment", to: "/purchase/pay" },
-                { label: "Payments", to: "/vendor-payments" },
+                
               ],
             },
           ]
