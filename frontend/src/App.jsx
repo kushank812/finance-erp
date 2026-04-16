@@ -214,9 +214,7 @@ function Layout({ authenticated, currentUser, logout, children }) {
               title: "AR",
               items: [
                 { label: "Create Invoice", to: "/billing" },
-                { label: "Invoices", to: "/sales-invoices" },
                 { label: "Create Receipt", to: "/receipt/new" },
-                { label: "Receipts", to: "/receipts" },
               ],
             },
             {

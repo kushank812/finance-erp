@@ -554,10 +554,19 @@ export default function BillingNew() {
               style={btnSecondary}
               disabled={saving || pageLoading}
             >
-              Back to Invoices
+              View Invoices
             </button>
 
-            {isEditMode ? (
+            {!isEditMode ? (
+              <button
+                type="button"
+                onClick={() => nav("/billing")}
+                style={btnGhost}
+                disabled={saving || pageLoading}
+              >
+                Refresh Form
+              </button>
+            ) : (
               <button
                 type="button"
                 onClick={() =>
@@ -568,7 +577,7 @@ export default function BillingNew() {
               >
                 View Invoice
               </button>
-            ) : null}
+            )}
           </>
         }
       />

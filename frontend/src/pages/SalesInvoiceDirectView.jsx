@@ -280,9 +280,19 @@ export default function SalesInvoiceDirectView({ currentUser }) {
         subtitle="Search, view, edit, cancel, and delete sales invoices."
         actions={
           !isViewer ? (
-            <button style={btnPrimary} onClick={() => nav("/billing")} type="button">
-              + Create Invoice
-            </button>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                style={btnSecondary}
+                onClick={() => nav("/sales-invoices")}
+                type="button"
+              >
+                View Invoices
+              </button>
+
+              <button style={btnPrimary} onClick={() => nav("/billing")} type="button">
+                + Create Invoice
+              </button>
+            </div>
           ) : null
         }
       />

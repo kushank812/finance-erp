@@ -226,7 +226,7 @@ export default function ReceiptNew() {
               style={btnSecondary}
               disabled={loading || saving}
             >
-              Back to Receipts
+              View Receipts
             </button>
 
             <button
