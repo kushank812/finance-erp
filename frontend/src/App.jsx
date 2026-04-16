@@ -313,14 +313,14 @@ function Layout({ authenticated, currentUser, logout, children }) {
         ? [
             {
               title: "Admin",
-              items: [
-                ...(canManageUsers(currentUser)
-                  ? [{ label: "Users", to: "/users" }]
-                  : []),
-                ...(canViewAudit(currentUser)
-                  ? [{ label: "Audit Logs", to: "/audit" }]
-                  : []),
-              ],
+             items: [
+  ...(canViewAudit(currentUser)
+    ? [{ label: "Audit Logs", to: "/audit" }]
+    : []),
+  ...(canManageUsers(currentUser)
+    ? [{ label: "Users", to: "/users" }]
+    : []),
+],
             },
           ]
         : []),
