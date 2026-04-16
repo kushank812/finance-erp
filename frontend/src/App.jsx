@@ -250,19 +250,23 @@ function Layout({ authenticated, currentUser, logout, children }) {
                 { label: "Customers", to: "/customers" },
                 { label: "Items", to: "/items" },
                 { label: "Vendors", to: "/vendors" },
-                ...(canManageUsers(currentUser)
-                  ? [{ label: "Users", to: "/users" }]
-                  : []),
               ],
             },
           ]
         : []),
 
-      ...(canViewAudit(currentUser)
+      ...(canManageUsers(currentUser) || canViewAudit(currentUser)
         ? [
             {
               title: "Admin",
-              items: [{ label: "Audit Logs", to: "/audit" }],
+              items: [
+                ...(canManageUsers(currentUser)
+                  ? [{ label: "Users", to: "/users" }]
+                  : []),
+                ...(canViewAudit(currentUser)
+                  ? [{ label: "Audit Logs", to: "/audit" }]
+                  : []),
+              ],
             },
           ]
         : []),
