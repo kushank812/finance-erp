@@ -122,6 +122,7 @@ export function canNavigateTo(path, user) {
 
   if (normalizedPath === "/dashboard") return true;
   if (normalizedPath === "/change-password") return true;
+  if (normalizedPath === "/ai") return true;
 
   if (normalizedPath === "/users") {
     return canManageUsers(user);
@@ -162,6 +163,8 @@ export function canNavigateTo(path, user) {
   if (
     normalizedPath === "/sales-invoices" ||
     normalizedPath === "/purchase-bills" ||
+    normalizedPath === "/receipts" ||
+    normalizedPath === "/vendor-payments" ||
     normalizedPath.startsWith("/sales-invoice-view/") ||
     normalizedPath.startsWith("/purchase/view/") ||
     normalizedPath.startsWith("/receipt/view/") ||
@@ -259,6 +262,7 @@ export const QUICK_PROMPTS = [
   "Show unpaid purchase bills",
   "Generate daily finance summary",
   "Generate reminder",
+  "Open AI",
   "Open dashboard",
   "Open entry",
   "Open aging report",
@@ -1453,6 +1457,10 @@ function buildUnknownResponse() {
 function getNavigationIntent(query, navigate, currentUser) {
   const q = normalizeText(query);
 
+  if (q.includes("open ai") || q === "ai" || q === "open ai workspace") {
+    return safeNavigate("/ai", navigate, currentUser, "AI Workspace").result;
+  }
+
   if (q.includes("open dashboard") || q === "dashboard") {
     return safeNavigate("/dashboard", navigate, currentUser, "Dashboard").result;
   }
@@ -1542,6 +1550,14 @@ function getNavigationIntent(query, navigate, currentUser) {
     return safeNavigate("/purchase-bills", navigate, currentUser, "Purchase Bills").result;
   }
 
+  if (q.includes("open receipts") || q === "receipts") {
+    return safeNavigate("/receipts", navigate, currentUser, "Receipts").result;
+  }
+
+  if (q.includes("open vendor payments") || q === "vendor payments") {
+    return safeNavigate("/vendor-payments", navigate, currentUser, "Vendor Payments").result;
+  }
+
   if (
     (q.includes("invoice") || q.includes("invoices")) &&
     !q.includes("find invoice") &&
@@ -1562,7 +1578,7 @@ export async function buildAIResponse(text, navigate, currentUser) {
   if (!query) {
     return {
       reply:
-        "Please type a command like Summarize dashboard, Generate receivables report, Show top 10 overdue invoices, Find invoice INV0001, Show vendor dues, or Open dashboard.",
+        "Please type a command like Summarize dashboard, Generate receivables report, Show top 10 overdue invoices, Find invoice INV0001, Show vendor dues, Open AI, or Open dashboard.",
       cards: [],
     };
   }

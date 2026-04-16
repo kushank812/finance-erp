@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import AIWorkspace from "../components/ui/AIWorkspace";
 
-export default function AIWorkspacePage() {
+export default function AIWorkspacePage({ currentUser = null }) {
   const navigate = useNavigate();
 
   return (
@@ -20,7 +20,7 @@ export default function AIWorkspacePage() {
         </button>
       </div>
 
-      <AIWorkspace />
+      <AIWorkspace currentUser={currentUser} />
     </div>
   );
 }
