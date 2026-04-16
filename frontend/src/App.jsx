@@ -189,6 +189,61 @@ function PublicOnlyRoute({ children, authReady, authenticated }) {
   return children;
 }
 
+function getGroupFromPath(path) {
+  if (
+    path.startsWith("/dashboard") ||
+    path.startsWith("/entry") ||
+    path.startsWith("/ai")
+  ) {
+    return "Home";
+  }
+
+  if (
+    path.startsWith("/billing") ||
+    path.startsWith("/sales-invoices") ||
+    path.startsWith("/sales-invoice-view") ||
+    path.startsWith("/receipt") ||
+    path.startsWith("/receipts")
+  ) {
+    return "AR";
+  }
+
+  if (
+    path.startsWith("/purchase") ||
+    path.startsWith("/purchase-bills") ||
+    path.startsWith("/vendor-payment") ||
+    path.startsWith("/vendor-payments")
+  ) {
+    return "AP";
+  }
+
+  if (
+    path.startsWith("/ledger") ||
+    path.startsWith("/aging") ||
+    path.startsWith("/statement")
+  ) {
+    return "Reports";
+  }
+
+  if (
+    path.startsWith("/customers") ||
+    path.startsWith("/items") ||
+    path.startsWith("/vendors")
+  ) {
+    return "Masters";
+  }
+
+  if (path.startsWith("/users") || path.startsWith("/audit")) {
+    return "Admin";
+  }
+
+  if (path.startsWith("/change-password")) {
+    return "Account";
+  }
+
+  return "Home";
+}
+
 function Layout({ authenticated, currentUser, logout, children }) {
   const location = useLocation();
   const [openGroup, setOpenGroup] = useState("Home");
@@ -222,7 +277,7 @@ function Layout({ authenticated, currentUser, logout, children }) {
               items: [
                 { label: "Create Bill", to: "/purchase/new" },
                 { label: "Create Payment", to: "/purchase/pay" },
-                
+                { label: "Payments", to: "/vendor-payments" },
               ],
             },
           ]
@@ -280,13 +335,9 @@ function Layout({ authenticated, currentUser, logout, children }) {
   }, [currentUser]);
 
   useEffect(() => {
-    const activeGroup =
-      navGroups.find((group) =>
-        group.items.some((item) => location.pathname.startsWith(item.to))
-      )?.title || "Home";
-
-    setOpenGroup(activeGroup);
-  }, [location.pathname, navGroups]);
+    const group = getGroupFromPath(location.pathname);
+    setOpenGroup(group);
+  }, [location.pathname]);
 
   if (!authenticated) return children;
 
