@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiDelete, apiGet, apiPatch } from "../api/client";
+import { apiGet, apiPost } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
-import AppDateInput from "../components/ui/AppDateInput";
+import { FormField } from "../components/ui/FormField";
 import { formatDateForDisplay, toISODate } from "../utils/date";
 import {
   page,
@@ -15,711 +15,624 @@ import {
   field,
   labelStyle,
   input,
-  actionBar,
-  saveActions,
-  tableWrap,
-  table,
-  th,
-  thCenter,
-  thRight,
-  tr,
-  td,
-  tdCode,
-  tdCenter,
-  tdRight,
-  emptyTd,
   btnPrimary,
   btnSecondary,
   btnGhost,
-  btnMini,
-  btnDangerMini,
+  actionBar,
+  saveActions,
+  badgeBlue,
 } from "../components/ui/uiStyles";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
 }
 
-function fmtDate(value) {
+function num(v) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
+function formatDate(value) {
   return formatDateForDisplay(value) || "-";
 }
 
-function buildQuery(params) {
-  const qs = new URLSearchParams();
-
-  if (params.q?.trim()) qs.set("q", params.q.trim());
-
-  const fromISO = toISODate(params.fromDate);
-  if (fromISO) qs.set("from_date", fromISO);
-
-  const toISO = toISODate(params.toDate);
-  if (toISO) qs.set("to_date", toISO);
-
-  if (params.status) qs.set("status", params.status);
-
-  const s = qs.toString();
-  return s ? `?${s}` : "";
-}
-
-function getStatus(row) {
-  return String(row?.status || "").toUpperCase();
-}
-
-function hasPayment(row) {
-  return Number(row?.amount_paid || 0) > 0;
-}
-
-function isCancelled(row) {
-  return getStatus(row) === "CANCELLED";
-}
-
-function isPaid(row) {
-  return getStatus(row) === "PAID";
-}
-
-function isPartial(row) {
-  return getStatus(row) === "PARTIAL";
-}
-
-function canFullEditBill(row) {
-  return !isCancelled(row) && !isPaid(row) && !hasPayment(row);
-}
-
-function canRestrictedEditBill(row) {
-  return !isCancelled(row) && isPartial(row);
-}
-
-function canEditBill(row) {
-  return canFullEditBill(row) || canRestrictedEditBill(row);
-}
-
-function canCancelBill(row) {
-  return !isCancelled(row) && !hasPayment(row);
-}
-
-function canDeleteBill(row) {
-  return !isCancelled(row) && Number(row?.balance || 0) === 0;
-}
-
-function getEditMode(row) {
-  if (canFullEditBill(row)) return "FULL";
-  if (canRestrictedEditBill(row)) return "RESTRICTED";
-  return "NONE";
-}
-
-function actionDisabledStyle(baseStyle) {
-  return {
-    ...baseStyle,
-    opacity: 0.5,
-    cursor: "not-allowed",
-  };
-}
-
-function sortBillsLatestFirst(rows) {
+function sortOpenBills(rows) {
   return [...rows].sort((a, b) => {
     const dateA = toISODate(a?.bill_date) || "";
     const dateB = toISODate(b?.bill_date) || "";
-
     if (dateB !== dateA) return dateB.localeCompare(dateA);
 
-    const noA = String(a?.bill_no || "");
-    const noB = String(b?.bill_no || "");
-    return noB.localeCompare(noA, undefined, {
+    return String(b?.bill_no || "").localeCompare(String(a?.bill_no || ""), undefined, {
       numeric: true,
       sensitivity: "base",
     });
   });
 }
 
-export default function PurchaseBillView({ currentUser }) {
-  const nav = useNavigate();
-  const isViewer = currentUser?.role === "VIEWER";
-  const isAdmin = currentUser?.role === "ADMIN";
+export default function VendorPaymentNew() {
+  const navigate = useNavigate();
 
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [bills, setBills] = useState([]);
+  const [vendors, setVendors] = useState([]);
+
+  const [billNo, setBillNo] = useState("");
+  const [billSearch, setBillSearch] = useState("");
+  const [showBillList, setShowBillList] = useState(false);
+
+  const [amount, setAmount] = useState("");
+  const [remark, setRemark] = useState("");
+
   const [err, setErr] = useState("");
-  const [actionMsg, setActionMsg] = useState("");
-  const [busyBillNo, setBusyBillNo] = useState("");
+  const [ok, setOk] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [filters, setFilters] = useState({
-    q: "",
-    fromDate: "",
-    toDate: "",
-    status: "",
-  });
+  const pickerRef = useRef(null);
 
-  const [appliedFilters, setAppliedFilters] = useState({
-    q: "",
-    fromDate: "",
-    toDate: "",
-    status: "",
-  });
-
-  async function loadBills(activeFilters = appliedFilters) {
-    setLoading(true);
+  async function load() {
     setErr("");
-    setActionMsg("");
+    setOk("");
+    setLoading(true);
 
     try {
-      const query = buildQuery(activeFilters);
-      const data = await apiGet(`/purchase-invoices${query}`);
-      const safeRows = Array.isArray(data) ? data : [];
-      setRows(sortBillsLatestFirst(safeRows));
+      const [b, v] = await Promise.all([
+        apiGet("/purchase-invoices/"),
+        apiGet("/vendors/"),
+      ]);
+
+      const allBills = Array.isArray(b) ? b : [];
+      const allVendors = Array.isArray(v) ? v : [];
+
+      const openBills = allBills.filter((r) => num(r.balance) > 0);
+
+      setBills(sortOpenBills(openBills));
+      setVendors(allVendors);
+
+      if (billNo && !openBills.some((r) => r.bill_no === billNo)) {
+        setBillNo("");
+        setBillSearch("");
+      }
     } catch (e) {
       setErr(String(e.message || e));
-      setRows([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadBills(appliedFilters);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    load();
   }, []);
 
-  async function onSearch(e) {
-    e?.preventDefault?.();
-    setAppliedFilters(filters);
-    await loadBills(filters);
-  }
+  useEffect(() => {
+    function handleOutsideClick(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setShowBillList(false);
+      }
+    }
 
-  async function onReset() {
-    const cleared = {
-      q: "",
-      fromDate: "",
-      toDate: "",
-      status: "",
-    };
-    setFilters(cleared);
-    setAppliedFilters(cleared);
-    await loadBills(cleared);
-  }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
 
-  function onEditBill(row) {
-    const billNo = row.bill_no;
-    const editMode = getEditMode(row);
+  const vendorNameByCode = useMemo(() => {
+    const m = new Map();
+    for (const v of vendors) {
+      m.set(v.vendor_code, v.vendor_name);
+    }
+    return m;
+  }, [vendors]);
 
-    if (editMode === "NONE") return;
+  const filteredBills = useMemo(() => {
+    const q = billSearch.trim().toUpperCase();
+    if (!q) return bills;
 
-    nav(`/purchase/edit/${encodeURIComponent(billNo)}`, {
-      state: {
-        editMode,
-        billStatus: getStatus(row),
-        hasPayment: hasPayment(row),
-      },
+    return bills.filter((r) => {
+      const bill = String(r.bill_no || "").toUpperCase();
+      const vendorCode = String(r.vendor_code || "").toUpperCase();
+      const vendorName = String(
+        vendorNameByCode.get(r.vendor_code) || ""
+      ).toUpperCase();
+      const total = String(r.grand_total || "");
+      const balance = String(r.balance || "");
+      const billDate = String(r.bill_date || "").toUpperCase();
+
+      return (
+        bill.includes(q) ||
+        vendorCode.includes(q) ||
+        vendorName.includes(q) ||
+        total.includes(q) ||
+        balance.includes(q) ||
+        billDate.includes(q)
+      );
     });
+  }, [bills, billSearch, vendorNameByCode]);
+
+  const selected = useMemo(
+    () => bills.find((r) => r.bill_no === billNo),
+    [bills, billNo]
+  );
+
+  const maxPayable = selected ? num(selected.balance) : 0;
+
+  function selectBill(row) {
+    const vendorName = vendorNameByCode.get(row.vendor_code) || "";
+
+    setBillNo(row.bill_no);
+    setBillSearch(
+      `${row.bill_no} | ${row.vendor_code}${
+        vendorName ? " - " + vendorName : ""
+      } | BAL ${money(row.balance)}`
+    );
+    setShowBillList(false);
   }
 
-  async function onCancelBill(billNo) {
-    const ok = window.confirm(
-      `Are you sure you want to cancel bill ${billNo}?\n\nThis is allowed only if no payment exists.\nThe bill will remain in the system with CANCELLED status.`
-    );
-    if (!ok) return;
-
-    setBusyBillNo(billNo);
+  function clear() {
+    setBillNo("");
+    setBillSearch("");
+    setAmount("");
+    setRemark("");
     setErr("");
-    setActionMsg("");
+    setOk("");
+    setShowBillList(false);
+  }
+
+  async function save() {
+    setErr("");
+    setOk("");
+
+    if (!billNo) {
+      setErr("Select a purchase bill.");
+      return;
+    }
+
+    const amt = num(amount);
+    if (amt <= 0) {
+      setErr("Enter a valid paid amount (> 0).");
+      return;
+    }
+
+    if (!selected) {
+      setErr("Selected bill not found. Click Refresh.");
+      return;
+    }
+
+    if (amt > maxPayable) {
+      setErr(
+        `Payment amount cannot exceed bill balance. Balance is ${money(maxPayable)}.`
+      );
+      return;
+    }
 
     try {
-      await apiPatch(`/purchase-invoices/${encodeURIComponent(billNo)}/cancel`, {
-        remark: "CANCELLED BY USER",
-      });
-      setActionMsg(`Bill ${billNo} cancelled successfully.`);
-      await loadBills(appliedFilters);
+      setSaving(true);
+
+      const res = await apiPost(
+        `/purchase-invoices/${encodeURIComponent(billNo)}/pay`,
+        {
+          amount: amt,
+          remark: remark?.trim() || null,
+        }
+      );
+
+      if (!res?.payment_no) {
+        setErr("Payment saved, but backend did not return payment number.");
+        return;
+      }
+
+      setOk(`Payment saved successfully. Payment No: ${res.payment_no}`);
+      setAmount("");
+      setRemark("");
+      await load();
+
+      navigate(`/vendor-payment/view/${encodeURIComponent(res.payment_no)}`);
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
-      setBusyBillNo("");
+      setSaving(false);
     }
   }
-
-  async function onDeleteBill(billNo) {
-    const ok = window.confirm(
-      `Are you sure you want to delete bill ${billNo}?\n\nDelete is allowed only when balance is 0.\nAll linked vendor payments will be automatically deleted.\nThis action cannot be undone.`
-    );
-    if (!ok) return;
-
-    setBusyBillNo(billNo);
-    setErr("");
-    setActionMsg("");
-
-    try {
-      await apiDelete(`/purchase-invoices/${encodeURIComponent(billNo)}`);
-      setActionMsg(`Bill ${billNo} deleted successfully.`);
-      await loadBills(appliedFilters);
-    } catch (e) {
-      setErr(String(e.message || e));
-    } finally {
-      setBusyBillNo("");
-    }
-  }
-
-  const summary = useMemo(() => {
-    const totalCount = rows.length;
-    const activeCount = rows.filter((r) => getStatus(r) !== "CANCELLED").length;
-    const cancelledCount = rows.filter((r) => getStatus(r) === "CANCELLED").length;
-
-    const grandTotal = rows.reduce((sum, r) => sum + Number(r.grand_total || 0), 0);
-    const balanceTotal = rows.reduce((sum, r) => sum + Number(r.balance || 0), 0);
-
-    return {
-      totalCount,
-      activeCount,
-      cancelledCount,
-      grandTotal: money(grandTotal),
-      balanceTotal: money(balanceTotal),
-    };
-  }, [rows]);
 
   return (
     <div style={page}>
       <PageHeaderBlock
-        eyebrowText="PURCHASE"
-        title="Purchase Bill Management"
-        subtitle="Search, view, edit, cancel, and delete purchase bills."
+        eyebrowText="VENDOR PAYMENTS"
+        title="Create Vendor Payment"
+        subtitle="Record a payment against an open purchase bill."
         actions={
-          !isViewer ? (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                style={btnSecondary}
-                onClick={() => nav("/purchase-bills")}
-                type="button"
-              >
-                View Bills
-              </button>
+          <>
+            <button
+              type="button"
+              onClick={() => navigate("/vendor-payments")}
+              style={btnSecondary}
+              disabled={loading || saving}
+            >
+              Back to Payments
+            </button>
 
-              <button
-                style={btnPrimary}
-                onClick={() => nav("/purchase/new")}
-                type="button"
-              >
-                + Create Bill
-              </button>
-            </div>
-          ) : null
+            <button
+              type="button"
+              onClick={load}
+              style={btnGhost}
+              disabled={loading || saving}
+            >
+              Refresh
+            </button>
+          </>
         }
       />
 
-      <form onSubmit={onSearch} style={filterCard}>
-        <div style={cardHeader}>
-          <div>
-            <h2 style={cardTitle}>Search Filters</h2>
-            <p style={cardSubtitle}>
-              Filter bills by search text, date range, and status.
-            </p>
-          </div>
-        </div>
-
-        <div style={filterGrid}>
-          <div style={field}>
-            <label style={labelStyle}>Search</label>
-            <input
-              style={input}
-              placeholder="Bill No / Vendor Code"
-              value={filters.q}
-              onChange={(e) =>
-                setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))
-              }
-            />
-          </div>
-
-          <div style={field}>
-            <label style={labelStyle}>From Date</label>
-            <AppDateInput
-              style={input}
-              value={filters.fromDate}
-              onChange={(value) => setFilters((s) => ({ ...s, fromDate: value }))}
-            />
-          </div>
-
-          <div style={field}>
-            <label style={labelStyle}>To Date</label>
-            <AppDateInput
-              style={input}
-              value={filters.toDate}
-              onChange={(value) => setFilters((s) => ({ ...s, toDate: value }))}
-            />
-          </div>
-
-          <div style={field}>
-            <label style={labelStyle}>Status</label>
-            <select
-              style={input}
-              value={filters.status}
-              onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
-            >
-              <option value="">ALL</option>
-              <option value="PENDING">PENDING</option>
-              <option value="PARTIAL">PARTIAL</option>
-              <option value="PAID">PAID</option>
-              <option value="OVERDUE">OVERDUE</option>
-              <option value="CANCELLED">CANCELLED</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={actionBar}>
-          <div style={saveActions}>
-            <button type="submit" style={btnPrimary} disabled={loading}>
-              {loading ? "Loading..." : "Search"}
-            </button>
-            <button type="button" style={btnSecondary} onClick={onReset} disabled={loading}>
-              Reset
-            </button>
-          </div>
-        </div>
-      </form>
-
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
-        {actionMsg ? <AlertBox kind="success" message={actionMsg} /> : null}
-      </div>
-
-      <div style={summaryGrid}>
-        <SummaryCard title="Total Bills" value={summary.totalCount} />
-        <SummaryCard title="Active Bills" value={summary.activeCount} />
-        <SummaryCard title="Cancelled" value={summary.cancelledCount} />
-        <SummaryCard title="Grand Total" value={summary.grandTotal} />
-        <SummaryCard title="Outstanding Balance" value={summary.balanceTotal} />
-      </div>
-
-      <div style={infoCard}>
-        <div style={infoTitle}>Rules</div>
-        <div style={infoText}>
-          Latest bills are shown first. PENDING / OVERDUE bills can be fully edited.
-          PARTIAL bills can be edited in restricted mode only. PAID and CANCELLED
-          bills are view-only. Cancel is allowed only when no payment exists. Delete
-          is allowed only for ADMIN when balance is 0, and linked vendor payments
-          will be deleted automatically.
-        </div>
+        {ok ? <AlertBox kind="success" message={ok} /> : null}
+        {loading ? <AlertBox kind="info" message="Loading unpaid bills..." /> : null}
       </div>
 
       <section style={card}>
         <div style={cardHeader}>
           <div>
-            <h2 style={cardTitle}>Bills</h2>
+            <h2 style={cardTitle}>Payment Details</h2>
             <p style={cardSubtitle}>
-              {loading ? "Loading bills..." : `${rows.length} record(s) found`}
+              Select an unpaid purchase bill, enter the paid amount, and save the payment.
             </p>
           </div>
-
-          <button
-            style={btnGhost}
-            onClick={() => loadBills(appliedFilters)}
-            disabled={loading}
-            type="button"
-          >
-            Refresh
-          </button>
+          <div style={badgeBlue}>NEW</div>
         </div>
 
-        <div style={tableWrap}>
-          <table style={{ ...table, minWidth: 1120 }}>
-            <thead>
-              <tr>
-                <th style={th}>Bill No</th>
-                <th style={th}>Bill Date</th>
-                <th style={th}>Due Date</th>
-                <th style={th}>Vendor</th>
-                <th style={thRight}>Grand Total</th>
-                <th style={thRight}>Paid</th>
-                <th style={thRight}>Balance</th>
-                <th style={th}>Status</th>
-                <th style={thCenter}>Actions</th>
-              </tr>
-            </thead>
+        <div style={paymentGrid}>
+          <div style={fieldWide} ref={pickerRef}>
+            <label style={labelStyle}>Purchase Bill Search</label>
 
-            <tbody>
-              {!loading && rows.length === 0 ? (
-                <tr>
-                  <td colSpan="9" style={emptyTd}>
-                    No bills found.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => {
-                  const billNo = row.bill_no;
-                  const status = getStatus(row);
-                  const cancelled = isCancelled(row);
-                  const paymentExists = hasPayment(row);
-                  const editAllowed = canEditBill(row);
-                  const cancelAllowed = canCancelBill(row);
-                  const deleteAllowed = canDeleteBill(row);
-                  const busy = busyBillNo === billNo;
-                  const editMode = getEditMode(row);
+            <input
+              value={billSearch}
+              onChange={(e) => {
+                setBillSearch(e.target.value);
+                setShowBillList(true);
+                if (!e.target.value.trim()) {
+                  setBillNo("");
+                }
+              }}
+              onFocus={() => setShowBillList(true)}
+              placeholder="Search by bill no, vendor, total, balance"
+              style={input}
+              disabled={loading || saving}
+            />
 
-                  let editTitle = "Edit bill";
-                  if (editMode === "RESTRICTED") {
-                    editTitle = "Restricted edit only: non-financial fields only";
-                  } else if (cancelled) {
-                    editTitle = "Cancelled bill cannot be edited";
-                  } else if (isPaid(row)) {
-                    editTitle = "Paid bill cannot be edited";
-                  } else {
-                    editTitle = "Full edit allowed";
-                  }
+            {showBillList && (
+              <div style={dropdown}>
+                <div style={dropdownHead}>
+                  {filteredBills.length} bill
+                  {filteredBills.length === 1 ? "" : "s"} found
+                </div>
 
-                  let cancelTitle = "Cancel bill";
-                  if (cancelled) cancelTitle = "Already cancelled";
-                  else if (paymentExists)
-                    cancelTitle = "Reverse payment(s) first before cancelling";
+                <div style={dropdownList}>
+                  {filteredBills.length === 0 ? (
+                    <div style={emptyRow}>No matching unpaid bills found.</div>
+                  ) : (
+                    filteredBills.map((r) => {
+                      const vendorName = vendorNameByCode.get(r.vendor_code) || "";
+                      const active = r.bill_no === billNo;
 
-                  let deleteTitle = "Delete bill";
-                  if (!isAdmin) {
-                    deleteTitle = "Only ADMIN can delete bills";
-                  } else if (cancelled) {
-                    deleteTitle = "Cancelled bill cannot be deleted";
-                  } else if (Number(row.balance || 0) !== 0) {
-                    deleteTitle = "Bill can be deleted only when balance is 0";
-                  } else {
-                    deleteTitle =
-                      "Delete allowed. Linked vendor payments will be automatically deleted.";
-                  }
+                      return (
+                        <button
+                          key={r.bill_no}
+                          type="button"
+                          onClick={() => selectBill(r)}
+                          style={{
+                            ...dropdownItem,
+                            ...(active ? dropdownItemActive : {}),
+                          }}
+                        >
+                          <div style={dropdownTitle}>{r.bill_no}</div>
+                          <div style={dropdownSub}>
+                            Vendor: {vendorName || r.vendor_code}
+                          </div>
+                          <div style={dropdownSub}>
+                            Bill Date: {r.bill_date ? formatDate(r.bill_date) : "-"}
+                          </div>
+                          <div style={dropdownSub}>
+                            Total: {money(r.grand_total)} | Balance: {money(r.balance)}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
 
-                  return (
-                    <tr key={billNo} style={tr}>
-                      <td style={tdCode}>{billNo}</td>
-                      <td style={td}>{fmtDate(row.bill_date)}</td>
-                      <td style={td}>{fmtDate(row.due_date)}</td>
-                      <td style={td}>{row.vendor_code}</td>
-                      <td style={tdRight}>{money(row.grand_total)}</td>
-                      <td style={tdRight}>{money(row.amount_paid)}</td>
-                      <td style={tdRight}>{money(row.balance)}</td>
-                      <td style={td}>
-                        <span style={statusBadge(status)}>{status}</span>
-                      </td>
-                      <td style={tdCenter}>
-                        <div style={rowActionWrap}>
-                          <button
-                            type="button"
-                            style={btnMini}
-                            onClick={() =>
-                              nav(`/purchase/view/${encodeURIComponent(billNo)}`)
-                            }
-                          >
-                            View
-                          </button>
+            <div style={hintLine}>
+              Only purchase bills with outstanding balance are shown.
+            </div>
+          </div>
 
-                          {!isViewer && (
-                            <>
-                              <button
-                                type="button"
-                                style={
-                                  editAllowed
-                                    ? miniBtnBlue
-                                    : actionDisabledStyle(miniBtnBlue)
-                                }
-                                disabled={!editAllowed || busy}
-                                title={editTitle}
-                                onClick={() => onEditBill(row)}
-                              >
-                                {editMode === "RESTRICTED" ? "Edit*" : "Edit"}
-                              </button>
+          <FormField
+            label="Amount Paid Now"
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+            disabled={loading || saving}
+            hint={selected ? `Maximum payable: ${money(maxPayable)}` : ""}
+          />
 
-                              <button
-                                type="button"
-                                style={
-                                  cancelAllowed
-                                    ? miniBtnWarning
-                                    : actionDisabledStyle(miniBtnWarning)
-                                }
-                                disabled={!cancelAllowed || busy}
-                                title={cancelTitle}
-                                onClick={() => onCancelBill(billNo)}
-                              >
-                                {busy ? "Working..." : "Cancel"}
-                              </button>
-
-                              {isAdmin && (
-                                <button
-                                  type="button"
-                                  style={
-                                    deleteAllowed
-                                      ? btnDangerMini
-                                      : actionDisabledStyle(btnDangerMini)
-                                  }
-                                  disabled={!deleteAllowed || busy}
-                                  title={deleteTitle}
-                                  onClick={() => onDeleteBill(billNo)}
-                                >
-                                  {busy ? "Working..." : "Delete"}
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+          <FormField
+            label="Remark"
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            placeholder="Optional note"
+            disabled={loading || saving}
+            hint="Optional."
+          />
         </div>
 
-        <div style={footNote}>
-          * Edit on PARTIAL bill means restricted edit only. Do not allow item
-          lines, quantities, rates, tax, vendor, or grand total changes on the edit
-          form.
+        <div style={subSectionCard}>
+          <div style={subSectionHeader}>
+            <h3 style={subSectionTitle}>Selected Bill Summary</h3>
+          </div>
+
+          <div style={infoGrid}>
+            <InfoMini label="Selected Bill" value={selected?.bill_no || "-"} />
+            <InfoMini
+              label="Vendor"
+              value={
+                selected
+                  ? vendorNameByCode.get(selected.vendor_code) || selected.vendor_code
+                  : "-"
+              }
+            />
+            <InfoMini
+              label="Bill Date"
+              value={selected?.bill_date ? formatDate(selected.bill_date) : "-"}
+            />
+            <InfoMini
+              label="Bill Total"
+              value={selected ? money(selected.grand_total) : "-"}
+            />
+            <InfoMini
+              label="Current Balance"
+              value={selected ? money(selected.balance) : "-"}
+            />
+          </div>
+        </div>
+
+        <div style={footerGrid}>
+          <div style={noteBox}>
+            Save the vendor payment only after verifying the selected purchase bill
+            and paid amount. The payment amount cannot be greater than the current
+            outstanding balance.
+          </div>
+
+          <div style={summaryCard}>
+            <div style={summaryTitle}>Payment Summary</div>
+            <SummaryRow label="Bill No" value={selected?.bill_no || "-"} />
+            <SummaryRow
+              label="Bill Date"
+              value={selected?.bill_date ? formatDate(selected.bill_date) : "-"}
+            />
+            <SummaryRow
+              label="Open Balance"
+              value={selected ? money(maxPayable) : "-"}
+            />
+            <SummaryRow
+              label="Amount Now"
+              value={amount ? money(amount) : "0.00"}
+              bold
+            />
+          </div>
+        </div>
+
+        <div style={actionBar}>
+          <div style={saveActions}>
+            <button
+              type="button"
+              onClick={clear}
+              style={btnSecondary}
+              disabled={loading || saving}
+            >
+              Clear
+            </button>
+
+            <button
+              type="button"
+              onClick={save}
+              style={btnPrimary}
+              disabled={saving || loading}
+            >
+              {saving ? "Saving..." : "Save Payment"}
+            </button>
+          </div>
         </div>
       </section>
     </div>
   );
 }
 
-function SummaryCard({ title, value }) {
+function SummaryRow({ label, value, bold = false }) {
   return (
-    <div style={summaryCard}>
-      <div style={summaryTitle}>{title}</div>
-      <div style={summaryValue}>{value}</div>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+        fontSize: bold ? 16 : 14,
+        fontWeight: bold ? 900 : 700,
+        color: "#0f172a",
+        padding: bold ? "10px 0 0 0" : "0",
+        borderTop: bold ? "1px solid #dbe2ea" : "none",
+      }}
+    >
+      <span>{label}</span>
+      <span>{value}</span>
     </div>
   );
 }
 
-function statusBadge(status) {
-  const s = String(status || "").toUpperCase();
-
-  const base = {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 900,
-  };
-
-  if (s === "PAID") {
-    return {
-      ...base,
-      background: "#ecfff1",
-      color: "#116b2f",
-      border: "1px solid #a6e0b8",
-    };
-  }
-
-  if (s === "PARTIAL") {
-    return {
-      ...base,
-      background: "#fff8e8",
-      color: "#8a5a00",
-      border: "1px solid #edd28a",
-    };
-  }
-
-  if (s === "OVERDUE") {
-    return {
-      ...base,
-      background: "#fff2f2",
-      color: "#c40000",
-      border: "1px solid #efb0b0",
-    };
-  }
-
-  if (s === "CANCELLED") {
-    return {
-      ...base,
-      background: "#f0f0f0",
-      color: "#555",
-      border: "1px solid #d5d5dd",
-    };
-  }
-
-  return {
-    ...base,
-    background: "#eef4ff",
-    color: "#0b5cff",
-    border: "1px solid #b7cbff",
-  };
+function InfoMini({ label, value }) {
+  return (
+    <div style={infoMini}>
+      <div style={infoMiniLabel}>{label}</div>
+      <div style={infoMiniValue}>{value}</div>
+    </div>
+  );
 }
 
-const filterCard = {
-  ...card,
-  gap: 14,
-};
-
-const filterGrid = {
+const paymentGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "1.5fr 1fr 1fr",
+  gap: 14,
+  alignItems: "start",
 };
 
-const summaryGrid = {
+const fieldWide = {
+  ...field,
+  position: "relative",
+};
+
+const hintLine = {
+  fontSize: 12,
+  color: "#64748b",
+  marginTop: 6,
+};
+
+const subSectionCard = {
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
+  padding: 14,
+};
+
+const subSectionHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 12,
+};
+
+const subSectionTitle = {
+  margin: 0,
+  fontSize: 14,
+  color: "#0f172a",
+  fontWeight: 900,
+};
+
+const infoGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 12,
 };
 
-const summaryCard = {
-  background: "#fff",
+const infoMini = {
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 14,
+  padding: 12,
+};
+
+const infoMiniLabel = {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 700,
+};
+
+const infoMiniValue = {
+  fontSize: 14,
+  color: "#0f172a",
+  fontWeight: 900,
+  marginTop: 4,
+  wordBreak: "break-word",
+};
+
+const dropdown = {
+  position: "absolute",
+  top: "100%",
+  left: 0,
+  right: 0,
+  marginTop: 6,
+  background: "#ffffff",
+  border: "1px solid #dbe2ea",
+  borderRadius: 14,
+  boxShadow: "0 18px 32px rgba(15, 23, 42, 0.14)",
+  zIndex: 30,
+  overflow: "hidden",
+};
+
+const dropdownHead = {
+  padding: "10px 12px",
+  fontSize: 12,
+  fontWeight: 900,
+  color: "#475569",
+  background: "#f8fafc",
+  borderBottom: "1px solid #e2e8f0",
+};
+
+const dropdownList = {
+  maxHeight: 260,
+  overflowY: "auto",
+};
+
+const dropdownItem = {
+  width: "100%",
+  textAlign: "left",
+  border: "none",
+  borderBottom: "1px solid #eef2f7",
+  background: "#ffffff",
+  padding: "12px 14px",
+  cursor: "pointer",
+};
+
+const dropdownItemActive = {
+  background: "#eff6ff",
+};
+
+const dropdownTitle = {
+  fontWeight: 900,
+  color: "#0f172a",
+};
+
+const dropdownSub = {
+  fontSize: 12,
+  color: "#64748b",
+  marginTop: 3,
+};
+
+const emptyRow = {
+  padding: 14,
+  color: "#64748b",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const footerGrid = {
+  display: "grid",
+  gridTemplateColumns: "1.5fr minmax(280px, 360px)",
+  gap: 16,
+  alignItems: "start",
+};
+
+const noteBox = {
+  background: "#f8fafc",
   border: "1px solid #e2e8f0",
   borderRadius: 16,
   padding: 14,
+  color: "#475569",
+  fontSize: 13,
+  lineHeight: 1.5,
+  fontWeight: 700,
+};
+
+const summaryCard = {
+  background: "#f8fafc",
+  border: "1px solid #dbe2ea",
+  borderRadius: 18,
+  padding: 16,
+  display: "grid",
+  gap: 10,
 };
 
 const summaryTitle = {
-  fontSize: 12,
-  color: "#666",
-  fontWeight: 800,
-};
-
-const summaryValue = {
-  marginTop: 8,
-  fontSize: 22,
-  fontWeight: 900,
-  color: "#111",
-};
-
-const infoCard = {
-  background: "#f8fbff",
-  border: "1px solid #dbe8ff",
-  borderRadius: 16,
-  padding: 14,
-};
-
-const infoTitle = {
-  fontSize: 14,
-  fontWeight: 900,
-  color: "#0b3d91",
-  marginBottom: 6,
-};
-
-const infoText = {
   fontSize: 13,
-  color: "#28456b",
-  lineHeight: 1.5,
-};
-
-const rowActionWrap = {
-  display: "flex",
-  gap: 8,
-  justifyContent: "center",
-  flexWrap: "wrap",
-};
-
-const miniBtnBlue = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #0b5cff",
-  background: "#eef4ff",
-  color: "#0b5cff",
-  cursor: "pointer",
+  color: "#334155",
   fontWeight: 900,
-  fontSize: 13,
-};
-
-const miniBtnWarning = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #d9a100",
-  background: "#fff8e1",
-  color: "#8a5a00",
-  cursor: "pointer",
-  fontWeight: 900,
-  fontSize: 13,
-};
-
-const footNote = {
-  marginTop: 12,
-  fontSize: 12,
-  color: "#666",
+  marginBottom: 4,
 };
