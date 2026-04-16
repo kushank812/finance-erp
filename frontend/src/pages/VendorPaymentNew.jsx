@@ -246,7 +246,7 @@ export default function VendorPaymentNew() {
               style={btnSecondary}
               disabled={loading || saving}
             >
-              Back to Payments
+              View Payments
             </button>
 
             <button
@@ -255,7 +255,7 @@ export default function VendorPaymentNew() {
               style={btnGhost}
               disabled={loading || saving}
             >
-              Refresh
+              Refresh Form
             </button>
           </>
         }
