@@ -22,7 +22,7 @@ function fmtDate(value) {
   return String(value);
 }
 
-export default function ReceiptList() {
+export default function VendorPaymentList() {
   const nav = useNavigate();
 
   const [rows, setRows] = useState([]);
@@ -44,7 +44,7 @@ export default function ReceiptList() {
 
     try {
       const query = buildQuery(activeFilters);
-      const data = await apiGet(`/receipts${query}`);
+      const data = await apiGet(`/vendor-payments${query}`);
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr(String(e.message || e));
@@ -70,19 +70,19 @@ export default function ReceiptList() {
     await loadData(cleared);
   }
 
-  async function onDelete(receiptNo) {
+  async function onDelete(paymentNo) {
     const ok = window.confirm(
-      `Reverse receipt ${receiptNo}?\n\nThis will undo the payment.`
+      `Reverse vendor payment ${paymentNo}?\n\nThis will undo the payment.`
     );
     if (!ok) return;
 
-    setBusy(receiptNo);
+    setBusy(paymentNo);
     setErr("");
     setMsg("");
 
     try {
-      await apiDelete(`/receipts/${encodeURIComponent(receiptNo)}`);
-      setMsg(`Receipt ${receiptNo} reversed.`);
+      await apiDelete(`/vendor-payments/${encodeURIComponent(paymentNo)}`);
+      setMsg(`Vendor payment ${paymentNo} reversed.`);
       await loadData(filters);
     } catch (e) {
       setErr(String(e.message || e));
@@ -105,17 +105,17 @@ export default function ReceiptList() {
     <div style={page}>
       <div style={header}>
         <div>
-          <h2 style={title}>Receipt Management</h2>
-          <p style={subtitle}>View and reverse customer receipts.</p>
+          <h2 style={title}>Vendor Payment Management</h2>
+          <p style={subtitle}>View and reverse vendor payments.</p>
         </div>
 
         <div style={headerActions}>
           <button
             type="button"
             style={btnCreate}
-            onClick={() => nav("/receipt/new")}
+            onClick={() => nav("/purchase/pay")}
           >
-            + Create Receipt
+            + Create Payment
           </button>
         </div>
       </div>
@@ -124,7 +124,7 @@ export default function ReceiptList() {
         <div style={grid}>
           <input
             style={input}
-            placeholder="Receipt No / Invoice No"
+            placeholder="Payment No / Bill No"
             value={filters.q}
             onChange={(e) =>
               setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))
@@ -165,16 +165,16 @@ export default function ReceiptList() {
       {msg ? <div style={msgOk}>{msg}</div> : null}
 
       <div style={summaryGrid}>
-        <SummaryCard title="Total Receipts" value={summary.total} />
+        <SummaryCard title="Total Payments" value={summary.total} />
         <SummaryCard title="Total Amount" value={`₹ ${summary.amount}`} />
       </div>
 
       <div style={card}>
         <div style={tableHeader}>
           <div>
-            <div style={sectionTitle}>Receipts</div>
+            <div style={sectionTitle}>Vendor Payments</div>
             <div style={sectionSubtitle}>
-              {loading ? "Loading receipts..." : `${rows.length} record(s) found`}
+              {loading ? "Loading vendor payments..." : `${rows.length} record(s) found`}
             </div>
           </div>
 
@@ -192,9 +192,10 @@ export default function ReceiptList() {
           <table style={table}>
             <thead>
               <tr>
-                <th style={th}>Receipt No</th>
+                <th style={th}>Payment No</th>
                 <th style={th}>Date</th>
-                <th style={th}>Invoice No</th>
+                <th style={th}>Bill No</th>
+                <th style={th}>Vendor</th>
                 <th style={thRight}>Amount</th>
                 <th style={th}>Remark</th>
                 <th style={thCenter}>Actions</th>
@@ -204,20 +205,21 @@ export default function ReceiptList() {
             <tbody>
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={emptyTd}>
-                    No receipts found.
+                  <td colSpan="7" style={emptyTd}>
+                    No vendor payments found.
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => {
-                  const receiptNo = row.receipt_no;
-                  const activeBusy = busy === receiptNo;
+                  const paymentNo = row.payment_no;
+                  const activeBusy = busy === paymentNo;
 
                   return (
-                    <tr key={receiptNo} style={tr}>
-                      <td style={tdCode}>{receiptNo}</td>
-                      <td style={td}>{fmtDate(row.receipt_date)}</td>
-                      <td style={td}>{row.invoice_no || "-"}</td>
+                    <tr key={paymentNo} style={tr}>
+                      <td style={tdCode}>{paymentNo}</td>
+                      <td style={td}>{fmtDate(row.payment_date)}</td>
+                      <td style={td}>{row.bill_no || "-"}</td>
+                      <td style={td}>{row.vendor_code || row.vendor_name || "-"}</td>
                       <td style={tdRight}>{money(row.amount)}</td>
                       <td style={td}>{row.remark || "-"}</td>
                       <td style={tdCenter}>
@@ -226,7 +228,7 @@ export default function ReceiptList() {
                             type="button"
                             style={btnMini}
                             onClick={() =>
-                              nav(`/receipt/view/${encodeURIComponent(receiptNo)}`)
+                              nav(`/vendor-payment/view/${encodeURIComponent(paymentNo)}`)
                             }
                           >
                             View
@@ -235,7 +237,7 @@ export default function ReceiptList() {
                           <button
                             type="button"
                             style={btnDangerMini}
-                            onClick={() => onDelete(receiptNo)}
+                            onClick={() => onDelete(paymentNo)}
                             disabled={activeBusy}
                           >
                             {activeBusy ? "Working..." : "Reverse"}
@@ -464,7 +466,7 @@ const tableWrap = {
 
 const table = {
   width: "100%",
-  minWidth: 900,
+  minWidth: 980,
   borderCollapse: "separate",
   borderSpacing: 0,
 };
