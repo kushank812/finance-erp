@@ -43,7 +43,7 @@ def get_cookie_settings(request: Request) -> dict:
             "samesite": "lax",
         }
 
-    # Production / cross-site frontend like Vercel
+    # Production / Vercel / cross-site frontend
     return {
         "secure": True,
         "samesite": "none",
