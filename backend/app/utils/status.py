@@ -86,10 +86,23 @@ def compute_status(
     else:
         bal = normalize_amount(balance)
 
+    if total <= 0:
+        return STATUS_PENDING
+
     if bal <= 0:
         return STATUS_PAID
 
-    if total > 0 and bal < total:
+    settled = compute_done_amount(amount_done, adjusted_amount)
+
+    if is_overdue(
+        due_date=due_date,
+        balance=bal,
+        cancelled=cancelled,
+        today=today,
+    ):
+        return STATUS_OVERDUE
+
+    if settled > 0 and bal < total:
         return STATUS_PARTIAL
 
     return STATUS_PENDING
@@ -109,8 +122,10 @@ def status_counts_from_rows(rows, *, today: date | None = None) -> dict[str, int
     for row in rows:
         status = compute_status(
             grand_total=row.get("grand_total"),
-            balance=row.get("balance"),
+            amount_done=row.get("amount_done"),
             due_date=row.get("due_date"),
+            balance=row.get("balance"),
+            adjusted_amount=row.get("adjusted_amount"),
             cancelled=bool(row.get("cancelled", False)),
             today=reference_date,
         )
