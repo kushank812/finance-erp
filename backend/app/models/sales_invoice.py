@@ -52,6 +52,13 @@ class SalesInvoiceHdr(Base):
         nullable=False,
         default=0,
     )
+
+    adjusted_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
     balance: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,

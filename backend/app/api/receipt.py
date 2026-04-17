@@ -1,5 +1,4 @@
 from datetime import date
-
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -14,6 +13,7 @@ from app.models.sales_invoice import SalesInvoiceHdr, SalesReceipt
 from app.models.user import User
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
+from app.utils.status import compute_balance, compute_status
 
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
@@ -27,19 +27,6 @@ class ReceiptOut(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-def compute_status(balance, grand_total, due_date):
-    bal = Decimal(str(balance or 0))
-    total = Decimal(str(grand_total or 0))
-
-    if bal <= 0:
-        return "PAID"
-    if bal < total:
-        return "PARTIAL"
-    if due_date and date.today() > due_date:
-        return "OVERDUE"
-    return "PENDING"
 
 
 @router.get("/", response_model=list[ReceiptOut])
@@ -124,7 +111,6 @@ def reverse_receipt(
 
     reverse_amount = Decimal(str(receipt.amount or 0))
     current_amount_received = Decimal(str(invoice.amount_received or 0))
-    current_grand_total = Decimal(str(invoice.grand_total or 0))
 
     if reverse_amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid receipt amount for reversal")
@@ -142,12 +128,12 @@ def reverse_receipt(
         "amount": float(receipt.amount or 0),
         "remark": receipt.remark,
         "invoice_amount_received": float(invoice.amount_received or 0),
+        "invoice_adjusted_amount": float(invoice.adjusted_amount or 0),
         "invoice_balance": float(invoice.balance or 0),
         "invoice_status": invoice.status,
     }
 
     new_amount_received = current_amount_received - reverse_amount
-    new_balance = current_grand_total - new_amount_received
 
     if new_amount_received < 0:
         raise HTTPException(
@@ -156,11 +142,18 @@ def reverse_receipt(
         )
 
     invoice.amount_received = new_amount_received
-    invoice.balance = new_balance
-    invoice.status = compute_status(
-        invoice.balance,
+    invoice.balance = compute_balance(
         invoice.grand_total,
-        invoice.due_date,
+        invoice.amount_received,
+        invoice.adjusted_amount,
+    )
+    invoice.status = compute_status(
+        invoice.grand_total,
+        amount_done=invoice.amount_received,
+        adjusted_amount=invoice.adjusted_amount,
+        due_date=invoice.due_date,
+        balance=invoice.balance,
+        cancelled=False,
     )
 
     db.delete(receipt)
@@ -179,6 +172,7 @@ def reverse_receipt(
             "invoice_no": invoice.invoice_no,
             "reversed_amount": float(reverse_amount),
             "invoice_amount_received": float(invoice.amount_received),
+            "invoice_adjusted_amount": float(invoice.adjusted_amount or 0),
             "invoice_balance": float(invoice.balance),
             "invoice_status": invoice.status,
         },
@@ -192,6 +186,13 @@ def reverse_receipt(
             status_code=409,
             detail=str(e.orig) if getattr(e, "orig", None) else "Could not reverse receipt due to a conflicting change",
         )
+
+
+
+
+
+
+
 
     return {
         "ok": True,

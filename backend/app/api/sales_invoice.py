@@ -30,9 +30,6 @@ from app.utils.text import normalize_upper
 router = APIRouter(prefix="/sales-invoices", tags=["Sales Invoices"])
 
 
-# -----------------------------
-# INPUT / OUTPUT MODELS
-# -----------------------------
 class ReceivePaymentIn(BaseModel):
     amount: float
     remark: str | None = None
@@ -85,9 +82,7 @@ class SalesInvoiceUpdateIn(BaseModel):
             missing.append("lines")
 
         if missing:
-            raise ValueError(
-                f"Full invoice update requires: {', '.join(missing)}"
-            )
+            raise ValueError(f"Full invoice update requires: {', '.join(missing)}")
 
         return self
 
@@ -96,9 +91,6 @@ class CancelInvoiceIn(BaseModel):
     remark: str | None = None
 
 
-# -----------------------------
-# HELPERS
-# -----------------------------
 def to_decimal(value) -> Decimal:
     return Decimal(str(value or 0))
 
@@ -112,6 +104,8 @@ def normalize_invoice_status(obj: SalesInvoiceHdr) -> SalesInvoiceHdr:
 
     obj.status = compute_status(
         grand_total=obj.grand_total,
+        amount_done=obj.amount_received,
+        adjusted_amount=obj.adjusted_amount,
         balance=obj.balance,
         due_date=obj.due_date,
         cancelled=False,
@@ -128,9 +122,6 @@ def has_any_receipt(db: Session, invoice_no: str) -> bool:
     return receipt is not None
 
 
-# -----------------------------
-# LIST INVOICES
-# -----------------------------
 @router.get("/", response_model=list[SalesInvoiceOut])
 def list_sales_invoices(
     q: str | None = Query(default=None),
@@ -174,9 +165,6 @@ def list_sales_invoices(
     return result
 
 
-# -----------------------------
-# GET SINGLE INVOICE
-# -----------------------------
 @router.get("/{invoice_no}", response_model=SalesInvoiceOut)
 def get_sales_invoice(
     invoice_no: str,
@@ -197,9 +185,6 @@ def get_sales_invoice(
     return obj
 
 
-# -----------------------------
-# CREATE INVOICE
-# -----------------------------
 @router.post("/", response_model=SalesInvoiceOut)
 def create_sales_invoice(
     payload: SalesInvoiceCreate,
@@ -254,9 +239,12 @@ def create_sales_invoice(
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
     amount_received = Decimal("0.00")
-    balance = compute_balance(grand_total, amount_received)
+    adjusted_amount = Decimal("0.00")
+    balance = compute_balance(grand_total, amount_received, adjusted_amount)
     status = compute_status(
         grand_total=grand_total,
+        amount_done=amount_received,
+        adjusted_amount=adjusted_amount,
         balance=balance,
         due_date=due_date,
         cancelled=False,
@@ -272,6 +260,7 @@ def create_sales_invoice(
         tax_amount=tax_amount,
         grand_total=grand_total,
         amount_received=amount_received,
+        adjusted_amount=adjusted_amount,
         balance=balance,
         status=status,
         remark=remark,
@@ -299,6 +288,7 @@ def create_sales_invoice(
             "tax_amount": float(hdr.tax_amount),
             "grand_total": float(hdr.grand_total),
             "amount_received": float(hdr.amount_received),
+            "adjusted_amount": float(hdr.adjusted_amount),
             "balance": float(hdr.balance),
             "status": hdr.status,
             "remark": hdr.remark,
@@ -317,9 +307,6 @@ def create_sales_invoice(
     return hdr
 
 
-# -----------------------------
-# UPDATE INVOICE
-# -----------------------------
 @router.put("/{invoice_no}", response_model=SalesInvoiceOut)
 def update_sales_invoice(
     invoice_no: str,
@@ -351,6 +338,7 @@ def update_sales_invoice(
 
     receipt_exists = has_any_receipt(db, invoice_no)
     amount_received = to_decimal(obj.amount_received)
+    adjusted_amount = to_decimal(obj.adjusted_amount)
 
     old_values = {
         "invoice_date": str(obj.invoice_date),
@@ -361,6 +349,7 @@ def update_sales_invoice(
         "tax_amount": float(obj.tax_amount or 0),
         "grand_total": float(obj.grand_total or 0),
         "amount_received": float(obj.amount_received or 0),
+        "adjusted_amount": float(obj.adjusted_amount or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
         "remark": obj.remark,
@@ -381,16 +370,14 @@ def update_sales_invoice(
         obj.due_date = data.get("due_date", obj.due_date)
         obj.remark = data.get("remark", obj.remark)
 
-        current_status = str(obj.status or "").upper()
-        if current_status == STATUS_CANCELLED:
-            obj.status = STATUS_CANCELLED
-        else:
-            obj.status = compute_status(
-                grand_total=obj.grand_total,
-                balance=obj.balance,
-                due_date=obj.due_date,
-                cancelled=False,
-            )
+        obj.status = compute_status(
+            grand_total=obj.grand_total,
+            amount_done=obj.amount_received,
+            adjusted_amount=obj.adjusted_amount,
+            balance=obj.balance,
+            due_date=obj.due_date,
+            cancelled=False,
+        )
 
         log_activity(
             db=db,
@@ -411,6 +398,7 @@ def update_sales_invoice(
                 "tax_amount": float(obj.tax_amount),
                 "grand_total": float(obj.grand_total),
                 "amount_received": float(obj.amount_received),
+                "adjusted_amount": float(obj.adjusted_amount or 0),
                 "balance": float(obj.balance),
                 "status": obj.status,
                 "remark": obj.remark,
@@ -468,12 +456,12 @@ def update_sales_invoice(
     tax_percent = to_decimal(data.get("tax_percent"))
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
-    new_balance = compute_balance(grand_total, amount_received)
+    new_balance = compute_balance(grand_total, amount_received, adjusted_amount)
 
     if new_balance < 0:
         raise HTTPException(
             status_code=400,
-            detail="Grand total cannot be less than amount already received",
+            detail="Grand total cannot be less than settled amount",
         )
 
     obj.invoice_date = data["invoice_date"]
@@ -487,6 +475,8 @@ def update_sales_invoice(
     obj.remark = data.get("remark")
     obj.status = compute_status(
         grand_total=obj.grand_total,
+        amount_done=obj.amount_received,
+        adjusted_amount=obj.adjusted_amount,
         balance=obj.balance,
         due_date=obj.due_date,
         cancelled=False,
@@ -515,6 +505,7 @@ def update_sales_invoice(
             "tax_amount": float(obj.tax_amount),
             "grand_total": float(obj.grand_total),
             "amount_received": float(obj.amount_received),
+            "adjusted_amount": float(obj.adjusted_amount or 0),
             "balance": float(obj.balance),
             "status": obj.status,
             "remark": obj.remark,
@@ -533,9 +524,6 @@ def update_sales_invoice(
     return obj
 
 
-# -----------------------------
-# CANCEL INVOICE
-# -----------------------------
 @router.patch("/{invoice_no}/cancel", response_model=SalesInvoiceOut)
 def cancel_sales_invoice(
     invoice_no: str,
@@ -578,6 +566,7 @@ def cancel_sales_invoice(
 
     obj.status = STATUS_CANCELLED
     obj.amount_received = Decimal("0.00")
+    obj.adjusted_amount = Decimal("0.00")
     obj.balance = Decimal("0.00")
 
     if cancel_remark:
@@ -597,6 +586,7 @@ def cancel_sales_invoice(
             "status": obj.status,
             "remark": obj.remark,
             "amount_received": float(obj.amount_received or 0),
+            "adjusted_amount": float(obj.adjusted_amount or 0),
             "balance": float(obj.balance or 0),
         },
     )
@@ -611,12 +601,6 @@ def cancel_sales_invoice(
     return obj
 
 
-# -----------------------------
-# DELETE INVOICE
-# ADMIN ONLY
-# ALLOW ONLY WHEN BALANCE = 0
-# AUTO DELETE LINKED RECEIPTS
-# -----------------------------
 @router.delete("/{invoice_no}")
 def delete_sales_invoice(
     invoice_no: str,
@@ -660,6 +644,7 @@ def delete_sales_invoice(
         "tax_amount": float(obj.tax_amount or 0),
         "grand_total": float(obj.grand_total or 0),
         "amount_received": float(obj.amount_received or 0),
+        "adjusted_amount": float(obj.adjusted_amount or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
         "remark": obj.remark,
@@ -701,9 +686,6 @@ def delete_sales_invoice(
     }
 
 
-# -----------------------------
-# RECEIVE PAYMENT
-# -----------------------------
 @router.post("/{invoice_no}/receive", response_model=ReceiptCreatedOut)
 def receive_payment(
     invoice_no: str,
@@ -747,6 +729,7 @@ def receive_payment(
 
     old_values = {
         "amount_received": float(obj.amount_received or 0),
+        "adjusted_amount": float(obj.adjusted_amount or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
     }
@@ -767,16 +750,19 @@ def receive_payment(
     )
     db.add(receipt)
 
-    new_amount_received = Decimal(str(obj.amount_received or 0)) + amount
-    new_balance = compute_balance(obj.grand_total, new_amount_received)
-
-    obj.amount_received = new_amount_received
-    obj.balance = new_balance
+    obj.amount_received = Decimal(str(obj.amount_received or 0)) + amount
+    obj.balance = compute_balance(
+        obj.grand_total,
+        obj.amount_received,
+        obj.adjusted_amount,
+    )
     obj.status = compute_status(
         grand_total=obj.grand_total,
-        balance=obj.balance,
+        amount_done=obj.amount_received,
+        adjusted_amount=obj.adjusted_amount,
         due_date=obj.due_date,
         cancelled=False,
+        balance=obj.balance,
     )
 
     log_activity(
@@ -796,6 +782,7 @@ def receive_payment(
             "amount": float(amount),
             "remark": receipt.remark,
             "amount_received": float(obj.amount_received),
+            "adjusted_amount": float(obj.adjusted_amount or 0),
             "balance": float(obj.balance),
             "status": obj.status,
         },

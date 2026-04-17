@@ -1,10 +1,14 @@
+from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
 from app.models.customer import Customer
+from app.models.journal_voucher import JournalVoucherHdr
+from app.models.sales_invoice import SalesInvoiceHdr, SalesReceipt
 from app.models.user import User
 from app.schemas.customer import CustomerCreate, CustomerOut, CustomerUpdate
 from app.utils.audit import log_activity
@@ -180,24 +184,15 @@ def _validate_customer_data(data: dict, *, partial: bool = False) -> dict:
 
     if "pincode" in cleaned and cleaned["pincode"]:
         if len(cleaned["pincode"]) != 6:
-            raise HTTPException(
-                status_code=400,
-                detail="Pin Code must be exactly 6 digits",
-            )
+            raise HTTPException(status_code=400, detail="Pin Code must be exactly 6 digits")
 
     if "mobile_no" in cleaned and cleaned["mobile_no"]:
         if len(cleaned["mobile_no"]) != 10:
-            raise HTTPException(
-                status_code=400,
-                detail="Mobile No must be exactly 10 digits",
-            )
+            raise HTTPException(status_code=400, detail="Mobile No must be exactly 10 digits")
 
     if "ph_no" in cleaned and cleaned["ph_no"]:
         if len(cleaned["ph_no"]) < 6:
-            raise HTTPException(
-                status_code=400,
-                detail="Phone No must contain at least 6 digits",
-            )
+            raise HTTPException(status_code=400, detail="Phone No must contain at least 6 digits")
 
     if "email_id" in cleaned and cleaned["email_id"]:
         if not _is_valid_email(cleaned["email_id"]):
@@ -205,14 +200,31 @@ def _validate_customer_data(data: dict, *, partial: bool = False) -> dict:
 
     if "gst_no" in cleaned and cleaned["gst_no"]:
         if len(cleaned["gst_no"]) != 15:
-            raise HTTPException(
-                status_code=400,
-                detail="GST No must be exactly 15 characters",
-            )
+            raise HTTPException(status_code=400, detail="GST No must be exactly 15 characters")
         if not _is_valid_gst(cleaned["gst_no"]):
             raise HTTPException(status_code=400, detail="Enter a valid GST No")
 
     return cleaned
+
+
+def safe_date_string(value) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+
+    if isinstance(value, date):
+        return value.isoformat()
+
+    s = str(value).strip()
+    if not s:
+        return None
+
+    if "T" in s:
+        s = s.split("T")[0]
+
+    return s[:10]
 
 
 @router.get("/", response_model=list[CustomerOut])
@@ -233,6 +245,92 @@ def get_customer(
     if not obj:
         raise HTTPException(status_code=404, detail="Customer not found")
     return obj
+
+
+@router.get("/{customer_code}/statement")
+def customer_statement(
+    customer_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_viewer_or_above),
+):
+    customer_code = customer_code.strip().upper()
+
+    customer = db.get(Customer, customer_code)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    invoices = db.scalars(
+        select(SalesInvoiceHdr)
+        .where(func.upper(SalesInvoiceHdr.customer_code) == customer_code)
+        .order_by(SalesInvoiceHdr.invoice_date, SalesInvoiceHdr.invoice_no)
+    ).all()
+
+    receipts = db.scalars(
+        select(SalesReceipt)
+        .join(SalesInvoiceHdr, SalesInvoiceHdr.invoice_no == SalesReceipt.invoice_no)
+        .where(func.upper(SalesInvoiceHdr.customer_code) == customer_code)
+        .order_by(SalesReceipt.receipt_date, SalesReceipt.receipt_no)
+    ).all()
+
+    jvs = db.scalars(
+        select(JournalVoucherHdr)
+        .where(
+            JournalVoucherHdr.reference_type == "SALES_INVOICE",
+            func.upper(JournalVoucherHdr.party_code) == customer_code,
+        )
+        .order_by(JournalVoucherHdr.voucher_date, JournalVoucherHdr.voucher_no)
+    ).all()
+
+    rows = []
+
+    for inv in invoices:
+        rows.append(
+            {
+                "date": safe_date_string(inv.invoice_date),
+                "doc_no": inv.invoice_no,
+                "type": "Invoice",
+                "debit": float(inv.grand_total or 0),
+                "credit": 0.0,
+            }
+        )
+
+    for rcpt in receipts:
+        rows.append(
+            {
+                "date": safe_date_string(rcpt.receipt_date),
+                "doc_no": rcpt.receipt_no,
+                "type": "Receipt",
+                "debit": 0.0,
+                "credit": float(rcpt.amount or 0),
+            }
+        )
+
+    for jv in jvs:
+        rows.append(
+            {
+                "date": safe_date_string(jv.voucher_date),
+                "doc_no": jv.voucher_no,
+                "type": "Journal Voucher",
+                "debit": 0.0,
+                "credit": float(jv.amount or 0),
+            }
+        )
+
+    rows.sort(
+        key=lambda x: (
+            x.get("date") or "",
+            x.get("doc_no") or "",
+            x.get("type") or "",
+        )
+    )
+
+    balance = 0.0
+    for r in rows:
+        balance += float(r.get("debit") or 0)
+        balance -= float(r.get("credit") or 0)
+        r["balance"] = balance
+
+    return rows
 
 
 @router.post("/", response_model=CustomerOut)

@@ -41,6 +41,7 @@ class PurchaseInvoiceOut(BaseModel):
     grand_total: float
 
     amount_paid: float
+    adjusted_amount: float
     balance: float
     status: str
     remark: Optional[str] = None

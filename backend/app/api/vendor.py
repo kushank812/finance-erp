@@ -4,9 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import require_operator_or_admin, require_viewer_or_above
 from app.core.database import get_db
+from app.models.journal_voucher import JournalVoucherHdr
 from app.models.purchase_invoice import PurchaseInvoiceHdr
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.models.vendor_payment import VendorPayment
 from app.schemas.vendor import VendorCreate, VendorOut, VendorUpdate
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
@@ -181,24 +183,15 @@ def _validate_vendor_data(data: dict, *, partial: bool = False) -> dict:
 
     if "pincode" in cleaned and cleaned["pincode"]:
         if len(cleaned["pincode"]) != 6:
-            raise HTTPException(
-                status_code=400,
-                detail="Pin Code must be exactly 6 digits",
-            )
+            raise HTTPException(status_code=400, detail="Pin Code must be exactly 6 digits")
 
     if "mobile_no" in cleaned and cleaned["mobile_no"]:
         if len(cleaned["mobile_no"]) != 10:
-            raise HTTPException(
-                status_code=400,
-                detail="Mobile No must be exactly 10 digits",
-            )
+            raise HTTPException(status_code=400, detail="Mobile No must be exactly 10 digits")
 
     if "ph_no" in cleaned and cleaned["ph_no"]:
         if len(cleaned["ph_no"]) < 6:
-            raise HTTPException(
-                status_code=400,
-                detail="Phone No must contain at least 6 digits",
-            )
+            raise HTTPException(status_code=400, detail="Phone No must contain at least 6 digits")
 
     if "email_id" in cleaned and cleaned["email_id"]:
         if not _is_valid_email(cleaned["email_id"]):
@@ -206,10 +199,7 @@ def _validate_vendor_data(data: dict, *, partial: bool = False) -> dict:
 
     if "gst_no" in cleaned and cleaned["gst_no"]:
         if len(cleaned["gst_no"]) != 15:
-            raise HTTPException(
-                status_code=400,
-                detail="GST No must be exactly 15 characters",
-            )
+            raise HTTPException(status_code=400, detail="GST No must be exactly 15 characters")
         if not _is_valid_gst(cleaned["gst_no"]):
             raise HTTPException(status_code=400, detail="Enter a valid GST No")
 
@@ -255,37 +245,72 @@ def get_vendor_statement(
         .all()
     )
 
+    payments = (
+        db.query(VendorPayment)
+        .join(PurchaseInvoiceHdr, PurchaseInvoiceHdr.bill_no == VendorPayment.bill_no)
+        .filter(PurchaseInvoiceHdr.vendor_code == vendor_code)
+        .order_by(VendorPayment.payment_date.asc(), VendorPayment.payment_no.asc())
+        .all()
+    )
+
+    jvs = (
+        db.query(JournalVoucherHdr)
+        .filter(
+            JournalVoucherHdr.reference_type == "PURCHASE_BILL",
+            JournalVoucherHdr.party_code == vendor_code,
+        )
+        .order_by(JournalVoucherHdr.voucher_date.asc(), JournalVoucherHdr.voucher_no.asc())
+        .all()
+    )
+
     rows = []
-    running_balance = 0.0
 
     for b in bills:
-        bill_total = float(b.grand_total or 0)
-        amount_paid = float(b.amount_paid or 0)
-
-        running_balance += bill_total
         rows.append(
             {
                 "date": b.bill_date,
                 "doc_no": b.bill_no,
                 "type": "Purchase Bill",
-                "debit": 0,
-                "credit": bill_total,
-                "balance": running_balance,
+                "debit": 0.0,
+                "credit": float(b.grand_total or 0),
             }
         )
 
-        if amount_paid > 0:
-            running_balance -= amount_paid
-            rows.append(
-                {
-                    "date": b.bill_date,
-                    "doc_no": b.bill_no,
-                    "type": "Vendor Payment",
-                    "debit": amount_paid,
-                    "credit": 0,
-                    "balance": running_balance,
-                }
-            )
+    for p in payments:
+        rows.append(
+            {
+                "date": p.payment_date,
+                "doc_no": p.payment_no,
+                "type": "Vendor Payment",
+                "debit": float(p.amount or 0),
+                "credit": 0.0,
+            }
+        )
+
+    for jv in jvs:
+        rows.append(
+            {
+                "date": jv.voucher_date,
+                "doc_no": jv.voucher_no,
+                "type": "Journal Voucher",
+                "debit": float(jv.amount or 0),
+                "credit": 0.0,
+            }
+        )
+
+    rows.sort(
+        key=lambda x: (
+            str(x.get("date") or ""),
+            x.get("doc_no") or "",
+            x.get("type") or "",
+        )
+    )
+
+    running_balance = 0.0
+    for r in rows:
+        running_balance += float(r.get("credit") or 0)
+        running_balance -= float(r.get("debit") or 0)
+        r["balance"] = running_balance
 
     return rows
 

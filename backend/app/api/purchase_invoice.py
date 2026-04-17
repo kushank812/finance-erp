@@ -113,6 +113,8 @@ def normalize_bill_status(obj: PurchaseInvoiceHdr) -> PurchaseInvoiceHdr:
 
     obj.status = compute_status(
         grand_total=obj.grand_total,
+        amount_done=obj.amount_paid,
+        adjusted_amount=obj.adjusted_amount,
         balance=obj.balance,
         due_date=obj.due_date,
         cancelled=False,
@@ -257,9 +259,12 @@ def create_purchase_invoice(
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
     amount_paid = Decimal("0.00")
-    balance = compute_balance(grand_total, amount_paid)
+    adjusted_amount = Decimal("0.00")
+    balance = compute_balance(grand_total, amount_paid, adjusted_amount)
     status = compute_status(
         grand_total=grand_total,
+        amount_done=amount_paid,
+        adjusted_amount=adjusted_amount,
         balance=balance,
         due_date=due_date,
         cancelled=False,
@@ -275,6 +280,7 @@ def create_purchase_invoice(
         tax_amount=tax_amount,
         grand_total=grand_total,
         amount_paid=amount_paid,
+        adjusted_amount=adjusted_amount,
         balance=balance,
         status=status,
         remark=remark,
@@ -302,6 +308,7 @@ def create_purchase_invoice(
             "tax_amount": float(hdr.tax_amount),
             "grand_total": float(hdr.grand_total),
             "amount_paid": float(hdr.amount_paid),
+            "adjusted_amount": float(hdr.adjusted_amount),
             "balance": float(hdr.balance),
             "status": hdr.status,
             "remark": hdr.remark,
@@ -357,6 +364,7 @@ def update_purchase_invoice(
 
     payment_exists = has_any_payment(db, bill_no)
     amount_paid = to_decimal(obj.amount_paid)
+    adjusted_amount = to_decimal(obj.adjusted_amount)
 
     old_values = {
         "bill_date": str(obj.bill_date),
@@ -367,6 +375,7 @@ def update_purchase_invoice(
         "tax_amount": float(obj.tax_amount or 0),
         "grand_total": float(obj.grand_total or 0),
         "amount_paid": float(obj.amount_paid or 0),
+        "adjusted_amount": float(obj.adjusted_amount or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
         "remark": obj.remark,
@@ -387,16 +396,14 @@ def update_purchase_invoice(
         obj.due_date = data.get("due_date", obj.due_date)
         obj.remark = data.get("remark", obj.remark)
 
-        current_status = str(obj.status or "").upper()
-        if current_status == STATUS_CANCELLED:
-            obj.status = STATUS_CANCELLED
-        else:
-            obj.status = compute_status(
-                grand_total=obj.grand_total,
-                balance=obj.balance,
-                due_date=obj.due_date,
-                cancelled=False,
-            )
+        obj.status = compute_status(
+            grand_total=obj.grand_total,
+            amount_done=obj.amount_paid,
+            adjusted_amount=obj.adjusted_amount,
+            balance=obj.balance,
+            due_date=obj.due_date,
+            cancelled=False,
+        )
 
         log_activity(
             db=db,
@@ -417,6 +424,7 @@ def update_purchase_invoice(
                 "tax_amount": float(obj.tax_amount),
                 "grand_total": float(obj.grand_total),
                 "amount_paid": float(obj.amount_paid),
+                "adjusted_amount": float(obj.adjusted_amount or 0),
                 "balance": float(obj.balance),
                 "status": obj.status,
                 "remark": obj.remark,
@@ -477,12 +485,12 @@ def update_purchase_invoice(
     tax_percent = to_decimal(data.get("tax_percent"))
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
-    new_balance = compute_balance(grand_total, amount_paid)
+    new_balance = compute_balance(grand_total, amount_paid, adjusted_amount)
 
     if new_balance < 0:
         raise HTTPException(
             status_code=400,
-            detail="Grand total cannot be less than amount already paid",
+            detail="Grand total cannot be less than settled amount",
         )
 
     obj.bill_date = data["bill_date"]
@@ -496,6 +504,8 @@ def update_purchase_invoice(
     obj.remark = data.get("remark")
     obj.status = compute_status(
         grand_total=obj.grand_total,
+        amount_done=obj.amount_paid,
+        adjusted_amount=obj.adjusted_amount,
         balance=obj.balance,
         due_date=obj.due_date,
         cancelled=False,
@@ -524,6 +534,7 @@ def update_purchase_invoice(
             "tax_amount": float(obj.tax_amount),
             "grand_total": float(obj.grand_total),
             "amount_paid": float(obj.amount_paid),
+            "adjusted_amount": float(obj.adjusted_amount or 0),
             "balance": float(obj.balance),
             "status": obj.status,
             "remark": obj.remark,
@@ -590,6 +601,7 @@ def cancel_purchase_invoice(
 
     obj.status = STATUS_CANCELLED
     obj.amount_paid = Decimal("0.00")
+    obj.adjusted_amount = Decimal("0.00")
     obj.balance = Decimal("0.00")
 
     if cancel_remark:
@@ -609,6 +621,7 @@ def cancel_purchase_invoice(
             "status": obj.status,
             "remark": obj.remark,
             "amount_paid": float(obj.amount_paid or 0),
+            "adjusted_amount": float(obj.adjusted_amount or 0),
             "balance": float(obj.balance or 0),
         },
     )
@@ -675,6 +688,7 @@ def delete_purchase_invoice(
         "tax_amount": float(obj.tax_amount or 0),
         "grand_total": float(obj.grand_total or 0),
         "amount_paid": float(obj.amount_paid or 0),
+        "adjusted_amount": float(obj.adjusted_amount or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
         "remark": obj.remark,
@@ -762,6 +776,7 @@ def pay_bill(
 
     old_values = {
         "amount_paid": float(obj.amount_paid or 0),
+        "adjusted_amount": float(obj.adjusted_amount or 0),
         "balance": float(obj.balance or 0),
         "status": obj.status,
     }
@@ -782,16 +797,19 @@ def pay_bill(
     )
     db.add(payment)
 
-    new_amount_paid = Decimal(str(obj.amount_paid or 0)) + amount
-    new_balance = compute_balance(obj.grand_total, new_amount_paid)
-
-    obj.amount_paid = new_amount_paid
-    obj.balance = new_balance
+    obj.amount_paid = Decimal(str(obj.amount_paid or 0)) + amount
+    obj.balance = compute_balance(
+        obj.grand_total,
+        obj.amount_paid,
+        obj.adjusted_amount,
+    )
     obj.status = compute_status(
         grand_total=obj.grand_total,
-        balance=obj.balance,
+        amount_done=obj.amount_paid,
+        adjusted_amount=obj.adjusted_amount,
         due_date=obj.due_date,
         cancelled=False,
+        balance=obj.balance,
     )
 
     log_activity(
@@ -811,6 +829,7 @@ def pay_bill(
             "amount": float(amount),
             "remark": payment.remark,
             "amount_paid": float(obj.amount_paid),
+            "adjusted_amount": float(obj.adjusted_amount or 0),
             "balance": float(obj.balance),
             "status": obj.status,
         },
@@ -896,12 +915,12 @@ def reverse_vendor_payment(
         "amount": float(payment.amount or 0),
         "remark": payment.remark,
         "bill_amount_paid": float(bill.amount_paid or 0),
+        "bill_adjusted_amount": float(bill.adjusted_amount or 0),
         "bill_balance": float(bill.balance or 0),
         "bill_status": bill.status,
     }
 
     new_amount_paid = current_amount_paid - reverse_amount
-    new_balance = compute_balance(bill.grand_total, new_amount_paid)
 
     if new_amount_paid < 0:
         raise HTTPException(
@@ -910,12 +929,18 @@ def reverse_vendor_payment(
         )
 
     bill.amount_paid = new_amount_paid
-    bill.balance = new_balance
+    bill.balance = compute_balance(
+        bill.grand_total,
+        bill.amount_paid,
+        bill.adjusted_amount,
+    )
     bill.status = compute_status(
         grand_total=bill.grand_total,
-        balance=bill.balance,
+        amount_done=bill.amount_paid,
+        adjusted_amount=bill.adjusted_amount,
         due_date=bill.due_date,
         cancelled=False,
+        balance=bill.balance,
     )
 
     db.delete(payment)
@@ -934,6 +959,7 @@ def reverse_vendor_payment(
             "bill_no": bill.bill_no,
             "reversed_amount": float(reverse_amount),
             "bill_amount_paid": float(bill.amount_paid),
+            "bill_adjusted_amount": float(bill.adjusted_amount or 0),
             "bill_balance": float(bill.balance),
             "bill_status": bill.status,
         },

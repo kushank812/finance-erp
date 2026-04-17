@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import test_db_connection, engine
 from app.models.base import Base
 
-# Register models so SQLAlchemy metadata is complete
 import app.models.customer
 import app.models.item
 import app.models.vendor
@@ -14,8 +13,8 @@ import app.models.user
 import app.models.audit_log
 import app.models.number_sequence
 import app.models.vendor_payment
+import app.models.journal_voucher
 
-# Routers
 from app.api.customer import router as customer_router
 from app.api.item import router as item_router
 from app.api.vendor import router as vendor_router
@@ -32,6 +31,7 @@ from app.api.audit import router as audit_router
 from app.api.audit_meta import router as audit_meta_router
 from app.api.ai_interpreter import router as ai_router
 from app.api.ai_chat import router as ai_chat_router
+from app.api.journal_voucher import router as journal_voucher_router
 
 app = FastAPI(
     title="Finance AP/AR Backend",
@@ -75,10 +75,13 @@ app.include_router(audit_router)
 app.include_router(audit_meta_router)
 app.include_router(ai_router)
 app.include_router(ai_chat_router)
+app.include_router(journal_voucher_router)
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/health/db")
 def health_db():

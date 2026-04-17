@@ -63,6 +63,12 @@ class PurchaseInvoiceHdr(Base):
         default=0,
     )
 
+    adjusted_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
     balance: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,
@@ -72,7 +78,7 @@ class PurchaseInvoiceHdr(Base):
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
-        default="Pending",
+        default="PENDING",
     )
 
     remark: Mapped[str | None] = mapped_column(

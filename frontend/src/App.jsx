@@ -41,6 +41,9 @@ import ReceiptView from "./pages/ReceiptView";
 import VendorPaymentView from "./pages/VendorPaymentView";
 import AuditLogs from "./pages/AuditLogs";
 import GlobalAIAssistant from "./components/ui/GlobalAIAssistant";
+import JournalVoucherNew from "./pages/JournalVoucherNew";
+import JournalVoucherView from "./pages/JournalVoucherView";
+import JournalVoucherList from "./pages/JournalVoucherList";
 
 function isAdmin(user) {
   return user?.role === "ADMIN";
@@ -218,6 +221,13 @@ function getGroupFromPath(path) {
   }
 
   if (
+    path.startsWith("/journal-voucher") ||
+    path.startsWith("/journal-vouchers")
+  ) {
+    return "JV";
+  }
+
+  if (
     path.startsWith("/ledger") ||
     path.startsWith("/aging") ||
     path.startsWith("/statement")
@@ -277,7 +287,13 @@ function Layout({ authenticated, currentUser, logout, children }) {
               items: [
                 { label: "Create Bill", to: "/purchase/new" },
                 { label: "Create Payment", to: "/purchase/pay" },
-                
+              ],
+            },
+            {
+              title: "JV",
+              items: [
+                { label: "Create JV", to: "/journal-voucher/new" },
+                { label: "JV List", to: "/journal-vouchers" },
               ],
             },
           ]
@@ -313,14 +329,14 @@ function Layout({ authenticated, currentUser, logout, children }) {
         ? [
             {
               title: "Admin",
-             items: [
-  ...(canViewAudit(currentUser)
-    ? [{ label: "Audit Logs", to: "/audit" }]
-    : []),
-  ...(canManageUsers(currentUser)
-    ? [{ label: "Users", to: "/users" }]
-    : []),
-],
+              items: [
+                ...(canViewAudit(currentUser)
+                  ? [{ label: "Audit Logs", to: "/audit" }]
+                  : []),
+                ...(canManageUsers(currentUser)
+                  ? [{ label: "Users", to: "/users" }]
+                  : []),
+              ],
             },
           ]
         : []),
@@ -728,6 +744,45 @@ function AppRoutes({
               currentUser={currentUser}
             >
               <VendorPaymentView />
+            </DocumentViewRoute>
+          }
+        />
+
+        <Route
+          path="/journal-voucher/new"
+          element={
+            <TransactionRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <JournalVoucherNew />
+            </TransactionRoute>
+          }
+        />
+
+        <Route
+          path="/journal-vouchers"
+          element={
+            <DocumentViewRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <JournalVoucherList currentUser={currentUser} />
+            </DocumentViewRoute>
+          }
+        />
+
+        <Route
+          path="/journal-voucher/view/:voucherNo"
+          element={
+            <DocumentViewRoute
+              authReady={authReady}
+              authenticated={authenticated}
+              currentUser={currentUser}
+            >
+              <JournalVoucherView />
             </DocumentViewRoute>
           }
         />

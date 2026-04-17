@@ -41,6 +41,7 @@ class SalesInvoiceOut(BaseModel):
     grand_total: float
 
     amount_received: float
+    adjusted_amount: float
     balance: float
     status: str
     remark: Optional[str] = None

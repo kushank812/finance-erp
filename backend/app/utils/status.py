@@ -26,9 +26,18 @@ def normalize_amount(value) -> Decimal:
     return amt
 
 
-def compute_balance(grand_total, amount_done) -> Decimal:
-    total = normalize_amount(grand_total)
+def compute_done_amount(amount_done=None, adjusted_amount=None) -> Decimal:
     done = normalize_amount(amount_done)
+    adjusted = normalize_amount(adjusted_amount)
+    total_done = done + adjusted
+    if total_done < 0:
+        return Decimal("0")
+    return total_done
+
+
+def compute_balance(grand_total, amount_done=None, adjusted_amount=None) -> Decimal:
+    total = normalize_amount(grand_total)
+    done = compute_done_amount(amount_done, adjusted_amount)
 
     balance = total - done
     if balance < 0:
@@ -63,31 +72,17 @@ def compute_status(
     due_date: date | None = None,
     *,
     balance=None,
+    adjusted_amount=None,
     cancelled: bool = False,
     today: date | None = None,
 ) -> str:
-    """
-    Generic finance payment-status calculator.
-
-    Use for:
-    - Sales Invoice: amount_done = amount_received
-    - Purchase Bill: amount_done = amount_paid
-
-    This function returns PAYMENT STATUS only:
-    1. Cancelled
-    2. Paid
-    3. Partial
-    4. Pending
-
-    Overdue is computed separately using is_overdue(...).
-    """
     if cancelled:
         return STATUS_CANCELLED
 
     total = normalize_amount(grand_total)
 
     if balance is None:
-        bal = compute_balance(total, amount_done)
+        bal = compute_balance(total, amount_done, adjusted_amount)
     else:
         bal = normalize_amount(balance)
 
@@ -101,20 +96,6 @@ def compute_status(
 
 
 def status_counts_from_rows(rows, *, today: date | None = None) -> dict[str, int]:
-    """
-    rows format:
-    [
-        {
-            "grand_total": ...,
-            "balance": ...,
-            "due_date": ...,
-            "cancelled": False,
-        },
-        ...
-    ]
-
-    Returns payment-status counts only.
-    """
     counts = {
         STATUS_PENDING: 0,
         STATUS_PARTIAL: 0,
@@ -139,9 +120,6 @@ def status_counts_from_rows(rows, *, today: date | None = None) -> dict[str, int
 
 
 def overdue_count_from_rows(rows, *, today: date | None = None) -> int:
-    """
-    Counts all open overdue rows, including both PENDING and PARTIAL documents.
-    """
     reference_date = today or date.today()
     count = 0
 
@@ -163,11 +141,12 @@ def amount_if_overdue(
     due_date: date | None = None,
     *,
     balance=None,
+    adjusted_amount=None,
     cancelled: bool = False,
     today: date | None = None,
 ):
     if balance is None:
-        bal = compute_balance(grand_total, amount_done)
+        bal = compute_balance(grand_total, amount_done, adjusted_amount)
     else:
         bal = normalize_amount(balance)
 
