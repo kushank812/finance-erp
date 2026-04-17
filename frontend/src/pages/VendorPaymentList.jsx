@@ -1,53 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { apiDelete, apiGet } from "../api/client";
-import AppDateInput from "../components/ui/AppDateInput";
-import { formatDateForDisplay, toISODate } from "../utils/date";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
-}
-
-function formatDate(value) {
-  return formatDateForDisplay(value) || "-";
 }
 
 function buildQuery(params) {
   const qs = new URLSearchParams();
 
   if (params.q?.trim()) qs.set("q", params.q.trim());
-
-  const fromISO = toISODate(params.fromDate);
-  if (fromISO) qs.set("from_date", fromISO);
-
-  const toISO = toISODate(params.toDate);
-  if (toISO) qs.set("to_date", toISO);
+  if (params.fromDate) qs.set("from_date", params.fromDate);
+  if (params.toDate) qs.set("to_date", params.toDate);
 
   const s = qs.toString();
   return s ? `?${s}` : "";
 }
 
-function sortLatestFirst(rows) {
-  return [...rows].sort((a, b) => {
-    const dateA = toISODate(a?.payment_date) || "";
-    const dateB = toISODate(b?.payment_date) || "";
-
-    if (dateB !== dateA) return dateB.localeCompare(dateA);
-
-    const noA = String(a?.payment_no || "");
-    const noB = String(b?.payment_no || "");
-
-    return noB.localeCompare(noA, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
-  });
+function fmtDate(value) {
+  if (!value) return "-";
+  return String(value);
 }
 
-export default function VendorPaymentList({ currentUser }) {
+export default function ReceiptList() {
   const nav = useNavigate();
-  const location = useLocation();
-  const isViewer = currentUser?.role === "VIEWER";
 
   const [rows, setRows] = useState([]);
   const [filters, setFilters] = useState({
@@ -68,9 +44,8 @@ export default function VendorPaymentList({ currentUser }) {
 
     try {
       const query = buildQuery(activeFilters);
-      const data = await apiGet(`/vendor-payments${query}`);
-      const safeRows = Array.isArray(data) ? data : [];
-      setRows(sortLatestFirst(safeRows));
+      const data = await apiGet(`/receipts${query}`);
+      setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr(String(e.message || e));
       setRows([]);
@@ -80,9 +55,9 @@ export default function VendorPaymentList({ currentUser }) {
   }
 
   useEffect(() => {
-    loadData(filters);
+    loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key]);
+  }, []);
 
   async function onSearch(e) {
     e.preventDefault();
@@ -95,19 +70,19 @@ export default function VendorPaymentList({ currentUser }) {
     await loadData(cleared);
   }
 
-  async function onReverse(paymentNo) {
+  async function onDelete(receiptNo) {
     const ok = window.confirm(
-      `Reverse vendor payment ${paymentNo}?\n\nThis will remove the payment entry and recalculate the linked bill.`
+      `Reverse receipt ${receiptNo}?\n\nThis will undo the payment.`
     );
     if (!ok) return;
 
-    setBusy(paymentNo);
+    setBusy(receiptNo);
     setErr("");
     setMsg("");
 
     try {
-      await apiDelete(`/purchase-invoices/payments/${encodeURIComponent(paymentNo)}`);
-      setMsg(`Vendor payment ${paymentNo} reversed.`);
+      await apiDelete(`/receipts/${encodeURIComponent(receiptNo)}`);
+      setMsg(`Receipt ${receiptNo} reversed.`);
       await loadData(filters);
     } catch (e) {
       setErr(String(e.message || e));
@@ -127,13 +102,21 @@ export default function VendorPaymentList({ currentUser }) {
   }, [rows]);
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 14 }}>
+    <div style={page}>
       <div style={header}>
         <div>
-          <h2 style={{ margin: 0, color: "#fff" }}>Vendor Payment Management</h2>
-          <p style={{ marginTop: 6, color: "#b8b8b8" }}>
-            View and reverse vendor payments.
-          </p>
+          <h2 style={title}>Receipt Management</h2>
+          <p style={subtitle}>View and reverse customer receipts.</p>
+        </div>
+
+        <div style={headerActions}>
+          <button
+            type="button"
+            style={btnCreate}
+            onClick={() => nav("/receipt/new")}
+          >
+            + Create Receipt
+          </button>
         </div>
       </div>
 
@@ -141,109 +124,127 @@ export default function VendorPaymentList({ currentUser }) {
         <div style={grid}>
           <input
             style={input}
-            placeholder="Payment No / Bill No"
+            placeholder="Receipt No / Invoice No"
             value={filters.q}
             onChange={(e) =>
               setFilters((s) => ({ ...s, q: e.target.value.toUpperCase() }))
             }
           />
 
-          <AppDateInput
+          <input
+            type="date"
             style={input}
             value={filters.fromDate}
-            onChange={(value) =>
-              setFilters((s) => ({
-                ...s,
-                fromDate: value,
-              }))
+            onChange={(e) =>
+              setFilters((s) => ({ ...s, fromDate: e.target.value }))
             }
           />
 
-          <AppDateInput
+          <input
+            type="date"
             style={input}
             value={filters.toDate}
-            onChange={(value) =>
-              setFilters((s) => ({
-                ...s,
-                toDate: value,
-              }))
+            onChange={(e) =>
+              setFilters((s) => ({ ...s, toDate: e.target.value }))
             }
           />
         </div>
 
-        <div style={{ marginTop: 10 }}>
+        <div style={filterActions}>
           <button type="submit" style={btnPrimary} disabled={loading}>
             {loading ? "Loading..." : "Search"}
           </button>
+
           <button type="button" style={btnGhost} onClick={onReset} disabled={loading}>
             Reset
           </button>
         </div>
       </form>
 
-      {err && <div style={msgErr}>{err}</div>}
-      {msg && <div style={msgOk}>{msg}</div>}
+      {err ? <div style={msgErr}>{err}</div> : null}
+      {msg ? <div style={msgOk}>{msg}</div> : null}
 
       <div style={summaryGrid}>
-        <Card title="Total Payments" value={summary.total} />
-        <Card title="Total Amount" value={`₹ ${summary.amount}`} />
+        <SummaryCard title="Total Receipts" value={summary.total} />
+        <SummaryCard title="Total Amount" value={`₹ ${summary.amount}`} />
       </div>
 
       <div style={card}>
-        <div style={{ overflowX: "auto" }}>
+        <div style={tableHeader}>
+          <div>
+            <div style={sectionTitle}>Receipts</div>
+            <div style={sectionSubtitle}>
+              {loading ? "Loading receipts..." : `${rows.length} record(s) found`}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            style={btnGhost}
+            onClick={() => loadData(filters)}
+            disabled={loading}
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div style={tableWrap}>
           <table style={table}>
             <thead>
               <tr>
-                <th style={th}>Payment No</th>
+                <th style={th}>Receipt No</th>
                 <th style={th}>Date</th>
-                <th style={th}>Bill No</th>
-                <th style={{ ...th, textAlign: "right" }}>Amount</th>
+                <th style={th}>Invoice No</th>
+                <th style={thRight}>Amount</th>
                 <th style={th}>Remark</th>
-                <th style={{ ...th, textAlign: "center" }}>Actions</th>
+                <th style={thCenter}>Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.payment_no}>
-                  <td style={tdStrong}>{r.payment_no}</td>
-                  <td style={td}>{formatDate(r.payment_date)}</td>
-                  <td style={td}>{r.bill_no}</td>
-                  <td style={tdRight}>{money(r.amount)}</td>
-                  <td style={td}>{r.remark || "-"}</td>
-                  <td style={td}>
-                    <div style={actionWrap}>
-                      <button
-                        type="button"
-                        style={miniBtn}
-                        onClick={() =>
-                          nav(`/vendor-payment/view/${encodeURIComponent(r.payment_no)}`)
-                        }
-                      >
-                        View
-                      </button>
-
-                      {!isViewer && (
-                        <button
-                          type="button"
-                          style={miniBtnDanger}
-                          disabled={busy === r.payment_no}
-                          onClick={() => onReverse(r.payment_no)}
-                        >
-                          {busy === r.payment_no ? "Working..." : "Reverse"}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {!loading && rows.length === 0 && (
+              {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={empty}>
-                    No vendor payments found
+                  <td colSpan="6" style={emptyTd}>
+                    No receipts found.
                   </td>
                 </tr>
+              ) : (
+                rows.map((row) => {
+                  const receiptNo = row.receipt_no;
+                  const activeBusy = busy === receiptNo;
+
+                  return (
+                    <tr key={receiptNo} style={tr}>
+                      <td style={tdCode}>{receiptNo}</td>
+                      <td style={td}>{fmtDate(row.receipt_date)}</td>
+                      <td style={td}>{row.invoice_no || "-"}</td>
+                      <td style={tdRight}>{money(row.amount)}</td>
+                      <td style={td}>{row.remark || "-"}</td>
+                      <td style={tdCenter}>
+                        <div style={rowActionWrap}>
+                          <button
+                            type="button"
+                            style={btnMini}
+                            onClick={() =>
+                              nav(`/receipt/view/${encodeURIComponent(receiptNo)}`)
+                            }
+                          >
+                            View
+                          </button>
+
+                          <button
+                            type="button"
+                            style={btnDangerMini}
+                            onClick={() => onDelete(receiptNo)}
+                            disabled={activeBusy}
+                          >
+                            {activeBusy ? "Working..." : "Reverse"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -253,68 +254,254 @@ export default function VendorPaymentList({ currentUser }) {
   );
 }
 
-function Card({ title, value }) {
+function SummaryCard({ title, value }) {
   return (
-    <div style={card}>
-      <div style={{ fontSize: 12, color: "#111", fontWeight: 800 }}>
-        {title}
-      </div>
-      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6, color: "#111" }}>
-        {value}
-      </div>
+    <div style={summaryCard}>
+      <div style={summaryTitle}>{title}</div>
+      <div style={summaryValue}>{value}</div>
     </div>
   );
 }
 
+const page = {
+  maxWidth: 1200,
+  margin: "0 auto",
+  padding: 14,
+};
+
 const header = {
-  marginBottom: 14,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-end",
+  gap: 12,
+  flexWrap: "wrap",
+  marginBottom: 18,
+};
+
+const title = {
+  margin: 0,
+  color: "#fff",
+  fontSize: 26,
+  fontWeight: 900,
+};
+
+const subtitle = {
+  marginTop: 8,
+  color: "#cbd5e1",
+  fontSize: 14,
+};
+
+const headerActions = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+  alignItems: "center",
 };
 
 const card = {
-  background: "#fff",
-  padding: 14,
-  borderRadius: 14,
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 20,
+  padding: 16,
+  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
   marginBottom: 14,
-  border: "1px solid #e6e6e6",
 };
 
 const grid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: 10,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
 };
 
 const input = {
-  padding: 10,
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  outline: "none",
+  fontSize: 14,
+  boxSizing: "border-box",
+  color: "#0f172a",
+  background: "#fff",
+};
+
+const filterActions = {
+  marginTop: 12,
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const btnPrimary = {
+  padding: "11px 16px",
+  borderRadius: 12,
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
+};
+
+const btnCreate = {
+  padding: "12px 18px",
+  borderRadius: 16,
+  border: "1px solid #2563eb",
+  background: "#2563eb",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 14,
+  boxShadow: "0 10px 24px rgba(37, 99, 235, 0.28)",
+};
+
+const btnGhost = {
+  padding: "11px 16px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#0f172a",
+  cursor: "pointer",
+  fontWeight: 800,
+  fontSize: 14,
+};
+
+const btnMini = {
+  padding: "8px 12px",
   borderRadius: 10,
-  border: "1px solid #ccc",
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#0f172a",
+  cursor: "pointer",
+  fontWeight: 800,
+  fontSize: 13,
+};
+
+const btnDangerMini = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #fecaca",
+  background: "#fff1f2",
+  color: "#b91c1c",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 13,
+};
+
+const msgErr = {
+  background: "#fff1f2",
+  border: "1px solid #fecaca",
+  color: "#b91c1c",
+  padding: "12px 14px",
+  borderRadius: 14,
+  marginBottom: 14,
+  fontWeight: 700,
+};
+
+const msgOk = {
+  background: "#ecfdf5",
+  border: "1px solid #86efac",
+  color: "#166534",
+  padding: "12px 14px",
+  borderRadius: 14,
+  marginBottom: 14,
+  fontWeight: 700,
 };
 
 const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 12,
   marginBottom: 14,
+};
+
+const summaryCard = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
+  padding: 16,
+  boxShadow: "0 8px 20px rgba(15, 23, 42, 0.06)",
+};
+
+const summaryTitle = {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 800,
+};
+
+const summaryValue = {
+  marginTop: 8,
+  fontSize: 24,
+  fontWeight: 900,
+  color: "#0f172a",
+};
+
+const tableHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-end",
+  gap: 12,
+  flexWrap: "wrap",
+  marginBottom: 12,
+};
+
+const sectionTitle = {
+  fontSize: 18,
+  color: "#0f172a",
+  fontWeight: 900,
+};
+
+const sectionSubtitle = {
+  marginTop: 4,
+  fontSize: 13,
+  color: "#64748b",
+};
+
+const tableWrap = {
+  width: "100%",
+  overflowX: "auto",
 };
 
 const table = {
   width: "100%",
   minWidth: 900,
-  borderCollapse: "collapse",
+  borderCollapse: "separate",
+  borderSpacing: 0,
 };
 
 const th = {
-  padding: 10,
-  background: "#f5f6f8",
-  fontWeight: 900,
+  textAlign: "left",
+  padding: "12px 14px",
+  borderBottom: "1px solid #e2e8f0",
+  color: "#334155",
   fontSize: 13,
+  fontWeight: 900,
+  background: "#f8fafc",
+};
+
+const thRight = {
+  ...th,
+  textAlign: "right",
+};
+
+const thCenter = {
+  ...th,
+  textAlign: "center",
+};
+
+const tr = {
+  background: "#fff",
 };
 
 const td = {
-  padding: 10,
+  padding: "12px 14px",
+  borderBottom: "1px solid #e2e8f0",
+  color: "#0f172a",
+  fontSize: 14,
+  verticalAlign: "middle",
 };
 
-const tdStrong = {
+const tdCode = {
   ...td,
   fontWeight: 900,
 };
@@ -322,58 +509,24 @@ const tdStrong = {
 const tdRight = {
   ...td,
   textAlign: "right",
+  fontWeight: 800,
 };
 
-const empty = {
+const tdCenter = {
+  ...td,
   textAlign: "center",
-  padding: 20,
 };
 
-const actionWrap = {
+const emptyTd = {
+  padding: "20px 14px",
+  textAlign: "center",
+  color: "#64748b",
+  fontWeight: 700,
+};
+
+const rowActionWrap = {
   display: "flex",
-  gap: 6,
+  gap: 8,
   justifyContent: "center",
   flexWrap: "wrap",
-};
-
-const btnPrimary = {
-  marginRight: 10,
-  padding: "8px 12px",
-  background: "#0b5cff",
-  color: "#fff",
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer",
-};
-
-const btnGhost = {
-  padding: "8px 12px",
-  background: "#eee",
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer",
-};
-
-const miniBtn = {
-  padding: "6px 10px",
-  borderRadius: 8,
-  cursor: "pointer",
-};
-
-const miniBtnDanger = {
-  padding: "6px 10px",
-  borderRadius: 8,
-  background: "#fff2f2",
-  border: "1px solid red",
-  cursor: "pointer",
-};
-
-const msgErr = {
-  color: "red",
-  marginBottom: 10,
-};
-
-const msgOk = {
-  color: "green",
-  marginBottom: 10,
 };
