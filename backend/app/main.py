@@ -31,6 +31,7 @@ from app.api.vendor_payment import router as vendor_payment_router
 from app.api.audit import router as audit_router
 from app.api.audit_meta import router as audit_meta_router
 from app.api.ai_interpreter import router as ai_router
+from app.api.ai_chat import router as ai_chat_router
 
 app = FastAPI(
     title="Finance AP/AR Backend",
@@ -73,6 +74,7 @@ app.include_router(vendor_payment_router)
 app.include_router(audit_router)
 app.include_router(audit_meta_router)
 app.include_router(ai_router)
+app.include_router(ai_chat_router)
 
 @app.get("/health")
 def health():
