@@ -20,6 +20,18 @@ function filterByDate(rows, dateKey, range) {
   return rows.filter((row) => isInDateRange(row?.[dateKey], range));
 }
 
+function filterByOutstanding(rows, flags = {}) {
+  if (flags.paidOnly) {
+    return rows.filter((r) => Number(r.balance || 0) <= 0);
+  }
+
+  if (flags.unpaidOnly) {
+    return rows.filter((r) => Number(r.balance || 0) > 0);
+  }
+
+  return rows;
+}
+
 export function buildDashboard(snapshot) {
   const overdueInvoices = snapshot.salesRows.filter((r) => Number(r.balance || 0) > 0);
   const overdueBills = snapshot.purchaseRows.filter((r) => Number(r.balance || 0) > 0);
@@ -140,8 +152,7 @@ export function buildVendorDues(snapshot, entities = {}) {
       ...row,
       name:
         filtered.find(
-          (x) =>
-            (x.vendor_code || x.vendor_name || "-") === row.code
+          (x) => x.vendor_code === row.code || x.vendor_name === row.code
         )?.vendor_name || row.code,
     }))
     .sort((a, b) => b.totalBalance - a.totalBalance);
@@ -189,8 +200,7 @@ export function buildCustomerDues(snapshot, entities = {}) {
       ...row,
       name:
         filtered.find(
-          (x) =>
-            (x.customer_code || x.customer_name || "-") === row.code
+          (x) => x.customer_code === row.code || x.customer_name === row.code
         )?.customer_name || row.code,
     }))
     .sort((a, b) => b.totalBalance - a.totalBalance);
@@ -246,8 +256,15 @@ export function buildInvoiceSearch(snapshot, entities = {}) {
     );
   }
 
+  rows = filterByOutstanding(rows, entities.flags || {});
   rows = filterByDate(rows, "invoice_date", entities.dateRange);
-  rows = sortByDateDesc(rows, "invoice_date");
+
+  if (entities.flags?.highestFirst) {
+    rows = sortByNumberDesc(rows, "balance");
+  } else {
+    rows = sortByDateDesc(rows, "invoice_date");
+  }
+
   rows = limitRows(rows, entities.topN || 10);
 
   return {
@@ -295,8 +312,15 @@ export function buildBillSearch(snapshot, entities = {}) {
     );
   }
 
+  rows = filterByOutstanding(rows, entities.flags || {});
   rows = filterByDate(rows, "bill_date", entities.dateRange);
-  rows = sortByDateDesc(rows, "bill_date");
+
+  if (entities.flags?.highestFirst) {
+    rows = sortByNumberDesc(rows, "balance");
+  } else {
+    rows = sortByDateDesc(rows, "bill_date");
+  }
+
   rows = limitRows(rows, entities.topN || 10);
 
   return {
@@ -373,6 +397,92 @@ export function buildRecentVendorPayments(snapshot, entities = {}) {
   };
 }
 
+export function buildPaymentPriority(snapshot, entities = {}) {
+  const rows = snapshot.purchaseRows.filter((r) => Number(r.balance || 0) > 0);
+
+  const grouped = aggregateBy(rows, "vendor_code", "vendor_name")
+    .map((row) => ({
+      ...row,
+      name:
+        rows.find(
+          (x) => x.vendor_code === row.code || x.vendor_name === row.code
+        )?.vendor_name || row.code,
+    }))
+    .sort((a, b) => {
+      if (b.maxOverdueDays !== a.maxOverdueDays) return b.maxOverdueDays - a.maxOverdueDays;
+      return b.totalBalance - a.totalBalance;
+    });
+
+  const limited = limitRows(grouped, entities.topN || 5);
+
+  return {
+    reply:
+      limited.length > 0
+        ? "These vendors should be prioritized first based on overdue days and outstanding balance."
+        : "I could not find payable vendors to prioritize.",
+    cards: [
+      buildSummaryCard("Payment Priority Logic", [
+        { label: "Priority Rule", value: "Higher overdue days, then higher outstanding" },
+        { label: "Open Payables", value: money(sumBy(rows, "balance")) },
+      ]),
+      buildTableCard(
+        "Vendor Payment Priority",
+        ["Priority", "Vendor", "Outstanding", "Max Overdue", "Open Bills"],
+        limited.map((r, index) => [
+          `#${index + 1}`,
+          r.name || r.code || "-",
+          money(r.totalBalance),
+          `${r.maxOverdueDays || 0} days`,
+          String(r.count || 0),
+        ])
+      ),
+    ],
+  };
+}
+
+export function buildCollectionPriority(snapshot, entities = {}) {
+  const rows = snapshot.salesRows.filter((r) => Number(r.balance || 0) > 0);
+
+  const grouped = aggregateBy(rows, "customer_code", "customer_name")
+    .map((row) => ({
+      ...row,
+      name:
+        rows.find(
+          (x) => x.customer_code === row.code || x.customer_name === row.code
+        )?.customer_name || row.code,
+    }))
+    .sort((a, b) => {
+      if (b.maxOverdueDays !== a.maxOverdueDays) return b.maxOverdueDays - a.maxOverdueDays;
+      return b.totalBalance - a.totalBalance;
+    });
+
+  const limited = limitRows(grouped, entities.topN || 5);
+
+  return {
+    reply:
+      limited.length > 0
+        ? "These customers should be prioritized first for collection based on overdue days and outstanding balance."
+        : "I could not find customer receivables to prioritize.",
+    cards: [
+      buildSummaryCard("Collection Priority Logic", [
+        { label: "Priority Rule", value: "Higher overdue days, then higher outstanding" },
+        { label: "Open Receivables", value: money(sumBy(rows, "balance")) },
+      ]),
+      buildTableCard(
+        "Customer Collection Priority",
+        ["Priority", "Customer", "Outstanding", "Max Overdue", "Open Invoices"],
+        limited.map((r, index) => [
+          `#${index + 1}`,
+          r.name || r.code || "-",
+          money(r.totalBalance),
+          `${r.maxOverdueDays || 0} days`,
+          String(r.count || 0),
+        ])
+      ),
+    ],
+  };
+}
+
 export function buildMasterSummary(snapshot) {
   return {
     reply: "Here is the master data summary.",
@@ -395,16 +505,16 @@ export function buildMasterSummary(snapshot) {
 export function buildUnknown() {
   return {
     reply:
-      "I understood this only partially. Try asking for dashboard summary, overdue invoices, customer dues, vendor dues, sales invoices, purchase bills, receipts, vendor payments, or navigation like open ledger.",
+      "I understood this only partially. Try asking for dashboard summary, overdue invoices, customer dues, vendor dues, payment priority, collection priority, sales invoices, purchase bills, receipts, vendor payments, or navigation like open ledger.",
     cards: [
       buildListCard("Try Questions Like", [
         "Summarize dashboard",
         "Show overdue invoices",
         "Show customer dues",
-        "Show vendor dues",
+        "Which vendors should I pay first",
+        "Which customers should I collect from first",
         "Find invoice INV0001",
-        "Find bills for vendor ABC",
-        "Show recent receipts",
+        "Show receipts from last 30 days",
         "Open ledger",
       ]),
     ],

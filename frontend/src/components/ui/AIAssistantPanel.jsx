@@ -89,7 +89,7 @@ function AssistantCard({ card }) {
             <tbody>
               {(card.rows || []).length > 0 ? (
                 card.rows.map((row, index) => (
-                  <tr key={`row_${index}`}>
+                  <tr key={`row_${index}`} style={trStyle}>
                     {(row || []).map((cell, cellIndex) => (
                       <td key={`cell_${index}_${cellIndex}`} style={tdStyle}>
                         {cell}
@@ -150,7 +150,7 @@ function MessageBubble({ msg }) {
             fontWeight: 800,
             marginBottom: 5,
             fontSize: 11,
-            opacity: 0.9,
+            opacity: 0.92,
             letterSpacing: 0.3,
             textTransform: "uppercase",
           }}
@@ -423,7 +423,7 @@ export default function AIAssistantPanel({
             role: "assistant",
             time: nowTime(),
             text:
-              "I could not load automatic finance insights right now, but you can still ask for dashboard summary, overdue customers, receipts, vendor payments, masters, reports, invoice search, bill search, or reminders.",
+              "I could not load automatic finance insights right now, but you can still ask for dashboard summary, overdue invoices, receipts, vendor payments, masters, reports, invoice search, bill search, payment priority, or collection priority.",
             cards: [],
           },
         ]);
@@ -676,8 +676,8 @@ export default function AIAssistantPanel({
 
         <div style={footerHint}>
           Try: <span style={hintStrong}>Open ledger</span>,{" "}
-          <span style={hintStrong}>Open statement</span>,{" "}
-          <span style={hintStrong}>Open aging report</span>
+          <span style={hintStrong}>Which vendors should I pay first</span>,{" "}
+          <span style={hintStrong}>Show receipts from last 30 days</span>
         </div>
       </div>
     </div>
@@ -865,7 +865,7 @@ const cardTitle = {
   fontSize: 13,
   fontWeight: 900,
   marginBottom: 10,
-  color: "#dce7ff",
+  color: "#ffffff",
 };
 
 const cardGrid = {
@@ -883,7 +883,7 @@ const statTile = {
 
 const statLabel = {
   fontSize: 11,
-  color: "rgba(223,230,255,0.72)",
+  color: "rgba(223,230,255,0.78)",
   marginBottom: 6,
 };
 
@@ -959,21 +959,25 @@ const tableStyle = {
   background: "rgba(255,255,255,0.02)",
 };
 
+const trStyle = {
+  background: "transparent",
+};
+
 const thStyle = {
   textAlign: "left",
-  padding: "10px 12px",
+  padding: "12px 14px",
   fontSize: 12,
   fontWeight: 900,
-  color: "#dce7ff",
-  background: "rgba(255,255,255,0.05)",
-  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  color: "#0f172a",
+  background: "#e5e7eb",
+  borderBottom: "1px solid rgba(15,23,42,0.08)",
   whiteSpace: "nowrap",
 };
 
 const tdStyle = {
-  padding: "10px 12px",
+  padding: "11px 14px",
   fontSize: 12,
-  color: "#eef3ff",
+  color: "#f8fbff",
   borderBottom: "1px solid rgba(255,255,255,0.06)",
   whiteSpace: "nowrap",
 };

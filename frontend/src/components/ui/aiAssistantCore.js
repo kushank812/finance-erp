@@ -5,14 +5,14 @@ import { routeAI } from "./aiRouter";
 import { fetchFinanceSnapshot } from "./aiSnapshotService";
 import { buildDailyFinanceSummary as buildDailyFinanceSummaryFromBuilders } from "./aiResponseBuilders";
 
-export const STORAGE_KEY = "finance_ai_workspace_chats_v7";
+export const STORAGE_KEY = "finance_ai_workspace_chats_v8";
 
 export const QUICK_PROMPTS = [
   "Summarize dashboard",
   "Show overdue invoices",
   "Show customer dues",
-  "Show vendor dues",
-  "Show recent receipts",
+  "Which vendors should I pay first",
+  "Show receipts from last 30 days",
   "Open ledger",
 ];
 
@@ -28,7 +28,7 @@ export function createWelcomeMessages(currentUser = null) {
       time: nowTime(),
       text:
         `Welcome to AI Finance Assistant${roleText}. ` +
-        "You can ask about dashboard summary, overdue invoices, dues, invoices, bills, receipts, vendor payments, or tell me to open a screen.",
+        "You can ask about dashboard summary, overdue invoices, receivables, payables, payment priority, receipts, bills, invoices, or tell me to open a screen.",
       cards: [],
     },
   ];

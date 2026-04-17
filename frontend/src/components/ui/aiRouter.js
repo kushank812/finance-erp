@@ -2,11 +2,13 @@ import { safeNavigate } from "./aiPermissions";
 import { fetchFinanceSnapshot } from "./aiSnapshotService";
 import {
   buildBillSearch,
+  buildCollectionPriority,
   buildCustomerDues,
   buildDailyFinanceSummary,
   buildDashboard,
   buildMasterSummary,
   buildOverdue,
+  buildPaymentPriority,
   buildRecentReceipts,
   buildRecentVendorPayments,
   buildUnknown,
@@ -53,6 +55,12 @@ export async function routeAI(intent, entities, navigate, currentUser) {
 
     case "vendor_payment_search":
       return buildRecentVendorPayments(snapshot, entities);
+
+    case "payment_priority":
+      return buildPaymentPriority(snapshot, entities);
+
+    case "collection_priority":
+      return buildCollectionPriority(snapshot, entities);
 
     case "masters_summary":
       return buildMasterSummary(snapshot);
