@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import test_db_connection, engine
+from app.core.schema_patch import run_schema_patches
 from app.models.base import Base
 
 import app.models.customer
@@ -42,6 +43,7 @@ app = FastAPI(
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    run_schema_patches()
 
 
 app.add_middleware(
