@@ -65,12 +65,15 @@ async function parseError(res) {
   }
 }
 
-async function handle(res) {
+async function handle(res, url) {
   const contentType = res.headers.get("content-type") || "";
 
   if (!res.ok) {
     const message = await parseError(res);
-    throw new Error(normalizeErrorMessage(message) || `HTTP ${res.status}`);
+    throw new Error(
+      normalizeErrorMessage(message) ||
+        `Request failed: ${res.status} ${res.statusText} (${url})`
+    );
   }
 
   if (
@@ -107,19 +110,23 @@ async function request(path, options = {}) {
   const finalOptions = {
     ...options,
     credentials: "include",
+    mode: "cors",
     headers: mergedHeaders,
   };
 
   let res;
   try {
     res = await fetch(url, finalOptions);
-  } catch {
-    throw new Error(
-      `Unable to connect to backend at ${API_BASE}. Check VITE_API_BASE, backend status, CORS, and cookie settings.`
-    );
+  } catch (err) {
+    const rawMessage =
+      err?.message ||
+      err?.name ||
+      "Browser blocked the request or the network request failed.";
+
+    throw new Error(`Fetch failed for ${url}. ${rawMessage}`);
   }
 
-  return handle(res);
+  return handle(res, url);
 }
 
 export async function apiGet(path, headers = {}) {
