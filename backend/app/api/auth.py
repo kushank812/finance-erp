@@ -35,32 +35,18 @@ def delete_expired_sessions(db: Session) -> None:
 
 def get_cookie_settings(request: Request) -> dict:
     origin = (request.headers.get("origin") or "").lower()
-    host = (request.headers.get("host") or "").lower()
-    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").lower()
 
-    is_local = (
-        "localhost" in origin
-        or "127.0.0.1" in origin
-        or "localhost" in host
-        or "127.0.0.1" in host
-    )
-
-    if is_local:
+    # Local development
+    if "localhost" in origin or "127.0.0.1" in origin:
         return {
             "secure": False,
             "samesite": "lax",
         }
 
     # Production / cross-site frontend like Vercel
-    if "vercel.app" in origin or forwarded_proto == "https":
-        return {
-            "secure": True,
-            "samesite": "none",
-        }
-
     return {
-        "secure": False,
-        "samesite": "lax",
+        "secure": True,
+        "samesite": "none",
     }
 
 
