@@ -536,7 +536,7 @@ export default function AIWorkspace({ currentUser = null }) {
     setLoading(true);
 
     try {
-      const result = await buildAIResponse(finalText, navigate, effectiveUser);
+      const result = await buildAIResponse(finalText, navigate, effectiveUser, chatId);
 
       appendMessageToChat(chatId, {
         id: uid(),

@@ -483,7 +483,7 @@ export default function AIAssistantPanel({
     setLoading(true);
 
     try {
-      const result = await buildAIResponse(finalText, navigate, effectiveUser);
+      const result = await buildAIResponse(finalText, navigate, effectiveUser, "assistant_panel");
 
       setMessages((prev) => [
         ...prev,
