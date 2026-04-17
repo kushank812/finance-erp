@@ -53,7 +53,10 @@ app.add_middleware(
         "http://127.0.0.1:5174",
         "https://finance-erp.vercel.app",
     ],
-    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$|^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+):(5173|5174)$",
+    allow_origin_regex=(
+        r"^https:\/\/.*\.vercel\.app$|"
+        r"^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+):(5173|5174)$"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
