@@ -39,13 +39,18 @@ export default function AlertBox({
     const timer = setTimeout(() => {
       if (!ref.current) return;
 
-      const rect = ref.current.getBoundingClientRect();
-      const top = window.pageYOffset + rect.top - 120;
-
-      window.scrollTo({
-        top: Math.max(top, 0),
+      ref.current.scrollIntoView({
         behavior: "smooth",
+        block: "start",
       });
+
+      setTimeout(() => {
+        const extraOffset = 220; // bigger offset for your sticky top area
+        window.scrollBy({
+          top: -extraOffset,
+          behavior: "smooth",
+        });
+      }, 120);
 
       if (typeof ref.current.focus === "function") {
         try {
@@ -54,7 +59,7 @@ export default function AlertBox({
           ref.current.focus();
         }
       }
-    }, 80);
+    }, 100);
 
     return () => clearTimeout(timer);
   }, [message, shouldAutoScroll]);
