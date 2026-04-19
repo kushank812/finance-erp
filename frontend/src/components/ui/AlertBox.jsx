@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 export default function AlertBox({
   kind = "info",
   message,
-  autoScroll = true,
+  autoScroll,
 }) {
   const ref = useRef(null);
 
@@ -30,9 +30,11 @@ export default function AlertBox({
     },
   };
 
-  // 🔥 AUTO SCROLL LOGIC (GLOBAL)
+  const shouldAutoScroll =
+    typeof autoScroll === "boolean" ? autoScroll : kind === "error";
+
   useEffect(() => {
-    if (!message || !autoScroll) return;
+    if (!message || !shouldAutoScroll) return;
 
     const timer = setTimeout(() => {
       if (!ref.current) return;
@@ -45,12 +47,17 @@ export default function AlertBox({
         behavior: "smooth",
       });
 
-      // optional: focus for accessibility
-      ref.current.focus?.();
+      if (typeof ref.current.focus === "function") {
+        try {
+          ref.current.focus({ preventScroll: true });
+        } catch {
+          ref.current.focus();
+        }
+      }
     }, 80);
 
     return () => clearTimeout(timer);
-  }, [message, autoScroll]);
+  }, [message, shouldAutoScroll]);
 
   if (!message) return null;
 
@@ -58,7 +65,8 @@ export default function AlertBox({
     <div
       ref={ref}
       tabIndex={-1}
-      role="alert"
+      role={kind === "error" ? "alert" : "status"}
+      aria-live={kind === "error" ? "assertive" : "polite"}
       style={{
         ...styleMap[kind],
         padding: "12px 14px",
