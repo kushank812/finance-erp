@@ -34,25 +34,15 @@ export default function AlertBox({
     typeof autoScroll === "boolean" ? autoScroll : kind === "error";
 
   useEffect(() => {
-    if (!message || !shouldAutoScroll) return;
+    if (!message || !shouldAutoScroll || !ref.current) return;
 
     const timer = setTimeout(() => {
-      if (!ref.current) return;
-
-      ref.current.scrollIntoView({
+      ref.current?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });
 
-      setTimeout(() => {
-        const extraOffset = 220; // bigger offset for your sticky top area
-        window.scrollBy({
-          top: -extraOffset,
-          behavior: "smooth",
-        });
-      }, 120);
-
-      if (typeof ref.current.focus === "function") {
+      if (typeof ref.current?.focus === "function") {
         try {
           ref.current.focus({ preventScroll: true });
         } catch {
@@ -78,6 +68,7 @@ export default function AlertBox({
         borderRadius: 14,
         fontWeight: 700,
         marginBottom: 12,
+        scrollMarginTop: 240, // adjust if needed: 220 / 240 / 260
       }}
     >
       {message}
