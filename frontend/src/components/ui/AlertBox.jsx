@@ -4,6 +4,7 @@ export default function AlertBox({
   kind = "info",
   message,
   autoScroll,
+  triggerKey,
 }) {
   const ref = useRef(null);
 
@@ -52,7 +53,7 @@ export default function AlertBox({
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [message, shouldAutoScroll]);
+  }, [message, shouldAutoScroll, triggerKey]);
 
   if (!message) return null;
 
@@ -68,7 +69,7 @@ export default function AlertBox({
         borderRadius: 14,
         fontWeight: 700,
         marginBottom: 12,
-        scrollMarginTop: 240, // adjust if needed: 220 / 240 / 260
+        scrollMarginTop: 260,
       }}
     >
       {message}
