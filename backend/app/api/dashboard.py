@@ -1,13 +1,17 @@
 from datetime import date
 from collections import defaultdict
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_viewer_or_above
 from app.core.database import get_db
+from app.models.journal_voucher import JournalVoucherHdr
 from app.models.purchase_invoice import PurchaseInvoiceHdr
 from app.models.sales_invoice import SalesInvoiceHdr, SalesReceipt
+from app.models.user import User
 from app.models.vendor_payment import VendorPayment
 from app.utils.status import (
     STATUS_CANCELLED,
@@ -31,8 +35,22 @@ def scalar_count(value):
     return int(value or 0)
 
 
+def to_decimal(value) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0")
+
+
 @router.get("/summary")
-def dashboard_summary(db: Session = Depends(get_db)):
+def dashboard_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_viewer_or_above),
+):
     today = date.today()
 
     # ============================
@@ -56,6 +74,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
         SalesInvoiceHdr.grand_total,
         SalesInvoiceHdr.balance,
         SalesInvoiceHdr.due_date,
+        SalesInvoiceHdr.status,
     ).all()
 
     sales_rows = [
@@ -64,9 +83,9 @@ def dashboard_summary(db: Session = Depends(get_db)):
             "grand_total": grand_total,
             "balance": balance,
             "due_date": due_date,
-            "cancelled": False,
+            "cancelled": str(status or "").upper() == STATUS_CANCELLED,
         }
-        for invoice_no, grand_total, balance, due_date in sales_rows_raw
+        for invoice_no, grand_total, balance, due_date, status in sales_rows_raw
     ]
 
     sales_counts = status_counts_from_rows(sales_rows, today=today)
@@ -78,7 +97,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
     sales_overdue_count = overdue_count_from_rows(sales_rows, today=today)
     sales_cancelled_count = sales_counts[STATUS_CANCELLED]
 
-    overdue_receivables_total = 0
+    overdue_receivables_total = Decimal("0")
     for row in sales_rows:
         overdue_receivables_total += amount_if_overdue(
             grand_total=row["grand_total"],
@@ -97,6 +116,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
         PurchaseInvoiceHdr.grand_total,
         PurchaseInvoiceHdr.balance,
         PurchaseInvoiceHdr.due_date,
+        PurchaseInvoiceHdr.status,
     ).all()
 
     purchase_rows = [
@@ -105,9 +125,9 @@ def dashboard_summary(db: Session = Depends(get_db)):
             "grand_total": grand_total,
             "balance": balance,
             "due_date": due_date,
-            "cancelled": False,
+            "cancelled": str(status or "").upper() == STATUS_CANCELLED,
         }
-        for bill_no, grand_total, balance, due_date in purchase_rows_raw
+        for bill_no, grand_total, balance, due_date, status in purchase_rows_raw
     ]
 
     purchase_counts = status_counts_from_rows(purchase_rows, today=today)
@@ -119,7 +139,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
     purchase_overdue_count = overdue_count_from_rows(purchase_rows, today=today)
     purchase_cancelled_count = purchase_counts[STATUS_CANCELLED]
 
-    overdue_payables_total = 0
+    overdue_payables_total = Decimal("0")
     for row in purchase_rows:
         overdue_payables_total += amount_if_overdue(
             grand_total=row["grand_total"],
@@ -142,6 +162,54 @@ def dashboard_summary(db: Session = Depends(get_db)):
     ).filter(VendorPayment.payment_date == today).scalar()
 
     # ============================
+    # JOURNAL VOUCHERS
+    # ============================
+
+    jv_total_amount = db.query(
+        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
+    ).filter(
+        JournalVoucherHdr.status == "POSTED"
+    ).scalar()
+
+    jv_today_amount = db.query(
+        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
+    ).filter(
+        JournalVoucherHdr.status == "POSTED",
+        JournalVoucherHdr.voucher_date == today,
+    ).scalar()
+
+    jv_count = db.query(
+        func.count(JournalVoucherHdr.voucher_no)
+    ).scalar()
+
+    jv_posted_count = db.query(
+        func.count(JournalVoucherHdr.voucher_no)
+    ).filter(
+        JournalVoucherHdr.status == "POSTED"
+    ).scalar()
+
+    jv_today_count = db.query(
+        func.count(JournalVoucherHdr.voucher_no)
+    ).filter(
+        JournalVoucherHdr.status == "POSTED",
+        JournalVoucherHdr.voucher_date == today,
+    ).scalar()
+
+    jv_sales_amount = db.query(
+        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
+    ).filter(
+        JournalVoucherHdr.status == "POSTED",
+        JournalVoucherHdr.reference_type == "SALES_INVOICE",
+    ).scalar()
+
+    jv_purchase_amount = db.query(
+        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
+    ).filter(
+        JournalVoucherHdr.status == "POSTED",
+        JournalVoucherHdr.reference_type == "PURCHASE_BILL",
+    ).scalar()
+
+    # ============================
     # MONTHLY TREND
     # ============================
 
@@ -154,6 +222,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
             "payables": 0,
             "receipts": 0,
             "payments": 0,
+            "jv_amount": 0,
         }
     )
 
@@ -209,6 +278,21 @@ def dashboard_summary(db: Session = Depends(get_db)):
         key = month_key(int(y), int(m))
         trend[key]["payments"] = float(total or 0)
 
+    jv_trend_rows = db.query(
+        extract("year", JournalVoucherHdr.voucher_date),
+        extract("month", JournalVoucherHdr.voucher_date),
+        func.sum(JournalVoucherHdr.amount),
+    ).filter(
+        JournalVoucherHdr.status == "POSTED"
+    ).group_by(
+        extract("year", JournalVoucherHdr.voucher_date),
+        extract("month", JournalVoucherHdr.voucher_date),
+    ).all()
+
+    for y, m, total in jv_trend_rows:
+        key = month_key(int(y), int(m))
+        trend[key]["jv_amount"] = float(total or 0)
+
     monthly_trend = [{"month": k, **v} for k, v in sorted(trend.items())]
 
     # ============================
@@ -219,6 +303,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
         SalesInvoiceHdr.grand_total,
         SalesInvoiceHdr.balance,
         SalesInvoiceHdr.due_date,
+        SalesInvoiceHdr.status,
     ).filter(
         SalesInvoiceHdr.balance > 0
     ).all()
@@ -231,12 +316,12 @@ def dashboard_summary(db: Session = Depends(get_db)):
         "b90_plus": 0,
     }
 
-    for grand_total, balance, due_date in invoice_aging_rows:
+    for grand_total, balance, due_date, row_status in invoice_aging_rows:
         status = compute_status(
             grand_total=grand_total,
             balance=balance,
             due_date=due_date,
-            cancelled=False,
+            cancelled=str(row_status or "").upper() == STATUS_CANCELLED,
             today=today,
         )
 
@@ -310,6 +395,14 @@ def dashboard_summary(db: Session = Depends(get_db)):
         "purchase_paid_count": scalar_count(purchase_paid_count),
         "purchase_overdue_count": scalar_count(purchase_overdue_count),
         "purchase_cancelled_count": scalar_count(purchase_cancelled_count),
+
+        "journal_voucher_count": scalar_count(jv_count),
+        "journal_voucher_posted_count": scalar_count(jv_posted_count),
+        "journal_voucher_total_amount": scalar_number(jv_total_amount),
+        "journal_voucher_today_amount": scalar_number(jv_today_amount),
+        "journal_voucher_today_count": scalar_count(jv_today_count),
+        "journal_voucher_sales_amount": scalar_number(jv_sales_amount),
+        "journal_voucher_purchase_amount": scalar_number(jv_purchase_amount),
 
         "monthly_trend": monthly_trend,
         "aging_buckets": aging,
