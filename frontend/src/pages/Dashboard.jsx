@@ -43,8 +43,6 @@ const STATUS_COLORS = {
   Partial: "#facc15",
   Overdue: "#ef4444",
   Cancelled: "#94a3b8",
-  SalesJV: "#2563eb",
-  PurchaseJV: "#7c3aed",
 };
 
 export default function Dashboard() {
@@ -82,10 +80,7 @@ export default function Dashboard() {
     return {
       netPosition: num(data.receivables) - num(data.payables),
       overdueExposure: num(data.overdue_receivables) + num(data.overdue_payables),
-      totalTodayMovement:
-        num(data.today_receipts) +
-        num(data.today_vendor_payments) +
-        num(data.journal_voucher_today_amount),
+      totalTodayMovement: num(data.today_receipts) + num(data.today_vendor_payments),
     };
   }, [data]);
 
@@ -96,7 +91,6 @@ export default function Dashboard() {
       { name: "Payables", value: num(data.payables) },
       { name: "Overdue AR", value: num(data.overdue_receivables) },
       { name: "Overdue AP", value: num(data.overdue_payables) },
-      { name: "JV Total", value: num(data.journal_voucher_total_amount) },
     ];
   }, [data]);
 
@@ -121,14 +115,6 @@ export default function Dashboard() {
       { label: "Overdue", value: num(data.purchase_overdue_count) },
       { label: "Cancelled", value: num(data.purchase_cancelled_count) },
     ];
-  }, [data]);
-
-  const jvSplitChart = useMemo(() => {
-    if (!data) return [];
-    return [
-      { name: "Sales JV", value: num(data.journal_voucher_sales_amount) },
-      { name: "Purchase JV", value: num(data.journal_voucher_purchase_amount) },
-    ].filter((x) => x.value > 0);
   }, [data]);
 
   const agingChart = useMemo(() => {
@@ -162,7 +148,6 @@ export default function Dashboard() {
         payables: num(m.payables),
         receipts: num(m.receipts),
         payments: num(m.payments),
-        jv_amount: num(m.jv_amount),
       }));
     }
 
@@ -173,7 +158,6 @@ export default function Dashboard() {
         payables: num(data?.payables),
         receipts: num(data?.today_receipts),
         payments: num(data?.today_vendor_payments),
-        jv_amount: num(data?.journal_voucher_today_amount),
       },
     ];
   }, [data]);
@@ -198,7 +182,7 @@ export default function Dashboard() {
                 <h2 style={{ margin: 0, color: "#fff" }}>Dashboard</h2>
                 <p style={{ marginTop: 6, color: "#b8b8b8" }}>
                   Real-time summary of receivables, payables, collections,
-                  payments, journal adjustments and risk exposure.
+                  payments and risk exposure.
                 </p>
               </div>
 
@@ -229,12 +213,6 @@ export default function Dashboard() {
                     title="Total Payables (AP)"
                     value={`₹ ${moneyINR(data.payables)}`}
                     hint="Total purchase bill value"
-                  />
-                  <Card
-                    title="Total Journal Adjustments"
-                    value={`₹ ${moneyINR(data.journal_voucher_total_amount)}`}
-                    hint="All posted JV amount"
-                    accent="blue"
                   />
                   <Card
                     title="Overdue Receivables"
@@ -274,20 +252,15 @@ export default function Dashboard() {
                     hint="Supplier payments posted today"
                   />
                   <MiniCard
-                    title="Today's JV Posted"
-                    value={`₹ ${moneyINR(data.journal_voucher_today_amount)}`}
-                    hint={`${num(data.journal_voucher_today_count)} JV posted today`}
-                  />
-                  <MiniCard
                     title="Total Today Movement"
                     value={`₹ ${moneyINR(computed.totalTodayMovement)}`}
-                    hint="Receipts + payments + JV today"
+                    hint="Receipts plus vendor payments"
                   />
                 </div>
 
                 <div style={{ height: 20 }} />
 
-                <div style={tripleGrid}>
+                <div style={dualGrid}>
                   <div style={panel}>
                     <div style={panelTitle}>Sales / AR Status</div>
                     <div style={statGrid}>
@@ -319,36 +292,6 @@ export default function Dashboard() {
                       />
                     </div>
                   </div>
-
-                  <div style={panel}>
-                    <div style={panelTitle}>Journal Voucher Summary</div>
-                    <div style={statGrid}>
-                      <StatTile
-                        label="JV Count"
-                        value={data.journal_voucher_count}
-                      />
-                      <StatTile
-                        label="Posted"
-                        value={data.journal_voucher_posted_count}
-                        ok
-                      />
-                      <StatTile
-                        label="Sales JV"
-                        value={`₹ ${moneyINR(data.journal_voucher_sales_amount)}`}
-                        info
-                      />
-                      <StatTile
-                        label="Purchase JV"
-                        value={`₹ ${moneyINR(data.journal_voucher_purchase_amount)}`}
-                        purple
-                      />
-                      <StatTile
-                        label="Today JV"
-                        value={`₹ ${moneyINR(data.journal_voucher_today_amount)}`}
-                        warn
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 <div style={{ height: 24 }} />
@@ -358,7 +301,7 @@ export default function Dashboard() {
                 <div style={chartGrid}>
                   <ChartCard
                     title="Monthly Financial Trend"
-                    subtitle="Receivables, payables, collections, supplier payments and JV movement"
+                    subtitle="Receivables, payables, collections and supplier payments"
                   >
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart
@@ -412,15 +355,6 @@ export default function Dashboard() {
                           dataKey="payments"
                           name="Payments"
                           stroke="#f59e0b"
-                          strokeWidth={3}
-                          dot={{ r: 4 }}
-                          activeDot={{ r: 6 }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="jv_amount"
-                          name="JV"
-                          stroke="#7c3aed"
                           strokeWidth={3}
                           dot={{ r: 4 }}
                           activeDot={{ r: 6 }}
@@ -559,40 +493,30 @@ export default function Dashboard() {
                   </ChartCard>
 
                   <ChartCard
-                    title="Journal Voucher Split"
-                    subtitle="JV adjustment amount split by AR vs AP"
+                    title="Purchase Status Snapshot"
+                    subtitle="Quick AP operational count summary"
                   >
-                    {jvSplitChart.length === 0 ? (
-                      <EmptyChartState text="No journal voucher data available." />
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={jvSplitChart}
-                            dataKey="value"
-                            nameKey="name"
-                            innerRadius={62}
-                            outerRadius={102}
-                            paddingAngle={3}
-                            stroke="#ffffff"
-                            strokeWidth={2}
-                          >
-                            {jvSplitChart.map((entry) => (
-                              <Cell
-                                key={entry.name}
-                                fill={STATUS_COLORS[entry.name] || "#94a3b8"}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip content={<CustomMoneyTooltip />} />
-                          <Legend
-                            verticalAlign="bottom"
-                            iconType="circle"
-                            wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={purchaseStatusSummary}
+                        margin={{ top: 10, right: 15, left: 0, bottom: 8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <YAxis
+                          tick={{ fill: "#475569", fontSize: 12 }}
+                          axisLine={{ stroke: "#cbd5e1" }}
+                          tickLine={{ stroke: "#cbd5e1" }}
+                        />
+                        <Tooltip content={<CustomCountTooltipLabel />} />
+                        <Bar dataKey="value" fill="#0f766e" radius={[10, 10, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </ChartCard>
                 </div>
               </>
@@ -606,27 +530,13 @@ export default function Dashboard() {
   );
 }
 
-function Card({ title, value, hint, danger, accent }) {
-  let borderColor = "#e5e7eb";
-  let background = "#fff";
-  let valueColor = "#111827";
-
-  if (danger) {
-    borderColor = "#fecaca";
-    background = "#fff7f7";
-    valueColor = "#b91c1c";
-  } else if (accent === "blue") {
-    borderColor = "#bfdbfe";
-    background = "#f8fbff";
-    valueColor = "#1d4ed8";
-  }
-
+function Card({ title, value, hint, danger }) {
   return (
     <div
       style={{
         ...card,
-        borderColor,
-        background,
+        borderColor: danger ? "#fecaca" : "#e5e7eb",
+        background: danger ? "#fff7f7" : "#fff",
       }}
     >
       <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>{title}</div>
@@ -634,7 +544,7 @@ function Card({ title, value, hint, danger, accent }) {
         style={{
           fontSize: 26,
           fontWeight: 900,
-          color: valueColor,
+          color: danger ? "#b91c1c" : "#111827",
           marginTop: 6,
           lineHeight: 1.2,
         }}
@@ -658,7 +568,7 @@ function MiniCard({ title, value, hint }) {
   );
 }
 
-function StatTile({ label, value, ok, warn, danger, muted, info, purple }) {
+function StatTile({ label, value, ok, warn, danger, muted }) {
   let bg = "#fff";
   let border = "#e5e7eb";
   let color = "#111827";
@@ -679,14 +589,6 @@ function StatTile({ label, value, ok, warn, danger, muted, info, purple }) {
     bg = "#f1f5f9";
     border = "#cbd5e1";
     color = "#475569";
-  } else if (info) {
-    bg = "#eff6ff";
-    border = "#93c5fd";
-    color = "#1d4ed8";
-  } else if (purple) {
-    bg = "#f5f3ff";
-    border = "#c4b5fd";
-    color = "#6d28d9";
   }
 
   return (
@@ -699,16 +601,7 @@ function StatTile({ label, value, ok, warn, danger, muted, info, purple }) {
       }}
     >
       <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>{label}</div>
-      <div
-        style={{
-          marginTop: 6,
-          fontSize: typeof value === "string" && value.startsWith("₹") ? 18 : 22,
-          fontWeight: 900,
-          color,
-          lineHeight: 1.2,
-          wordBreak: "break-word",
-        }}
-      >
+      <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color }}>
         {value ?? 0}
       </div>
     </div>
@@ -750,13 +643,11 @@ function EmptyChartState({ text }) {
 function CustomMoneyTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null;
 
-  const item = payload[0];
-  const value = item?.value;
-  const title = label || item?.name || item?.payload?.name || "-";
+  const value = payload[0]?.value;
 
   return (
     <div style={tooltipBox}>
-      <div style={tooltipTitle}>{title}</div>
+      <div style={tooltipTitle}>{label}</div>
       <div style={tooltipValue}>₹ {moneyINR(value)}</div>
     </div>
   );
@@ -797,6 +688,19 @@ function CustomCountTooltip({ active, payload }) {
   return (
     <div style={tooltipBox}>
       <div style={tooltipTitle}>{item.name}</div>
+      <div style={tooltipValue}>{item.value}</div>
+    </div>
+  );
+}
+
+function CustomCountTooltipLabel({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+
+  const item = payload[0];
+
+  return (
+    <div style={tooltipBox}>
+      <div style={tooltipTitle}>{label}</div>
       <div style={tooltipValue}>{item.value}</div>
     </div>
   );
@@ -857,9 +761,9 @@ const summaryGrid = {
   gap: 12,
 };
 
-const tripleGrid = {
+const dualGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
   gap: 14,
 };
 
