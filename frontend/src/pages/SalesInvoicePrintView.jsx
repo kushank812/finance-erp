@@ -17,6 +17,10 @@ function getTemplateValue(value) {
   return "STANDARD";
 }
 
+function lineBase(ln) {
+  return Number(ln.qty || 0) * Number(ln.rate || 0);
+}
+
 export default function SalesInvoicePrintView() {
   const params = useParams();
   const [searchParams] = useSearchParams();
@@ -24,13 +28,12 @@ export default function SalesInvoicePrintView() {
   const [list, setList] = useState([]);
   const [invoiceNo, setInvoiceNo] = useState("");
   const [doc, setDoc] = useState(null);
-
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const qInv = searchParams.get("invoice");
     const routeInv = params.invoiceNo;
+    const qInv = searchParams.get("invoice");
 
     if (routeInv) setInvoiceNo(routeInv);
     else if (qInv) setInvoiceNo(qInv);
@@ -77,6 +80,7 @@ export default function SalesInvoicePrintView() {
 
   const totals = useMemo(() => {
     if (!doc) return null;
+
     return {
       subtotal: money(doc.subtotal),
       taxPercent: money(doc.tax_percent),
@@ -96,7 +100,7 @@ export default function SalesInvoicePrintView() {
         View invoice templates in document format and print / save as PDF.
       </p>
 
-      {err && <div style={msgErr}>{err}</div>}
+      {err ? <div style={msgErr}>{err}</div> : null}
 
       <div style={topBar} className="screen-only">
         <div style={{ flex: 1, minWidth: 260 }}>
@@ -116,14 +120,7 @@ export default function SalesInvoicePrintView() {
           </select>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "end",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
           <button onClick={loadList} style={btnGhost} type="button">
             Refresh
           </button>
@@ -131,7 +128,6 @@ export default function SalesInvoicePrintView() {
             onClick={() => window.print()}
             style={btnPrimary}
             disabled={!doc || loading}
-            title={!doc ? "Select an invoice first" : ""}
             type="button"
           >
             Print / Save PDF
@@ -163,19 +159,12 @@ export default function SalesInvoicePrintView() {
 function StandardInvoice({ doc, totals }) {
   return (
     <>
-      <div style={docHeader}>
-        <div>
-          <div style={companyName}>Finance AP/AR System</div>
-          <div style={muted}>Standard Sales Invoice</div>
-        </div>
-
-        <div style={{ textAlign: "right" }}>
-          <div style={bigId}>{doc.invoice_no}</div>
-          <div style={muted}>Status: {doc.status}</div>
-        </div>
-      </div>
-
-      <div style={hr} />
+      <HeaderBlock
+        title="Finance AP/AR System"
+        subtitle="Standard Sales Invoice"
+        invoiceNo={doc.invoice_no}
+        status={doc.status}
+      />
 
       <div style={metaGrid}>
         <Info label="Customer Code" value={doc.customer_code || "-"} />
@@ -186,40 +175,30 @@ function StandardInvoice({ doc, totals }) {
 
       <div style={{ height: 12 }} />
 
-      <div style={{ overflowX: "auto" }}>
-        <table width="100%" cellPadding="10" style={printTable}>
-          <thead>
-            <tr style={tableHeadRow}>
-              <th style={thPrint}>#</th>
-              <th style={thPrint}>Item Code</th>
-              <th style={thRightPrint}>Qty</th>
-              <th style={thRightPrint}>Rate</th>
-              <th style={thRightPrint}>Line Total</th>
+      <table width="100%" cellPadding="10" style={printTable}>
+        <thead>
+          <tr style={tableHeadRow}>
+            <th style={thPrint}>#</th>
+            <th style={thPrint}>Item Code</th>
+            <th style={thRightPrint}>Qty</th>
+            <th style={thRightPrint}>Rate</th>
+            <th style={thRightPrint}>Line Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(doc.lines || []).map((ln, idx) => (
+            <tr key={ln.id ?? idx} style={tableBodyRow}>
+              <td style={tdPrint}>{idx + 1}</td>
+              <td style={tdPrint}>{ln.item_code}</td>
+              <td style={tdRightPrint}>{money(ln.qty)}</td>
+              <td style={tdRightPrint}>{money(ln.rate)}</td>
+              <td style={tdRightStrong}>{money(ln.line_total)}</td>
             </tr>
-          </thead>
-          <tbody>
-            {(doc.lines || []).map((ln, idx) => (
-              <tr key={ln.id ?? idx} style={tableBodyRow}>
-                <td style={tdPrint}>{idx + 1}</td>
-                <td style={tdPrint}>{ln.item_code}</td>
-                <td style={tdRightPrint}>{money(ln.qty)}</td>
-                <td style={tdRightPrint}>{money(ln.rate)}</td>
-                <td style={tdRightStrong}>{money(ln.line_total)}</td>
-              </tr>
-            ))}
+          ))}
+        </tbody>
+      </table>
 
-            {(doc.lines || []).length === 0 && (
-              <tr>
-                <td colSpan="5" style={{ padding: 12, color: "#666" }}>
-                  No line items.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <TotalsBox totals={totals} />
+      <TotalsBox totals={totals} taxLabel={`Tax (${totals.taxPercent}%)`} />
       <PrintNote />
     </>
   );
@@ -230,77 +209,63 @@ function TaxInvoice({ doc, totals }) {
     <>
       <div style={taxTopStrip}>TAX INVOICE</div>
 
-      <div style={docHeader}>
-        <div>
-          <div style={companyName}>Finance AP/AR System</div>
-          <div style={muted}>Accounts Receivable / Tax Invoice</div>
-        </div>
-
-        <div style={{ textAlign: "right" }}>
-          <div style={bigId}>{doc.invoice_no}</div>
-          <div style={muted}>Status: {doc.status}</div>
-        </div>
-      </div>
-
-      <div style={hr} />
+      <HeaderBlock
+        title="Finance AP/AR System"
+        subtitle="Line-wise Tax Invoice"
+        invoiceNo={doc.invoice_no}
+        status={doc.status}
+      />
 
       <div style={twoColBlock}>
         <div style={partyBox}>
-          <div style={partyTitle}>Recipient</div>
+          <div style={partyTitle}>Bill To</div>
           <div style={partyName}>{doc.customer_code || "-"}</div>
-          <div style={muted}>Customer billing details from customer master</div>
+          <div style={muted}>Tax invoice with HSN/SAC and line-wise tax.</div>
         </div>
 
         <div style={partyBox}>
           <div style={partyTitle}>Invoice Details</div>
           <div style={invoiceMetaLine}>Invoice Date: {formatDate(doc.invoice_date)}</div>
           <div style={invoiceMetaLine}>Due Date: {formatDate(doc.due_date)}</div>
-          <div style={invoiceMetaLine}>Tax Rate: {money(doc.tax_percent)}%</div>
+          <div style={invoiceMetaLine}>Template: TAX INVOICE</div>
         </div>
       </div>
 
       <div style={{ height: 14 }} />
 
-      <table width="100%" cellPadding="10" style={printTable}>
+      <table width="100%" cellPadding="9" style={printTable}>
         <thead>
           <tr style={taxTableHeadRow}>
+            <th style={thTax}>#</th>
             <th style={thTax}>Description</th>
+            <th style={thTax}>HSN/SAC</th>
+            <th style={thTax}>Unit</th>
             <th style={thTaxRight}>Qty</th>
             <th style={thTaxRight}>Rate</th>
             <th style={thTaxRight}>Tax %</th>
-            <th style={thTaxRight}>Tax</th>
-            <th style={thTaxRight}>Total</th>
+            <th style={thTaxRight}>Tax Amt</th>
+            <th style={thTaxRight}>Base</th>
           </tr>
         </thead>
+
         <tbody>
-          {(doc.lines || []).map((ln, idx) => {
-            const base = Number(ln.line_total || 0);
-            const tax = (base * Number(doc.tax_percent || 0)) / 100;
-            const total = base + tax;
-
-            return (
-              <tr key={ln.id ?? idx} style={tableBodyRow}>
-                <td style={tdPrint}>{ln.item_code}</td>
-                <td style={tdRightPrint}>{money(ln.qty)}</td>
-                <td style={tdRightPrint}>{money(ln.rate)}</td>
-                <td style={tdRightPrint}>{money(doc.tax_percent)}%</td>
-                <td style={tdRightPrint}>{money(tax)}</td>
-                <td style={tdRightStrong}>{money(total)}</td>
-              </tr>
-            );
-          })}
-
-          {(doc.lines || []).length === 0 && (
-            <tr>
-              <td colSpan="6" style={{ padding: 12, color: "#666" }}>
-                No line items.
-              </td>
+          {(doc.lines || []).map((ln, idx) => (
+            <tr key={ln.id ?? idx} style={tableBodyRow}>
+              <td style={tdPrint}>{idx + 1}</td>
+              <td style={tdPrint}>{ln.description || ln.item_code}</td>
+              <td style={tdPrint}>{ln.hsn_sac || "-"}</td>
+              <td style={tdPrint}>{ln.unit || "-"}</td>
+              <td style={tdRightPrint}>{money(ln.qty)}</td>
+              <td style={tdRightPrint}>{money(ln.rate)}</td>
+              <td style={tdRightPrint}>{money(ln.line_tax_percent)}%</td>
+              <td style={tdRightPrint}>{money(ln.line_tax_amount)}</td>
+              <td style={tdRightStrong}>{money(lineBase(ln))}</td>
             </tr>
-          )}
+          ))}
         </tbody>
       </table>
 
-      <TotalsBox totals={totals} />
+      <TotalsBox totals={totals} taxLabel="Total Line Tax" />
       <PrintNote />
     </>
   );
@@ -318,6 +283,7 @@ function ServiceInvoice({ doc, totals }) {
         <div style={serviceInvoiceNo}>
           <div style={muted}>Invoice No</div>
           <div style={bigId}>{doc.invoice_no}</div>
+          <div style={muted}>Status: {doc.status}</div>
         </div>
       </div>
 
@@ -327,21 +293,23 @@ function ServiceInvoice({ doc, totals }) {
         <Info label="Client / Customer" value={doc.customer_code || "-"} />
         <Info label="Invoice Date" value={formatDate(doc.invoice_date)} />
         <Info label="Due Date" value={formatDate(doc.due_date)} />
-        <Info label="Status" value={doc.status || "-"} />
+        <Info label="Remark" value={doc.remark || "-"} />
       </div>
 
       <div style={serviceInfoBox}>
         <div style={partyTitle}>Service / Work Reference</div>
         <div style={serviceInfoText}>
           {doc.remark ||
-            "Service work billed as per the selected service items, hours/days, and agreed rate."}
+            "Service work billed as per selected service items, work period, hours/days, and agreed rate."}
         </div>
       </div>
 
       <table width="100%" cellPadding="10" style={printTable}>
         <thead>
           <tr style={serviceTableHeadRow}>
-            <th style={thPrint}>Service / Work Description</th>
+            <th style={thPrint}>#</th>
+            <th style={thPrint}>Service Description</th>
+            <th style={thPrint}>Work Period</th>
             <th style={thRightPrint}>Hours / Days</th>
             <th style={thRightPrint}>Rate</th>
             <th style={thRightPrint}>Amount</th>
@@ -350,40 +318,50 @@ function ServiceInvoice({ doc, totals }) {
         <tbody>
           {(doc.lines || []).map((ln, idx) => (
             <tr key={ln.id ?? idx} style={tableBodyRow}>
-              <td style={tdPrint}>{ln.item_code}</td>
+              <td style={tdPrint}>{idx + 1}</td>
+              <td style={tdPrint}>{ln.description || ln.item_code}</td>
+              <td style={tdPrint}>{ln.work_period || "-"}</td>
               <td style={tdRightPrint}>{money(ln.qty)}</td>
               <td style={tdRightPrint}>{money(ln.rate)}</td>
               <td style={tdRightStrong}>{money(ln.line_total)}</td>
             </tr>
           ))}
-
-          {(doc.lines || []).length === 0 && (
-            <tr>
-              <td colSpan="4" style={{ padding: 12, color: "#666" }}>
-                No service items.
-              </td>
-            </tr>
-          )}
         </tbody>
       </table>
 
-      <TotalsBox totals={totals} />
+      <TotalsBox totals={totals} taxLabel={`Tax (${totals.taxPercent}%)`} />
       <PrintNote />
     </>
   );
 }
 
-function TotalsBox({ totals }) {
+function HeaderBlock({ title, subtitle, invoiceNo, status }) {
+  return (
+    <>
+      <div style={docHeader}>
+        <div>
+          <div style={companyName}>{title}</div>
+          <div style={muted}>{subtitle}</div>
+        </div>
+
+        <div style={{ textAlign: "right" }}>
+          <div style={bigId}>{invoiceNo}</div>
+          <div style={muted}>Status: {status}</div>
+        </div>
+      </div>
+
+      <div style={hr} />
+    </>
+  );
+}
+
+function TotalsBox({ totals, taxLabel }) {
   return (
     <>
       <div style={{ height: 14 }} />
-
       <div style={totalsWrap}>
         <TotalRow label="Subtotal" value={totals.subtotal} />
-        <TotalRow
-          label={`Tax (${totals.taxPercent}%)`}
-          value={totals.taxAmount}
-        />
+        <TotalRow label={taxLabel} value={totals.taxAmount} />
         <TotalRow label="Grand Total" value={totals.grandTotal} strong />
         <div style={hr} />
         <TotalRow label="Amount Received" value={totals.received} />
@@ -416,12 +394,8 @@ function Info({ label, value }) {
 function TotalRow({ label, value, strong }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <div style={{ color: "#111", fontWeight: strong ? 900 : 700 }}>
-        {label}
-      </div>
-      <div style={{ color: "#111", fontWeight: strong ? 900 : 800 }}>
-        {value}
-      </div>
+      <div style={{ color: "#111", fontWeight: strong ? 900 : 700 }}>{label}</div>
+      <div style={{ color: "#111", fontWeight: strong ? 900 : 800 }}>{value}</div>
     </div>
   );
 }
@@ -543,41 +517,17 @@ const taxTableHeadRow = { background: "#1d4ed8", color: "#ffffff" };
 const serviceTableHeadRow = { background: "#0f172a", color: "#ffffff" };
 const tableBodyRow = { borderTop: "1px solid #eee" };
 
-const thPrint = {
-  color: "inherit",
-  textAlign: "left",
-  fontSize: 13,
-};
+const thPrint = { color: "inherit", textAlign: "left", fontSize: 13 };
+const thRightPrint = { color: "inherit", textAlign: "right", fontSize: 13 };
+const thTax = { color: "#ffffff", textAlign: "left", fontSize: 13 };
+const thTaxRight = { color: "#ffffff", textAlign: "right", fontSize: 13 };
 
-const thRightPrint = {
-  color: "inherit",
-  textAlign: "right",
-  fontSize: 13,
-};
-
-const thTax = {
-  color: "#ffffff",
-  textAlign: "left",
-  fontSize: 13,
-};
-
-const thTaxRight = {
-  color: "#ffffff",
-  textAlign: "right",
-  fontSize: 13,
-};
-
-const tdPrint = {
-  color: "#111",
-  fontSize: 13,
-};
-
+const tdPrint = { color: "#111", fontSize: 13 };
 const tdRightPrint = {
   color: "#111",
   fontSize: 13,
   textAlign: "right",
 };
-
 const tdRightStrong = {
   color: "#111",
   fontSize: 13,

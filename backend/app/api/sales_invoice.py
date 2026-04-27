@@ -29,11 +29,7 @@ from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/sales-invoices", tags=["Sales Invoices"])
 
-ALLOWED_INVOICE_TEMPLATES = {
-    "STANDARD",
-    "TAX_INVOICE",
-    "SERVICE_INVOICE",
-}
+ALLOWED_INVOICE_TEMPLATES = {"STANDARD", "TAX_INVOICE", "SERVICE_INVOICE"}
 
 
 class ReceivePaymentIn(BaseModel):
@@ -52,8 +48,13 @@ class ReceiptCreatedOut(BaseModel):
 
 class SalesInvoiceLineUpdateIn(BaseModel):
     item_code: str
+    description: str | None = None
+    hsn_sac: str | None = None
+    unit: str | None = None
+    work_period: str | None = None
     qty: float = Field(gt=0)
     rate: float = Field(ge=0)
+    line_tax_percent: float | None = 0
 
 
 class SalesInvoiceUpdateIn(BaseModel):
@@ -119,6 +120,17 @@ def normalize_template(value: str | None) -> str:
     return template
 
 
+def clean_text(value):
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    return normalize_upper(text)
+
+
 def normalize_invoice_status(obj: SalesInvoiceHdr) -> SalesInvoiceHdr:
     current_status = str(obj.status or "").upper()
 
@@ -144,6 +156,17 @@ def has_any_receipt(db: Session, invoice_no: str) -> bool:
         .first()
     )
     return receipt is not None
+
+
+def calculate_line_values(invoice_template: str, qty: Decimal, rate: Decimal, line_tax_percent: Decimal):
+    base_amount = qty * rate
+
+    if invoice_template == "TAX_INVOICE":
+        line_tax_amount = (base_amount * line_tax_percent) / Decimal("100")
+    else:
+        line_tax_amount = Decimal("0.00")
+
+    return base_amount, line_tax_amount
 
 
 @router.get("/", response_model=list[SalesInvoiceOut])
@@ -216,19 +239,19 @@ def create_sales_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
-    data = normalize_upper(payload.model_dump())
+    data = payload.model_dump()
 
     try:
         invoice_no = get_next_number(db, "SALES_INVOICE", "INV")
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    customer_code = data["customer_code"]
+    customer_code = normalize_upper(data["customer_code"])
     invoice_template = normalize_template(data.get("invoice_template"))
     invoice_date = data["invoice_date"]
     due_date = data.get("due_date")
     tax_percent = to_decimal(data.get("tax_percent"))
-    remark = data.get("remark")
+    remark = clean_text(data.get("remark"))
     lines = data.get("lines", [])
 
     if tax_percent < 0:
@@ -238,34 +261,71 @@ def create_sales_invoice(
         raise HTTPException(status_code=400, detail="At least one line is required")
 
     subtotal = Decimal("0.00")
+    tax_amount = Decimal("0.00")
     dtl_rows: list[SalesInvoiceDtl] = []
 
-    for ln in lines:
-        ln = normalize_upper(ln)
+    for index, ln in enumerate(lines, start=1):
+        item_code = normalize_upper(ln.get("item_code"))
+        description = clean_text(ln.get("description"))
+        hsn_sac = clean_text(ln.get("hsn_sac"))
+        unit = clean_text(ln.get("unit"))
+        work_period = clean_text(ln.get("work_period"))
 
-        qty = to_decimal(ln["qty"])
-        rate = to_decimal(ln["rate"])
+        qty = to_decimal(ln.get("qty"))
+        rate = to_decimal(ln.get("rate"))
+        line_tax_percent = to_decimal(ln.get("line_tax_percent"))
+
+        if not item_code:
+            raise HTTPException(status_code=400, detail=f"Line {index}: Item is required")
 
         if qty <= 0:
-            raise HTTPException(status_code=400, detail="Qty must be greater than 0")
+            raise HTTPException(status_code=400, detail=f"Line {index}: Qty must be greater than 0")
 
         if rate < 0:
-            raise HTTPException(status_code=400, detail="Rate cannot be negative")
+            raise HTTPException(status_code=400, detail=f"Line {index}: Rate cannot be negative")
 
-        line_total = qty * rate
+        if line_tax_percent < 0:
+            raise HTTPException(status_code=400, detail=f"Line {index}: Tax percent cannot be negative")
+
+        if invoice_template != "TAX_INVOICE":
+            line_tax_percent = Decimal("0.00")
+            hsn_sac = None
+            unit = None
+
+        if invoice_template != "SERVICE_INVOICE":
+            work_period = None
+
+        line_total, line_tax_amount = calculate_line_values(
+            invoice_template=invoice_template,
+            qty=qty,
+            rate=rate,
+            line_tax_percent=line_tax_percent,
+        )
+
         subtotal += line_total
+        tax_amount += line_tax_amount
 
         dtl_rows.append(
             SalesInvoiceDtl(
                 invoice_no=invoice_no,
-                item_code=ln["item_code"],
+                item_code=item_code,
+                description=description,
+                hsn_sac=hsn_sac,
+                unit=unit,
+                work_period=work_period,
                 qty=qty,
                 rate=rate,
+                line_tax_percent=line_tax_percent,
+                line_tax_amount=line_tax_amount,
                 line_total=line_total,
             )
         )
 
-    tax_amount = (subtotal * tax_percent) / Decimal("100")
+    if invoice_template != "TAX_INVOICE":
+        tax_amount = (subtotal * tax_percent) / Decimal("100")
+    else:
+        tax_percent = Decimal("0.00")
+
     grand_total = subtotal + tax_amount
     amount_received = Decimal("0.00")
     adjusted_amount = Decimal("0.00")
@@ -319,8 +379,6 @@ def create_sales_invoice(
             "tax_percent": float(hdr.tax_percent),
             "tax_amount": float(hdr.tax_amount),
             "grand_total": float(hdr.grand_total),
-            "amount_received": float(hdr.amount_received),
-            "adjusted_amount": float(hdr.adjusted_amount),
             "balance": float(hdr.balance),
             "status": hdr.status,
             "remark": hdr.remark,
@@ -402,7 +460,7 @@ def update_sales_invoice(
 
     if not full_update_requested:
         obj.due_date = payload.due_date
-        obj.remark = normalize_upper(payload.remark) if payload.remark else None
+        obj.remark = clean_text(payload.remark)
         obj.balance = compute_balance(
             obj.grand_total,
             obj.amount_received,
@@ -436,7 +494,7 @@ def update_sales_invoice(
     obj.customer_code = normalize_upper(payload.customer_code)
     obj.invoice_template = normalize_template(payload.invoice_template)
     obj.tax_percent = to_decimal(payload.tax_percent)
-    obj.remark = normalize_upper(payload.remark) if payload.remark else None
+    obj.remark = clean_text(payload.remark)
 
     if obj.tax_percent < 0:
         raise HTTPException(status_code=400, detail="Tax percent cannot be negative")
@@ -448,33 +506,72 @@ def update_sales_invoice(
     db.flush()
 
     subtotal = Decimal("0.00")
+    tax_amount = Decimal("0.00")
 
-    for ln in payload.lines:
+    for index, ln in enumerate(payload.lines, start=1):
         item_code = normalize_upper(ln.item_code)
+        description = clean_text(ln.description)
+        hsn_sac = clean_text(ln.hsn_sac)
+        unit = clean_text(ln.unit)
+        work_period = clean_text(ln.work_period)
+
         qty = to_decimal(ln.qty)
         rate = to_decimal(ln.rate)
+        line_tax_percent = to_decimal(ln.line_tax_percent)
+
+        if not item_code:
+            raise HTTPException(status_code=400, detail=f"Line {index}: Item is required")
 
         if qty <= 0:
-            raise HTTPException(status_code=400, detail="Qty must be greater than 0")
+            raise HTTPException(status_code=400, detail=f"Line {index}: Qty must be greater than 0")
 
         if rate < 0:
-            raise HTTPException(status_code=400, detail="Rate cannot be negative")
+            raise HTTPException(status_code=400, detail=f"Line {index}: Rate cannot be negative")
 
-        line_total = qty * rate
+        if line_tax_percent < 0:
+            raise HTTPException(status_code=400, detail=f"Line {index}: Tax percent cannot be negative")
+
+        if obj.invoice_template != "TAX_INVOICE":
+            line_tax_percent = Decimal("0.00")
+            hsn_sac = None
+            unit = None
+
+        if obj.invoice_template != "SERVICE_INVOICE":
+            work_period = None
+
+        line_total, line_tax_amount = calculate_line_values(
+            invoice_template=obj.invoice_template,
+            qty=qty,
+            rate=rate,
+            line_tax_percent=line_tax_percent,
+        )
+
         subtotal += line_total
+        tax_amount += line_tax_amount
 
         obj.lines.append(
             SalesInvoiceDtl(
                 invoice_no=obj.invoice_no,
                 item_code=item_code,
+                description=description,
+                hsn_sac=hsn_sac,
+                unit=unit,
+                work_period=work_period,
                 qty=qty,
                 rate=rate,
+                line_tax_percent=line_tax_percent,
+                line_tax_amount=line_tax_amount,
                 line_total=line_total,
             )
         )
 
+    if obj.invoice_template != "TAX_INVOICE":
+        tax_amount = (subtotal * obj.tax_percent) / Decimal("100")
+    else:
+        obj.tax_percent = Decimal("0.00")
+
     obj.subtotal = subtotal
-    obj.tax_amount = (subtotal * obj.tax_percent) / Decimal("100")
+    obj.tax_amount = tax_amount
     obj.grand_total = obj.subtotal + obj.tax_amount
     obj.balance = compute_balance(
         obj.grand_total,
@@ -528,11 +625,7 @@ def receive_payment(
 ):
     invoice_no = invoice_no.strip().upper()
 
-    obj = (
-        db.query(SalesInvoiceHdr)
-        .filter(SalesInvoiceHdr.invoice_no == invoice_no)
-        .first()
-    )
+    obj = db.query(SalesInvoiceHdr).filter(SalesInvoiceHdr.invoice_no == invoice_no).first()
 
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
@@ -569,7 +662,7 @@ def receive_payment(
         invoice_no=obj.invoice_no,
         receipt_date=date.today(),
         amount=amount,
-        remark=normalize_upper(payload.remark) if payload.remark else None,
+        remark=clean_text(payload.remark),
     )
 
     db.add(receipt)
@@ -662,7 +755,7 @@ def cancel_sales_invoice(
 
     obj.status = STATUS_CANCELLED
     obj.balance = Decimal("0.00")
-    obj.remark = normalize_upper(payload.remark) if payload.remark else obj.remark
+    obj.remark = clean_text(payload.remark) if payload.remark else obj.remark
 
     log_activity(
         db=db,
@@ -696,11 +789,7 @@ def delete_sales_invoice(
 ):
     invoice_no = invoice_no.strip().upper()
 
-    obj = (
-        db.query(SalesInvoiceHdr)
-        .filter(SalesInvoiceHdr.invoice_no == invoice_no)
-        .first()
-    )
+    obj = db.query(SalesInvoiceHdr).filter(SalesInvoiceHdr.invoice_no == invoice_no).first()
 
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
