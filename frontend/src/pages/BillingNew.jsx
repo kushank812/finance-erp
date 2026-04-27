@@ -35,6 +35,24 @@ import {
 
 const emptyLine = { item_code: "", qty: 1, rate: 0 };
 
+const TEMPLATE_OPTIONS = [
+  {
+    value: "STANDARD",
+    label: "Standard Sales Invoice",
+    hint: "Simple item-wise invoice for regular billing.",
+  },
+  {
+    value: "TAX_INVOICE",
+    label: "Tax Invoice",
+    hint: "Business-style tax invoice layout with tax emphasis.",
+  },
+  {
+    value: "SERVICE_INVOICE",
+    label: "Service / Work Invoice",
+    hint: "Best for service, labour, hours, project, or work billing.",
+  },
+];
+
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -62,8 +80,24 @@ function getStatusValue(inv) {
   return String(inv?.status || "").toUpperCase();
 }
 
+function getTemplateValue(value) {
+  const v = String(value || "STANDARD").toUpperCase();
+  return TEMPLATE_OPTIONS.some((x) => x.value === v) ? v : "STANDARD";
+}
+
+function getTemplateLabel(value) {
+  const t = TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value));
+  return t?.label || "Standard Sales Invoice";
+}
+
+function getTemplateHint(value) {
+  const t = TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value));
+  return t?.hint || "";
+}
+
 function normalizeInvoiceToForm(inv) {
   return {
+    invoiceTemplate: getTemplateValue(inv?.invoice_template),
     customerCode: inv?.customer_code || "",
     customerSearch: "",
     invoiceDate: inv?.invoice_date ? String(inv.invoice_date) : todayISO(),
@@ -191,6 +225,7 @@ export default function BillingNew() {
   const [customers, setCustomers] = useState([]);
   const [items, setItems] = useState([]);
 
+  const [invoiceTemplate, setInvoiceTemplate] = useState("STANDARD");
   const [customerCode, setCustomerCode] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(todayISO());
@@ -246,6 +281,7 @@ export default function BillingNew() {
         );
         const data = normalizeInvoiceToForm(inv);
 
+        setInvoiceTemplate(data.invoiceTemplate);
         setCustomerCode(data.customerCode);
         setCustomerSearch(data.customerSearch);
         setInvoiceDate(data.invoiceDate);
@@ -383,6 +419,7 @@ export default function BillingNew() {
   }, [lines, taxPercent]);
 
   function clearForm() {
+    setInvoiceTemplate("STANDARD");
     setCustomerCode("");
     setCustomerSearch("");
     setInvoiceDate(todayISO());
@@ -440,6 +477,7 @@ export default function BillingNew() {
 
     return {
       customer_code: customerCode,
+      invoice_template: invoiceTemplate,
       invoice_date: invoiceDate,
       due_date: dueDate || null,
       tax_percent: Number(taxPercent || 0),
@@ -491,6 +529,9 @@ export default function BillingNew() {
           `✅ Invoice "${updated?.invoice_no || invoiceNo}" updated successfully.`
         );
 
+        if (updated?.invoice_template) {
+          setInvoiceTemplate(getTemplateValue(updated.invoice_template));
+        }
         if (updated?.status) {
           setInvoiceStatus(String(updated.status).toUpperCase());
         }
@@ -539,6 +580,19 @@ export default function BillingNew() {
     if (access.restricted) return <span style={badgeAmber}>RESTRICTED</span>;
     return <span style={badgeGreen}>EDITABLE</span>;
   }
+
+  const qtyHeader =
+    invoiceTemplate === "SERVICE_INVOICE" ? "Hours / Days" : "Qty";
+  const itemHeader =
+    invoiceTemplate === "SERVICE_INVOICE"
+      ? "Service / Work"
+      : invoiceTemplate === "TAX_INVOICE"
+      ? "Product / Description"
+      : "Item";
+  const rateHeader =
+    invoiceTemplate === "SERVICE_INVOICE" ? "Rate" : "Rate";
+  const totalHeader =
+    invoiceTemplate === "SERVICE_INVOICE" ? "Service Amount" : "Line Total";
 
   return (
     <div style={page}>
@@ -596,7 +650,8 @@ export default function BillingNew() {
           <div>
             <h2 style={cardTitle}>Invoice Header</h2>
             <p style={cardSubtitle}>
-              Basic invoice information, customer selection, and billing dates.
+              Basic invoice information, template selection, customer selection,
+              and billing dates.
             </p>
           </div>
           <div>{getModeBadge()}</div>
@@ -612,6 +667,23 @@ export default function BillingNew() {
                 : "The next invoice number will be generated automatically."
             }
           />
+
+          <div style={field}>
+            <label style={labelStyle}>Invoice Template</label>
+            <select
+              value={invoiceTemplate}
+              onChange={(e) => setInvoiceTemplate(e.target.value)}
+              style={disableFullEditFields ? disabledInput : input}
+              disabled={disableFullEditFields}
+            >
+              {TEMPLATE_OPTIONS.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <div style={templateHint}>{getTemplateHint(invoiceTemplate)}</div>
+          </div>
 
           <CustomerSelect
             customerSearch={customerSearch}
@@ -658,6 +730,22 @@ export default function BillingNew() {
             placeholder="Optional note"
             disabled={!canChangeDueDateRemark}
           />
+        </div>
+
+        <div style={{ marginTop: 18 }}>
+          <div style={templateCard}>
+            <div>
+              <div style={templateTitle}>{getTemplateLabel(invoiceTemplate)}</div>
+              <div style={templateText}>
+                {invoiceTemplate === "STANDARD"
+                  ? "A simple invoice format for normal item sales."
+                  : invoiceTemplate === "TAX_INVOICE"
+                  ? "A tax-focused invoice print layout similar to professional tax invoice formats."
+                  : "A service/work format where quantity acts as hours, days, or work units."}
+              </div>
+            </div>
+            <span style={templatePill}>{invoiceTemplate}</span>
+          </div>
         </div>
 
         {selectedCustomer ? (
@@ -710,10 +798,10 @@ export default function BillingNew() {
           <table style={table}>
             <thead>
               <tr>
-                <th style={th}>Item</th>
-                <th style={th}>Qty</th>
-                <th style={th}>Rate</th>
-                <th style={th}>Line Total</th>
+                <th style={th}>{itemHeader}</th>
+                <th style={th}>{qtyHeader}</th>
+                <th style={th}>{rateHeader}</th>
+                <th style={th}>{totalHeader}</th>
                 <th style={th}>Action</th>
               </tr>
             </thead>
@@ -739,7 +827,11 @@ export default function BillingNew() {
                         style={canEditLines ? input : disabledInput}
                         disabled={!canEditLines}
                       >
-                        <option value="">-- Select Item --</option>
+                        <option value="">
+                          {invoiceTemplate === "SERVICE_INVOICE"
+                            ? "-- Select Service Item --"
+                            : "-- Select Item --"}
+                        </option>
                         {items.map((it) => (
                           <option key={it.item_code} value={it.item_code}>
                             {it.item_code} - {it.item_name}
@@ -798,12 +890,14 @@ export default function BillingNew() {
         <div style={footerGrid}>
           <div style={noteBox}>
             {!isEditMode
-              ? "Save to create the invoice and generate the invoice number automatically."
+              ? `Save to create the invoice using "${getTemplateLabel(
+                  invoiceTemplate
+                )}" and generate the invoice number automatically.`
               : access.readOnly
               ? "This invoice is locked. Editing is not allowed."
               : access.restricted
               ? "Restricted edit mode is active. Only due date and remark can be updated."
-              : "Full edit mode is active. Totals will be recalculated when you save."}
+              : "Full edit mode is active. Totals and selected template will be saved when you update."}
           </div>
 
           <div style={summaryCard}>
@@ -923,6 +1017,50 @@ const billingFormGrid = {
   gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
   gap: 14,
   alignItems: "end",
+};
+
+const templateHint = {
+  marginTop: 6,
+  color: "#64748b",
+  fontSize: 12,
+  fontWeight: 700,
+  lineHeight: 1.4,
+};
+
+const templateCard = {
+  background: "linear-gradient(135deg, #eff6ff, #f8fafc)",
+  border: "1px solid #bfdbfe",
+  borderRadius: 18,
+  padding: 14,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 14,
+};
+
+const templateTitle = {
+  color: "#0f172a",
+  fontWeight: 950,
+  fontSize: 14,
+};
+
+const templateText = {
+  color: "#475569",
+  fontWeight: 700,
+  fontSize: 12,
+  marginTop: 4,
+  lineHeight: 1.45,
+};
+
+const templatePill = {
+  border: "1px solid #93c5fd",
+  background: "#dbeafe",
+  color: "#1d4ed8",
+  borderRadius: 999,
+  padding: "7px 10px",
+  fontSize: 11,
+  fontWeight: 950,
+  whiteSpace: "nowrap",
 };
 
 const subSectionCard = {

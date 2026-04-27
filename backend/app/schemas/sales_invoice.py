@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import date
+from typing import List, Optional
+
+from pydantic import BaseModel
 
 
 class SalesInvoiceLineCreate(BaseModel):
@@ -11,6 +12,7 @@ class SalesInvoiceLineCreate(BaseModel):
 
 class SalesInvoiceCreate(BaseModel):
     customer_code: str
+    invoice_template: Optional[str] = "STANDARD"
     invoice_date: date
     due_date: Optional[date] = None
     tax_percent: Optional[float] = 0
@@ -31,6 +33,8 @@ class SalesInvoiceLineOut(BaseModel):
 
 class SalesInvoiceOut(BaseModel):
     invoice_no: str
+    invoice_template: str = "STANDARD"
+
     customer_code: str
     invoice_date: date
     due_date: Optional[date] = None

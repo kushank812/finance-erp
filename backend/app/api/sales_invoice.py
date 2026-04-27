@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import or_, select
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -28,6 +28,12 @@ from app.utils.status import (
 from app.utils.text import normalize_upper
 
 router = APIRouter(prefix="/sales-invoices", tags=["Sales Invoices"])
+
+ALLOWED_INVOICE_TEMPLATES = {
+    "STANDARD",
+    "TAX_INVOICE",
+    "SERVICE_INVOICE",
+}
 
 
 class ReceivePaymentIn(BaseModel):
@@ -54,6 +60,7 @@ class SalesInvoiceUpdateIn(BaseModel):
     invoice_date: date | None = None
     due_date: date | None = None
     customer_code: str | None = None
+    invoice_template: str | None = None
     tax_percent: float | None = None
     remark: str | None = None
     lines: list[SalesInvoiceLineUpdateIn] | None = None
@@ -63,19 +70,24 @@ class SalesInvoiceUpdateIn(BaseModel):
         restricted_only = (
             self.invoice_date is None
             and self.customer_code is None
+            and self.invoice_template is None
             and self.tax_percent is None
             and self.lines is None
         )
+
         if restricted_only:
             if self.due_date is None and self.remark is None:
-                raise ValueError("Provide at least one allowed field to update")
+                raise ValueError("Provide due_date or remark to update")
             return self
 
         missing = []
+
         if self.invoice_date is None:
             missing.append("invoice_date")
         if self.customer_code is None:
             missing.append("customer_code")
+        if self.invoice_template is None:
+            missing.append("invoice_template")
         if self.tax_percent is None:
             missing.append("tax_percent")
         if self.lines is None:
@@ -93,6 +105,18 @@ class CancelInvoiceIn(BaseModel):
 
 def to_decimal(value) -> Decimal:
     return Decimal(str(value or 0))
+
+
+def normalize_template(value: str | None) -> str:
+    template = str(value or "STANDARD").strip().upper()
+
+    if template not in ALLOWED_INVOICE_TEMPLATES:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid invoice template. Allowed: STANDARD, TAX_INVOICE, SERVICE_INVOICE",
+        )
+
+    return template
 
 
 def normalize_invoice_status(obj: SalesInvoiceHdr) -> SalesInvoiceHdr:
@@ -200,11 +224,15 @@ def create_sales_invoice(
         raise HTTPException(status_code=500, detail=str(e))
 
     customer_code = data["customer_code"]
+    invoice_template = normalize_template(data.get("invoice_template"))
     invoice_date = data["invoice_date"]
     due_date = data.get("due_date")
     tax_percent = to_decimal(data.get("tax_percent"))
     remark = data.get("remark")
     lines = data.get("lines", [])
+
+    if tax_percent < 0:
+        raise HTTPException(status_code=400, detail="Tax percent cannot be negative")
 
     if not lines:
         raise HTTPException(status_code=400, detail="At least one line is required")
@@ -220,6 +248,7 @@ def create_sales_invoice(
 
         if qty <= 0:
             raise HTTPException(status_code=400, detail="Qty must be greater than 0")
+
         if rate < 0:
             raise HTTPException(status_code=400, detail="Rate cannot be negative")
 
@@ -241,6 +270,7 @@ def create_sales_invoice(
     amount_received = Decimal("0.00")
     adjusted_amount = Decimal("0.00")
     balance = compute_balance(grand_total, amount_received, adjusted_amount)
+
     status = compute_status(
         grand_total=grand_total,
         amount_done=amount_received,
@@ -252,6 +282,7 @@ def create_sales_invoice(
 
     hdr = SalesInvoiceHdr(
         invoice_no=invoice_no,
+        invoice_template=invoice_template,
         invoice_date=invoice_date,
         due_date=due_date,
         customer_code=customer_code,
@@ -280,6 +311,7 @@ def create_sales_invoice(
         details=f"Sales invoice created: {hdr.invoice_no}",
         new_values={
             "invoice_no": hdr.invoice_no,
+            "invoice_template": hdr.invoice_template,
             "customer_code": hdr.customer_code,
             "invoice_date": str(hdr.invoice_date),
             "due_date": str(hdr.due_date) if hdr.due_date else None,
@@ -337,47 +369,46 @@ def update_sales_invoice(
         raise HTTPException(status_code=400, detail="Paid invoice cannot be updated")
 
     receipt_exists = has_any_receipt(db, invoice_no)
-    amount_received = to_decimal(obj.amount_received)
-    adjusted_amount = to_decimal(obj.adjusted_amount)
 
     old_values = {
+        "invoice_template": obj.invoice_template,
+        "customer_code": obj.customer_code,
         "invoice_date": str(obj.invoice_date),
         "due_date": str(obj.due_date) if obj.due_date else None,
-        "customer_code": obj.customer_code,
-        "subtotal": float(obj.subtotal or 0),
-        "tax_percent": float(obj.tax_percent or 0),
-        "tax_amount": float(obj.tax_amount or 0),
-        "grand_total": float(obj.grand_total or 0),
-        "amount_received": float(obj.amount_received or 0),
-        "adjusted_amount": float(obj.adjusted_amount or 0),
-        "balance": float(obj.balance or 0),
+        "subtotal": float(obj.subtotal),
+        "tax_percent": float(obj.tax_percent),
+        "tax_amount": float(obj.tax_amount),
+        "grand_total": float(obj.grand_total),
+        "amount_received": float(obj.amount_received),
+        "adjusted_amount": float(obj.adjusted_amount),
+        "balance": float(obj.balance),
         "status": obj.status,
         "remark": obj.remark,
-        "line_count": len(obj.lines or []),
     }
 
-    raw_data = payload.model_dump(exclude_unset=True)
-    data = normalize_upper(raw_data)
-
-    restricted_only = (
-        "invoice_date" not in data
-        and "customer_code" not in data
-        and "tax_percent" not in data
-        and "lines" not in data
+    full_update_requested = (
+        payload.invoice_date is not None
+        or payload.customer_code is not None
+        or payload.invoice_template is not None
+        or payload.tax_percent is not None
+        or payload.lines is not None
     )
 
-    if restricted_only:
-        obj.due_date = data.get("due_date", obj.due_date)
-        obj.remark = data.get("remark", obj.remark)
-
-        obj.status = compute_status(
-            grand_total=obj.grand_total,
-            amount_done=obj.amount_received,
-            adjusted_amount=obj.adjusted_amount,
-            balance=obj.balance,
-            due_date=obj.due_date,
-            cancelled=False,
+    if receipt_exists and full_update_requested:
+        raise HTTPException(
+            status_code=400,
+            detail="Invoice has receipt entries. Only due date and remark can be updated.",
         )
+
+    if not full_update_requested:
+        obj.due_date = payload.due_date
+        obj.remark = normalize_upper(payload.remark) if payload.remark else None
+        obj.balance = compute_balance(
+            obj.grand_total,
+            obj.amount_received,
+            obj.adjusted_amount,
+        )
+        normalize_invoice_status(obj)
 
         log_activity(
             db=db,
@@ -390,101 +421,68 @@ def update_sales_invoice(
             details=f"Sales invoice restricted update: {obj.invoice_no}",
             old_values=old_values,
             new_values={
-                "invoice_date": str(obj.invoice_date),
                 "due_date": str(obj.due_date) if obj.due_date else None,
-                "customer_code": obj.customer_code,
-                "subtotal": float(obj.subtotal),
-                "tax_percent": float(obj.tax_percent),
-                "tax_amount": float(obj.tax_amount),
-                "grand_total": float(obj.grand_total),
-                "amount_received": float(obj.amount_received),
-                "adjusted_amount": float(obj.adjusted_amount or 0),
-                "balance": float(obj.balance),
-                "status": obj.status,
                 "remark": obj.remark,
-                "line_count": len(obj.lines),
+                "status": obj.status,
             },
         )
 
-        try:
-            db.commit()
-        except IntegrityError as e:
-            db.rollback()
-            raise HTTPException(status_code=409, detail=str(e.orig))
-
+        db.commit()
         db.refresh(obj)
-        normalize_invoice_status(obj)
         return obj
 
-    if receipt_exists or amount_received > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Invoice with receipt/payment allows restricted edit only. Change due date or remark only.",
-        )
+    obj.invoice_date = payload.invoice_date
+    obj.due_date = payload.due_date
+    obj.customer_code = normalize_upper(payload.customer_code)
+    obj.invoice_template = normalize_template(payload.invoice_template)
+    obj.tax_percent = to_decimal(payload.tax_percent)
+    obj.remark = normalize_upper(payload.remark) if payload.remark else None
 
-    lines = data.get("lines", [])
-    if not lines:
+    if obj.tax_percent < 0:
+        raise HTTPException(status_code=400, detail="Tax percent cannot be negative")
+
+    if not payload.lines:
         raise HTTPException(status_code=400, detail="At least one line is required")
 
+    obj.lines.clear()
+    db.flush()
+
     subtotal = Decimal("0.00")
-    new_lines: list[SalesInvoiceDtl] = []
 
-    for ln in lines:
-        ln = normalize_upper(ln)
-
-        qty = to_decimal(ln["qty"])
-        rate = to_decimal(ln["rate"])
+    for ln in payload.lines:
+        item_code = normalize_upper(ln.item_code)
+        qty = to_decimal(ln.qty)
+        rate = to_decimal(ln.rate)
 
         if qty <= 0:
             raise HTTPException(status_code=400, detail="Qty must be greater than 0")
+
         if rate < 0:
             raise HTTPException(status_code=400, detail="Rate cannot be negative")
 
         line_total = qty * rate
         subtotal += line_total
 
-        new_lines.append(
+        obj.lines.append(
             SalesInvoiceDtl(
                 invoice_no=obj.invoice_no,
-                item_code=ln["item_code"],
+                item_code=item_code,
                 qty=qty,
                 rate=rate,
                 line_total=line_total,
             )
         )
 
-    tax_percent = to_decimal(data.get("tax_percent"))
-    tax_amount = (subtotal * tax_percent) / Decimal("100")
-    grand_total = subtotal + tax_amount
-    new_balance = compute_balance(grand_total, amount_received, adjusted_amount)
-
-    if new_balance < 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Grand total cannot be less than settled amount",
-        )
-
-    obj.invoice_date = data["invoice_date"]
-    obj.due_date = data.get("due_date")
-    obj.customer_code = data["customer_code"]
-    obj.tax_percent = tax_percent
-    obj.tax_amount = tax_amount
     obj.subtotal = subtotal
-    obj.grand_total = grand_total
-    obj.balance = new_balance
-    obj.remark = data.get("remark")
-    obj.status = compute_status(
-        grand_total=obj.grand_total,
-        amount_done=obj.amount_received,
-        adjusted_amount=obj.adjusted_amount,
-        balance=obj.balance,
-        due_date=obj.due_date,
-        cancelled=False,
+    obj.tax_amount = (subtotal * obj.tax_percent) / Decimal("100")
+    obj.grand_total = obj.subtotal + obj.tax_amount
+    obj.balance = compute_balance(
+        obj.grand_total,
+        obj.amount_received,
+        obj.adjusted_amount,
     )
 
-    obj.lines.clear()
-    for ln in new_lines:
-        obj.lines.append(ln)
+    normalize_invoice_status(obj)
 
     log_activity(
         db=db,
@@ -497,38 +495,34 @@ def update_sales_invoice(
         details=f"Sales invoice updated: {obj.invoice_no}",
         old_values=old_values,
         new_values={
+            "invoice_template": obj.invoice_template,
+            "customer_code": obj.customer_code,
             "invoice_date": str(obj.invoice_date),
             "due_date": str(obj.due_date) if obj.due_date else None,
-            "customer_code": obj.customer_code,
             "subtotal": float(obj.subtotal),
             "tax_percent": float(obj.tax_percent),
             "tax_amount": float(obj.tax_amount),
             "grand_total": float(obj.grand_total),
             "amount_received": float(obj.amount_received),
-            "adjusted_amount": float(obj.adjusted_amount or 0),
+            "adjusted_amount": float(obj.adjusted_amount),
             "balance": float(obj.balance),
             "status": obj.status,
             "remark": obj.remark,
-            "line_count": len(obj.lines),
+            "line_count": len(payload.lines),
         },
     )
 
-    try:
-        db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(status_code=409, detail=str(e.orig))
-
+    db.commit()
     db.refresh(obj)
     normalize_invoice_status(obj)
     return obj
 
 
-@router.patch("/{invoice_no}/cancel", response_model=SalesInvoiceOut)
-def cancel_sales_invoice(
+@router.post("/{invoice_no}/receive", response_model=ReceiptCreatedOut)
+def receive_payment(
     invoice_no: str,
-    payload: CancelInvoiceIn | None = None,
-    request: Request = None,
+    payload: ReceivePaymentIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_operator_or_admin),
 ):
@@ -536,7 +530,6 @@ def cancel_sales_invoice(
 
     obj = (
         db.query(SalesInvoiceHdr)
-        .options(joinedload(SalesInvoiceHdr.lines))
         .filter(SalesInvoiceHdr.invoice_no == invoice_no)
         .first()
     )
@@ -546,64 +539,98 @@ def cancel_sales_invoice(
 
     normalize_invoice_status(obj)
 
-    if str(obj.status or "").upper() == STATUS_CANCELLED:
-        raise HTTPException(status_code=400, detail="Invoice is already cancelled")
+    if obj.status == STATUS_CANCELLED:
+        raise HTTPException(status_code=400, detail="Cannot receive against cancelled invoice")
 
-    if has_any_receipt(db, invoice_no) or to_decimal(obj.amount_received) > 0:
+    amount = to_decimal(payload.amount)
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Receipt amount must be greater than 0")
+
+    current_balance = compute_balance(
+        obj.grand_total,
+        obj.amount_received,
+        obj.adjusted_amount,
+    )
+
+    if amount > current_balance:
         raise HTTPException(
             status_code=400,
-            detail="Reverse receipt(s) first before cancelling invoice",
+            detail=f"Receipt amount cannot exceed balance {current_balance}",
         )
 
-    old_values = {
-        "status": obj.status,
-        "remark": obj.remark,
-    }
+    try:
+        receipt_no = get_next_number(db, "SALES_RECEIPT", "REC")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    cancel_remark = None
-    if payload and payload.remark and str(payload.remark).strip():
-        cancel_remark = str(payload.remark).strip().upper()
+    receipt = SalesReceipt(
+        receipt_no=receipt_no,
+        invoice_no=obj.invoice_no,
+        receipt_date=date.today(),
+        amount=amount,
+        remark=normalize_upper(payload.remark) if payload.remark else None,
+    )
 
-    obj.status = STATUS_CANCELLED
-    obj.amount_received = Decimal("0.00")
-    obj.adjusted_amount = Decimal("0.00")
-    obj.balance = Decimal("0.00")
+    db.add(receipt)
 
-    if cancel_remark:
-        obj.remark = cancel_remark
+    old_amount_received = obj.amount_received
+    old_balance = obj.balance
+    old_status = obj.status
+
+    obj.amount_received = obj.amount_received + amount
+    obj.balance = compute_balance(
+        obj.grand_total,
+        obj.amount_received,
+        obj.adjusted_amount,
+    )
+    normalize_invoice_status(obj)
 
     log_activity(
         db=db,
         request=request,
         user_id=current_user.user_id,
-        action=AuditAction.UPDATE,
-        module=AuditModule.SALES_INVOICE,
-        record_id=obj.invoice_no,
-        record_name=obj.invoice_no,
-        details=f"Sales invoice cancelled: {obj.invoice_no}",
-        old_values=old_values,
+        action=AuditAction.CREATE,
+        module=AuditModule.RECEIPT,
+        record_id=receipt.receipt_no,
+        record_name=receipt.receipt_no,
+        details=f"Receipt created: {receipt.receipt_no} for invoice {obj.invoice_no}",
+        old_values={
+            "invoice_no": obj.invoice_no,
+            "amount_received": float(old_amount_received),
+            "balance": float(old_balance),
+            "status": old_status,
+        },
         new_values={
+            "receipt_no": receipt.receipt_no,
+            "invoice_no": obj.invoice_no,
+            "receipt_date": str(receipt.receipt_date),
+            "receipt_amount": float(receipt.amount),
+            "amount_received": float(obj.amount_received),
+            "balance": float(obj.balance),
             "status": obj.status,
-            "remark": obj.remark,
-            "amount_received": float(obj.amount_received or 0),
-            "adjusted_amount": float(obj.adjusted_amount or 0),
-            "balance": float(obj.balance or 0),
+            "remark": receipt.remark,
         },
     )
 
-    try:
-        db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(status_code=409, detail=str(e.orig))
-
+    db.commit()
+    db.refresh(receipt)
     db.refresh(obj)
-    return obj
+
+    return ReceiptCreatedOut(
+        ok=True,
+        receipt_no=receipt.receipt_no,
+        invoice_no=obj.invoice_no,
+        receipt_date=str(receipt.receipt_date),
+        amount=float(receipt.amount),
+        remark=receipt.remark,
+    )
 
 
-@router.delete("/{invoice_no}")
-def delete_sales_invoice(
+@router.post("/{invoice_no}/cancel", response_model=SalesInvoiceOut)
+def cancel_sales_invoice(
     invoice_no: str,
+    payload: CancelInvoiceIn,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
@@ -620,46 +647,80 @@ def delete_sales_invoice(
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
-    balance = to_decimal(obj.balance)
-    if balance != Decimal("0"):
+    if has_any_receipt(db, invoice_no):
         raise HTTPException(
             status_code=400,
-            detail="Delete allowed only when invoice balance is 0",
+            detail="Invoice has receipt entries. It cannot be cancelled.",
         )
-
-    receipts = (
-        db.query(SalesReceipt)
-        .filter(SalesReceipt.invoice_no == invoice_no)
-        .all()
-    )
-    receipt_count = len(receipts)
 
     old_values = {
         "invoice_no": obj.invoice_no,
+        "status": obj.status,
+        "balance": float(obj.balance),
+        "remark": obj.remark,
+    }
+
+    obj.status = STATUS_CANCELLED
+    obj.balance = Decimal("0.00")
+    obj.remark = normalize_upper(payload.remark) if payload.remark else obj.remark
+
+    log_activity(
+        db=db,
+        request=request,
+        user_id=current_user.user_id,
+        action=AuditAction.UPDATE,
+        module=AuditModule.SALES_INVOICE,
+        record_id=obj.invoice_no,
+        record_name=obj.invoice_no,
+        details=f"Sales invoice cancelled: {obj.invoice_no}",
+        old_values=old_values,
+        new_values={
+            "invoice_no": obj.invoice_no,
+            "status": obj.status,
+            "balance": float(obj.balance),
+            "remark": obj.remark,
+        },
+    )
+
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@router.delete("/{invoice_no}")
+def delete_sales_invoice(
+    invoice_no: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    invoice_no = invoice_no.strip().upper()
+
+    obj = (
+        db.query(SalesInvoiceHdr)
+        .filter(SalesInvoiceHdr.invoice_no == invoice_no)
+        .first()
+    )
+
+    if not obj:
+        raise HTTPException(status_code=404, detail="Sales invoice not found")
+
+    if has_any_receipt(db, invoice_no):
+        raise HTTPException(
+            status_code=400,
+            detail="Invoice has receipt entries. It cannot be deleted.",
+        )
+
+    old_values = {
+        "invoice_no": obj.invoice_no,
+        "invoice_template": obj.invoice_template,
         "customer_code": obj.customer_code,
         "invoice_date": str(obj.invoice_date),
         "due_date": str(obj.due_date) if obj.due_date else None,
-        "subtotal": float(obj.subtotal or 0),
-        "tax_percent": float(obj.tax_percent or 0),
-        "tax_amount": float(obj.tax_amount or 0),
-        "grand_total": float(obj.grand_total or 0),
-        "amount_received": float(obj.amount_received or 0),
-        "adjusted_amount": float(obj.adjusted_amount or 0),
-        "balance": float(obj.balance or 0),
+        "grand_total": float(obj.grand_total),
+        "balance": float(obj.balance),
         "status": obj.status,
-        "remark": obj.remark,
-        "line_count": len(obj.lines or []),
-        "receipt_count_deleted": receipt_count,
     }
-
-    for receipt in receipts:
-        db.delete(receipt)
-
-    db.query(SalesInvoiceDtl).filter(
-        SalesInvoiceDtl.invoice_no == obj.invoice_no
-    ).delete(synchronize_session=False)
-
-    db.delete(obj)
 
     log_activity(
         db=db,
@@ -667,140 +728,13 @@ def delete_sales_invoice(
         user_id=current_user.user_id,
         action=AuditAction.DELETE,
         module=AuditModule.SALES_INVOICE,
-        record_id=invoice_no,
-        record_name=invoice_no,
-        details=f"Sales invoice deleted with {receipt_count} receipt(s): {invoice_no}",
+        record_id=obj.invoice_no,
+        record_name=obj.invoice_no,
+        details=f"Sales invoice deleted: {obj.invoice_no}",
         old_values=old_values,
-        new_values=None,
     )
 
-    try:
-        db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(status_code=409, detail=str(e.orig))
+    db.delete(obj)
+    db.commit()
 
-    return {
-        "ok": True,
-        "message": f"Sales invoice {invoice_no} deleted successfully with {receipt_count} receipt(s)",
-    }
-
-
-@router.post("/{invoice_no}/receive", response_model=ReceiptCreatedOut)
-def receive_payment(
-    invoice_no: str,
-    payload: ReceivePaymentIn,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_operator_or_admin),
-):
-    invoice_no = invoice_no.strip().upper()
-
-    obj = (
-        db.execute(
-            select(SalesInvoiceHdr)
-            .where(SalesInvoiceHdr.invoice_no == invoice_no)
-            .with_for_update()
-        )
-        .scalar_one_or_none()
-    )
-
-    if not obj:
-        raise HTTPException(status_code=404, detail="Sales invoice not found")
-
-    normalize_invoice_status(obj)
-
-    if str(obj.status or "").upper() == STATUS_CANCELLED:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot receive payment for cancelled invoice",
-        )
-
-    amount = Decimal(str(payload.amount or 0))
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be greater than 0")
-
-    current_balance = Decimal(str(obj.balance or 0))
-    if amount > current_balance:
-        raise HTTPException(
-            status_code=400,
-            detail="Received amount cannot exceed balance",
-        )
-
-    old_values = {
-        "amount_received": float(obj.amount_received or 0),
-        "adjusted_amount": float(obj.adjusted_amount or 0),
-        "balance": float(obj.balance or 0),
-        "status": obj.status,
-    }
-
-    try:
-        receipt_no = get_next_number(db, "RECEIPT", "RCT")
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    receipt = SalesReceipt(
-        receipt_no=receipt_no,
-        invoice_no=obj.invoice_no,
-        receipt_date=date.today(),
-        amount=amount,
-        remark=str(payload.remark).strip().upper()
-        if payload.remark and str(payload.remark).strip()
-        else None,
-    )
-    db.add(receipt)
-
-    obj.amount_received = Decimal(str(obj.amount_received or 0)) + amount
-    obj.balance = compute_balance(
-        obj.grand_total,
-        obj.amount_received,
-        obj.adjusted_amount,
-    )
-    obj.status = compute_status(
-        grand_total=obj.grand_total,
-        amount_done=obj.amount_received,
-        adjusted_amount=obj.adjusted_amount,
-        due_date=obj.due_date,
-        cancelled=False,
-        balance=obj.balance,
-    )
-
-    log_activity(
-        db=db,
-        request=request,
-        user_id=current_user.user_id,
-        action=AuditAction.CREATE,
-        module=AuditModule.RECEIPT,
-        record_id=receipt.receipt_no,
-        record_name=receipt.receipt_no,
-        details=f"Payment received for invoice {obj.invoice_no}",
-        old_values=old_values,
-        new_values={
-            "receipt_no": receipt.receipt_no,
-            "invoice_no": obj.invoice_no,
-            "receipt_date": str(receipt.receipt_date),
-            "amount": float(amount),
-            "remark": receipt.remark,
-            "amount_received": float(obj.amount_received),
-            "adjusted_amount": float(obj.adjusted_amount or 0),
-            "balance": float(obj.balance),
-            "status": obj.status,
-        },
-    )
-
-    try:
-        db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(status_code=409, detail=str(e.orig))
-
-    db.refresh(receipt)
-
-    return ReceiptCreatedOut(
-        ok=True,
-        receipt_no=receipt.receipt_no,
-        invoice_no=receipt.invoice_no,
-        receipt_date=str(receipt.receipt_date),
-        amount=float(receipt.amount),
-        remark=receipt.remark,
-    )
+    return {"ok": True, "deleted": invoice_no}
