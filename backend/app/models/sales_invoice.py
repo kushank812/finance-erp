@@ -76,8 +76,25 @@ class SalesInvoiceDtl(Base):
         index=True,
     )
 
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    hsn_sac: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    work_period: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     qty: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False, default=1)
     rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+
+    line_tax_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        default=0,
+    )
+    line_tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=0,
+    )
+
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
 
     hdr = relationship("SalesInvoiceHdr", back_populates="lines")
@@ -96,7 +113,6 @@ class SalesReceipt(Base):
     )
 
     receipt_date: Mapped[date] = mapped_column(Date, nullable=False)
-
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
 

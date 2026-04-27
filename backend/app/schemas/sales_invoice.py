@@ -6,8 +6,13 @@ from pydantic import BaseModel
 
 class SalesInvoiceLineCreate(BaseModel):
     item_code: str
+    description: Optional[str] = None
+    hsn_sac: Optional[str] = None
+    unit: Optional[str] = None
+    work_period: Optional[str] = None
     qty: float
     rate: float
+    line_tax_percent: Optional[float] = 0
 
 
 class SalesInvoiceCreate(BaseModel):
@@ -23,8 +28,14 @@ class SalesInvoiceCreate(BaseModel):
 class SalesInvoiceLineOut(BaseModel):
     id: int
     item_code: str
+    description: Optional[str] = None
+    hsn_sac: Optional[str] = None
+    unit: Optional[str] = None
+    work_period: Optional[str] = None
     qty: float
     rate: float
+    line_tax_percent: float
+    line_tax_amount: float
     line_total: float
 
     class Config:

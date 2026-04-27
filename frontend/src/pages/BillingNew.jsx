@@ -33,8 +33,6 @@ import {
   disabledBtn,
 } from "../components/ui/uiStyles";
 
-const emptyLine = { item_code: "", qty: 1, rate: 0 };
-
 const TEMPLATE_OPTIONS = [
   {
     value: "STANDARD",
@@ -44,14 +42,25 @@ const TEMPLATE_OPTIONS = [
   {
     value: "TAX_INVOICE",
     label: "Tax Invoice",
-    hint: "Business-style tax invoice layout with tax emphasis.",
+    hint: "Separate HSN/SAC, unit, and tax percentage per line.",
   },
   {
     value: "SERVICE_INVOICE",
     label: "Service / Work Invoice",
-    hint: "Best for service, labour, hours, project, or work billing.",
+    hint: "Service description, work period, hours/days, and service amount.",
   },
 ];
+
+const emptyLine = {
+  item_code: "",
+  description: "",
+  hsn_sac: "",
+  unit: "PCS",
+  work_period: "",
+  qty: 1,
+  rate: 0,
+  line_tax_percent: 0,
+};
 
 function todayISO() {
   const d = new Date();
@@ -86,13 +95,14 @@ function getTemplateValue(value) {
 }
 
 function getTemplateLabel(value) {
-  const t = TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value));
-  return t?.label || "Standard Sales Invoice";
+  return (
+    TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value))?.label ||
+    "Standard Sales Invoice"
+  );
 }
 
 function getTemplateHint(value) {
-  const t = TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value));
-  return t?.hint || "";
+  return TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value))?.hint || "";
 }
 
 function normalizeInvoiceToForm(inv) {
@@ -110,8 +120,13 @@ function normalizeInvoiceToForm(inv) {
       Array.isArray(inv?.lines) && inv.lines.length > 0
         ? inv.lines.map((ln) => ({
             item_code: ln.item_code || "",
+            description: ln.description || "",
+            hsn_sac: ln.hsn_sac || "",
+            unit: ln.unit || "PCS",
+            work_period: ln.work_period || "",
             qty: Number(ln.qty || 0),
             rate: Number(ln.rate || 0),
+            line_tax_percent: Number(ln.line_tax_percent || 0),
           }))
         : [{ ...emptyLine }],
   };
@@ -362,9 +377,6 @@ export default function BillingNew() {
       return (
         String(c.customer_code || "").toLowerCase().includes(q) ||
         String(c.customer_name || "").toLowerCase().includes(q) ||
-        String(c.customer_address_line1 || "").toLowerCase().includes(q) ||
-        String(c.customer_address_line2 || "").toLowerCase().includes(q) ||
-        String(c.customer_address_line3 || "").toLowerCase().includes(q) ||
         String(c.city || "").toLowerCase().includes(q) ||
         String(c.mobile_no || "").toLowerCase().includes(q) ||
         String(c.email_id || "").toLowerCase().includes(q) ||
@@ -401,6 +413,26 @@ export default function BillingNew() {
     );
   }
 
+  function handleTemplateChange(value) {
+    setInvoiceTemplate(value);
+
+    setLines((prev) =>
+      prev.map((ln) => ({
+        ...ln,
+        description: ln.description || "",
+        hsn_sac: value === "TAX_INVOICE" ? ln.hsn_sac || "" : "",
+        unit: value === "TAX_INVOICE" ? ln.unit || "PCS" : "",
+        work_period: value === "SERVICE_INVOICE" ? ln.work_period || "" : "",
+        line_tax_percent:
+          value === "TAX_INVOICE" ? Number(ln.line_tax_percent || 0) : 0,
+      }))
+    );
+
+    if (value === "TAX_INVOICE") {
+      setTaxPercent(0);
+    }
+  }
+
   const calc = useMemo(() => {
     const subtotal = lines.reduce((sum, ln) => {
       const qty = Number(ln.qty || 0);
@@ -408,7 +440,20 @@ export default function BillingNew() {
       return sum + qty * rate;
     }, 0);
 
-    const taxAmt = (subtotal * Number(taxPercent || 0)) / 100;
+    const lineTax =
+      invoiceTemplate === "TAX_INVOICE"
+        ? lines.reduce((sum, ln) => {
+            const base = Number(ln.qty || 0) * Number(ln.rate || 0);
+            return sum + (base * Number(ln.line_tax_percent || 0)) / 100;
+          }, 0)
+        : 0;
+
+    const headerTax =
+      invoiceTemplate === "TAX_INVOICE"
+        ? 0
+        : (subtotal * Number(taxPercent || 0)) / 100;
+
+    const taxAmt = lineTax + headerTax;
     const grand = subtotal + taxAmt;
 
     return {
@@ -416,7 +461,7 @@ export default function BillingNew() {
       taxAmt: round2(taxAmt),
       grand: round2(grand),
     };
-  }, [lines, taxPercent]);
+  }, [lines, taxPercent, invoiceTemplate]);
 
   function clearForm() {
     setInvoiceTemplate("STANDARD");
@@ -452,8 +497,25 @@ export default function BillingNew() {
       .filter((l) => l.item_code)
       .map((l) => ({
         item_code: l.item_code,
+        description: String(l.description || "").trim() || null,
+        hsn_sac:
+          invoiceTemplate === "TAX_INVOICE"
+            ? String(l.hsn_sac || "").trim() || null
+            : null,
+        unit:
+          invoiceTemplate === "TAX_INVOICE"
+            ? String(l.unit || "").trim() || "PCS"
+            : null,
+        work_period:
+          invoiceTemplate === "SERVICE_INVOICE"
+            ? String(l.work_period || "").trim() || null
+            : null,
         qty: Number(l.qty || 0),
         rate: Number(l.rate || 0),
+        line_tax_percent:
+          invoiceTemplate === "TAX_INVOICE"
+            ? Number(l.line_tax_percent || 0)
+            : 0,
       }));
 
     if (cleanLines.length === 0) {
@@ -473,6 +535,11 @@ export default function BillingNew() {
         setErr(`Line ${i + 1}: Rate cannot be negative.`);
         return null;
       }
+
+      if (Number(ln.line_tax_percent || 0) < 0) {
+        setErr(`Line ${i + 1}: Tax % cannot be negative.`);
+        return null;
+      }
     }
 
     return {
@@ -480,7 +547,7 @@ export default function BillingNew() {
       invoice_template: invoiceTemplate,
       invoice_date: invoiceDate,
       due_date: dueDate || null,
-      tax_percent: Number(taxPercent || 0),
+      tax_percent: invoiceTemplate === "TAX_INVOICE" ? 0 : Number(taxPercent || 0),
       remark: remark || null,
       lines: cleanLines,
     };
@@ -525,6 +592,7 @@ export default function BillingNew() {
           `/sales-invoices/${encodeURIComponent(invoiceNo)}`,
           payload
         );
+
         setOkMsg(
           `✅ Invoice "${updated?.invoice_no || invoiceNo}" updated successfully.`
         );
@@ -532,9 +600,11 @@ export default function BillingNew() {
         if (updated?.invoice_template) {
           setInvoiceTemplate(getTemplateValue(updated.invoice_template));
         }
+
         if (updated?.status) {
           setInvoiceStatus(String(updated.status).toUpperCase());
         }
+
         if (updated?.amount_received != null) {
           setAmountReceived(Number(updated.amount_received || 0));
         }
@@ -542,6 +612,7 @@ export default function BillingNew() {
         if (updated?.invoice_date) {
           setInvoiceDate(String(updated.invoice_date));
         }
+
         setDueDate(updated?.due_date ? String(updated.due_date) : "");
       } else {
         const created = await apiPost("/sales-invoices/", payload);
@@ -580,19 +651,6 @@ export default function BillingNew() {
     if (access.restricted) return <span style={badgeAmber}>RESTRICTED</span>;
     return <span style={badgeGreen}>EDITABLE</span>;
   }
-
-  const qtyHeader =
-    invoiceTemplate === "SERVICE_INVOICE" ? "Hours / Days" : "Qty";
-  const itemHeader =
-    invoiceTemplate === "SERVICE_INVOICE"
-      ? "Service / Work"
-      : invoiceTemplate === "TAX_INVOICE"
-      ? "Product / Description"
-      : "Item";
-  const rateHeader =
-    invoiceTemplate === "SERVICE_INVOICE" ? "Rate" : "Rate";
-  const totalHeader =
-    invoiceTemplate === "SERVICE_INVOICE" ? "Service Amount" : "Line Total";
 
   return (
     <div style={page}>
@@ -650,8 +708,8 @@ export default function BillingNew() {
           <div>
             <h2 style={cardTitle}>Invoice Header</h2>
             <p style={cardSubtitle}>
-              Basic invoice information, template selection, customer selection,
-              and billing dates.
+              Select a real invoice template. Each template saves different line
+              details and prints differently.
             </p>
           </div>
           <div>{getModeBadge()}</div>
@@ -672,7 +730,7 @@ export default function BillingNew() {
             <label style={labelStyle}>Invoice Template</label>
             <select
               value={invoiceTemplate}
-              onChange={(e) => setInvoiceTemplate(e.target.value)}
+              onChange={(e) => handleTemplateChange(e.target.value)}
               style={disableFullEditFields ? disabledInput : input}
               disabled={disableFullEditFields}
             >
@@ -714,14 +772,22 @@ export default function BillingNew() {
             />
           </div>
 
-          <FormField
-            label="Tax %"
-            type="number"
-            value={taxPercent}
-            onChange={(e) => setTaxPercent(e.target.value)}
-            placeholder="0"
-            disabled={disableFullEditFields}
-          />
+          {invoiceTemplate !== "TAX_INVOICE" ? (
+            <FormField
+              label="Header Tax %"
+              type="number"
+              value={taxPercent}
+              onChange={(e) => setTaxPercent(e.target.value)}
+              placeholder="0"
+              disabled={disableFullEditFields}
+            />
+          ) : (
+            <AutoField
+              label="Tax Mode"
+              text="Line-wise Tax"
+              hint="Tax is entered separately for each invoice row."
+            />
+          )}
 
           <FormField
             label="Remark"
@@ -738,10 +804,10 @@ export default function BillingNew() {
               <div style={templateTitle}>{getTemplateLabel(invoiceTemplate)}</div>
               <div style={templateText}>
                 {invoiceTemplate === "STANDARD"
-                  ? "A simple invoice format for normal item sales."
+                  ? "Standard invoice stores item, quantity, rate, and line amount."
                   : invoiceTemplate === "TAX_INVOICE"
-                  ? "A tax-focused invoice print layout similar to professional tax invoice formats."
-                  : "A service/work format where quantity acts as hours, days, or work units."}
+                  ? "Tax invoice stores item, description, HSN/SAC, unit, line tax %, line tax amount, and total."
+                  : "Service invoice stores service description, work period, hours/days, rate, and service amount."}
               </div>
             </div>
             <span style={templatePill}>{invoiceTemplate}</span>
@@ -756,19 +822,10 @@ export default function BillingNew() {
               </div>
 
               <div style={infoGrid}>
-                <InfoMini
-                  label="Code"
-                  value={selectedCustomer.customer_code || "-"}
-                />
-                <InfoMini
-                  label="Name"
-                  value={selectedCustomer.customer_name || "-"}
-                />
+                <InfoMini label="Code" value={selectedCustomer.customer_code || "-"} />
+                <InfoMini label="Name" value={selectedCustomer.customer_name || "-"} />
                 <InfoMini label="City" value={selectedCustomer.city || "-"} />
-                <InfoMini
-                  label="Mobile"
-                  value={selectedCustomer.mobile_no || "-"}
-                />
+                <InfoMini label="Mobile" value={selectedCustomer.mobile_no || "-"} />
               </div>
             </div>
           </div>
@@ -780,7 +837,7 @@ export default function BillingNew() {
           <div>
             <h2 style={cardTitle}>Line Items</h2>
             <p style={cardSubtitle}>
-              Add invoice rows, quantities, prices, and review totals.
+              The row fields change based on the selected invoice template.
             </p>
           </div>
 
@@ -795,96 +852,34 @@ export default function BillingNew() {
         </div>
 
         <div style={tableWrap}>
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={th}>{itemHeader}</th>
-                <th style={th}>{qtyHeader}</th>
-                <th style={th}>{rateHeader}</th>
-                <th style={th}>{totalHeader}</th>
-                <th style={th}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((ln, i) => {
-                const qty = Number(ln.qty || 0);
-                const rate = Number(ln.rate || 0);
-                const lineTotal = round2(qty * rate);
-
-                return (
-                  <tr key={i} style={tr}>
-                    <td style={td}>
-                      <select
-                        value={ln.item_code}
-                        onChange={(e) => {
-                          const code = e.target.value;
-                          const it = itemMap.get(code);
-                          setLine(i, {
-                            item_code: code,
-                            rate: it ? Number(it.selling_price || 0) : 0,
-                          });
-                        }}
-                        style={canEditLines ? input : disabledInput}
-                        disabled={!canEditLines}
-                      >
-                        <option value="">
-                          {invoiceTemplate === "SERVICE_INVOICE"
-                            ? "-- Select Service Item --"
-                            : "-- Select Item --"}
-                        </option>
-                        {items.map((it) => (
-                          <option key={it.item_code} value={it.item_code}>
-                            {it.item_code} - {it.item_name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-
-                    <td style={tdSmall}>
-                      <input
-                        type="number"
-                        value={ln.qty}
-                        onChange={(e) => setLine(i, { qty: e.target.value })}
-                        style={canEditLines ? input : disabledInput}
-                        disabled={!canEditLines}
-                      />
-                    </td>
-
-                    <td style={tdSmall}>
-                      <input
-                        type="number"
-                        value={ln.rate}
-                        onChange={(e) => setLine(i, { rate: e.target.value })}
-                        style={canEditLines ? input : disabledInput}
-                        disabled={!canEditLines}
-                      />
-                    </td>
-
-                    <td style={tdAmount}>{lineTotal}</td>
-
-                    <td style={tdAction}>
-                      <button
-                        type="button"
-                        onClick={() => removeRow(i)}
-                        style={canEditLines ? btnDanger : disabledBtn(btnDanger)}
-                        disabled={!canEditLines}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {lines.length === 0 ? (
-                <tr>
-                  <td colSpan="5" style={emptyRowTd}>
-                    No line items added.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+          {invoiceTemplate === "TAX_INVOICE" ? (
+            <TaxLineTable
+              lines={lines}
+              items={items}
+              itemMap={itemMap}
+              setLine={setLine}
+              removeRow={removeRow}
+              canEditLines={canEditLines}
+            />
+          ) : invoiceTemplate === "SERVICE_INVOICE" ? (
+            <ServiceLineTable
+              lines={lines}
+              items={items}
+              itemMap={itemMap}
+              setLine={setLine}
+              removeRow={removeRow}
+              canEditLines={canEditLines}
+            />
+          ) : (
+            <StandardLineTable
+              lines={lines}
+              items={items}
+              itemMap={itemMap}
+              setLine={setLine}
+              removeRow={removeRow}
+              canEditLines={canEditLines}
+            />
+          )}
         </div>
 
         <div style={footerGrid}>
@@ -897,7 +892,7 @@ export default function BillingNew() {
               ? "This invoice is locked. Editing is not allowed."
               : access.restricted
               ? "Restricted edit mode is active. Only due date and remark can be updated."
-              : "Full edit mode is active. Totals and selected template will be saved when you update."}
+              : "Full edit mode is active. Totals and template-specific data will be saved when you update."}
           </div>
 
           <div style={summaryCard}>
@@ -941,6 +936,285 @@ export default function BillingNew() {
         </div>
       </section>
     </div>
+  );
+}
+
+function StandardLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines }) {
+  return (
+    <table style={table}>
+      <thead>
+        <tr>
+          <th style={th}>Item</th>
+          <th style={th}>Qty</th>
+          <th style={th}>Rate</th>
+          <th style={th}>Line Total</th>
+          <th style={th}>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((ln, i) => {
+          const lineTotal = round2(Number(ln.qty || 0) * Number(ln.rate || 0));
+          return (
+            <tr key={i} style={tr}>
+              <td style={td}>
+                <ItemSelect
+                  value={ln.item_code}
+                  items={items}
+                  itemMap={itemMap}
+                  setLine={setLine}
+                  index={i}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  type="number"
+                  value={ln.qty}
+                  onChange={(e) => setLine(i, { qty: e.target.value })}
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  type="number"
+                  value={ln.rate}
+                  onChange={(e) => setLine(i, { rate: e.target.value })}
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdAmount}>{lineTotal}</td>
+              <td style={tdAction}>
+                <RemoveButton canEditLines={canEditLines} onClick={() => removeRow(i)} />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function TaxLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines }) {
+  return (
+    <table style={table}>
+      <thead>
+        <tr>
+          <th style={th}>Product</th>
+          <th style={th}>Description</th>
+          <th style={th}>HSN/SAC</th>
+          <th style={th}>Unit</th>
+          <th style={th}>Qty</th>
+          <th style={th}>Rate</th>
+          <th style={th}>Tax %</th>
+          <th style={th}>Tax Amt</th>
+          <th style={th}>Total</th>
+          <th style={th}>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((ln, i) => {
+          const base = Number(ln.qty || 0) * Number(ln.rate || 0);
+          const tax = (base * Number(ln.line_tax_percent || 0)) / 100;
+          const total = base + tax;
+
+          return (
+            <tr key={i} style={tr}>
+              <td style={tdWide}>
+                <ItemSelect
+                  value={ln.item_code}
+                  items={items}
+                  itemMap={itemMap}
+                  setLine={setLine}
+                  index={i}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdWide}>
+                <input
+                  value={ln.description}
+                  onChange={(e) => setLine(i, { description: e.target.value })}
+                  placeholder="Product description"
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  value={ln.hsn_sac}
+                  onChange={(e) => setLine(i, { hsn_sac: e.target.value })}
+                  placeholder="HSN"
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  value={ln.unit}
+                  onChange={(e) => setLine(i, { unit: e.target.value })}
+                  placeholder="PCS"
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  type="number"
+                  value={ln.qty}
+                  onChange={(e) => setLine(i, { qty: e.target.value })}
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  type="number"
+                  value={ln.rate}
+                  onChange={(e) => setLine(i, { rate: e.target.value })}
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  type="number"
+                  value={ln.line_tax_percent}
+                  onChange={(e) =>
+                    setLine(i, { line_tax_percent: e.target.value })
+                  }
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdAmount}>{round2(tax)}</td>
+              <td style={tdAmount}>{round2(total)}</td>
+              <td style={tdAction}>
+                <RemoveButton canEditLines={canEditLines} onClick={() => removeRow(i)} />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function ServiceLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines }) {
+  return (
+    <table style={table}>
+      <thead>
+        <tr>
+          <th style={th}>Service Item</th>
+          <th style={th}>Service Description</th>
+          <th style={th}>Work Period</th>
+          <th style={th}>Hours / Days</th>
+          <th style={th}>Rate</th>
+          <th style={th}>Amount</th>
+          <th style={th}>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((ln, i) => {
+          const total = Number(ln.qty || 0) * Number(ln.rate || 0);
+
+          return (
+            <tr key={i} style={tr}>
+              <td style={tdWide}>
+                <ItemSelect
+                  value={ln.item_code}
+                  items={items}
+                  itemMap={itemMap}
+                  setLine={setLine}
+                  index={i}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdWide}>
+                <input
+                  value={ln.description}
+                  onChange={(e) => setLine(i, { description: e.target.value })}
+                  placeholder="Consulting / labour / repair work"
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdWide}>
+                <input
+                  value={ln.work_period}
+                  onChange={(e) => setLine(i, { work_period: e.target.value })}
+                  placeholder="Apr 2026 / 01-04 to 10-04"
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  type="number"
+                  value={ln.qty}
+                  onChange={(e) => setLine(i, { qty: e.target.value })}
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdSmall}>
+                <input
+                  type="number"
+                  value={ln.rate}
+                  onChange={(e) => setLine(i, { rate: e.target.value })}
+                  style={canEditLines ? input : disabledInput}
+                  disabled={!canEditLines}
+                />
+              </td>
+              <td style={tdAmount}>{round2(total)}</td>
+              <td style={tdAction}>
+                <RemoveButton canEditLines={canEditLines} onClick={() => removeRow(i)} />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function ItemSelect({ value, items, itemMap, setLine, index, disabled }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        const code = e.target.value;
+        const it = itemMap.get(code);
+        setLine(index, {
+          item_code: code,
+          description: it?.item_name || "",
+          unit: it?.units || "PCS",
+          rate: it ? Number(it.selling_price || 0) : 0,
+        });
+      }}
+      style={disabled ? disabledInput : input}
+      disabled={disabled}
+    >
+      <option value="">-- Select --</option>
+      {items.map((it) => (
+        <option key={it.item_code} value={it.item_code}>
+          {it.item_code} - {it.item_name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function RemoveButton({ canEditLines, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={canEditLines ? btnDanger : disabledBtn(btnDanger)}
+      disabled={!canEditLines}
+    >
+      Remove
+    </button>
   );
 }
 
@@ -1113,7 +1387,12 @@ const infoMiniValue = {
 
 const tdSmall = {
   ...td,
-  width: 140,
+  width: 130,
+};
+
+const tdWide = {
+  ...td,
+  minWidth: 220,
 };
 
 const tdAmount = {
@@ -1126,13 +1405,6 @@ const tdAmount = {
 const tdAction = {
   ...td,
   minWidth: 120,
-};
-
-const emptyRowTd = {
-  padding: 18,
-  textAlign: "center",
-  color: "#64748b",
-  fontWeight: 700,
 };
 
 const footerGrid = {
