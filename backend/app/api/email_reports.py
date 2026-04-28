@@ -22,19 +22,28 @@ from app.services.ai.email_pdf_service import (
     vendor_due_pdf,
 )
 
-
-router = APIRouter(
-    prefix="/email",
-    tags=["Email Reports"],
-)
+router = APIRouter(prefix="/email", tags=["Email Reports"])
 
 
-def require_email(value: str | None, entity: str):
-    if not value or not value.strip():
-        raise HTTPException(status_code=400, detail=f"{entity} email is missing in master.")
-    return value.strip()
+# 🔥 FIXED EMAIL RESOLVER (CUSTOMER + VENDOR)
+def resolve_email(obj, entity: str):
+    email = (
+        getattr(obj, "email", None)
+        or getattr(obj, "email_id", None)
+        or getattr(obj, "customer_email", None)
+        or getattr(obj, "vendor_email", None)
+    )
+
+    if not email or not str(email).strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"{entity} email is missing in master.",
+        )
+
+    return str(email).strip()
 
 
+# ================= SALES INVOICE =================
 @router.post("/sales-invoice/{invoice_no}")
 def email_sales_invoice(
     invoice_no: str,
@@ -42,16 +51,14 @@ def email_sales_invoice(
     current_user: User = Depends(require_viewer_or_above),
 ):
     invoice = db.get(SalesInvoiceHdr, invoice_no)
-
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found.")
 
     customer = db.get(Customer, invoice.customer_code)
-
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found.")
 
-    to_email = require_email(getattr(customer, "email", None), "Customer")
+    to_email = resolve_email(customer, "Customer")
 
     pdf_path = invoice_pdf(invoice, customer)
 
@@ -73,6 +80,7 @@ def email_sales_invoice(
     return {"message": "Invoice email sent successfully.", "to": to_email}
 
 
+# ================= RECEIPT =================
 @router.post("/receipt/{receipt_no}")
 def email_receipt(
     receipt_no: str,
@@ -80,21 +88,18 @@ def email_receipt(
     current_user: User = Depends(require_viewer_or_above),
 ):
     receipt = db.get(SalesReceipt, receipt_no)
-
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found.")
 
     invoice = db.get(SalesInvoiceHdr, receipt.invoice_no)
-
     if not invoice:
         raise HTTPException(status_code=404, detail="Linked invoice not found.")
 
     customer = db.get(Customer, invoice.customer_code)
-
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found.")
 
-    to_email = require_email(getattr(customer, "email", None), "Customer")
+    to_email = resolve_email(customer, "Customer")
 
     pdf_path = receipt_pdf(receipt, customer)
 
@@ -114,6 +119,7 @@ def email_receipt(
     return {"message": "Receipt email sent successfully.", "to": to_email}
 
 
+# ================= PURCHASE BILL =================
 @router.post("/purchase-bill/{bill_no}")
 def email_purchase_bill(
     bill_no: str,
@@ -121,16 +127,14 @@ def email_purchase_bill(
     current_user: User = Depends(require_viewer_or_above),
 ):
     bill = db.get(PurchaseInvoiceHdr, bill_no)
-
     if not bill:
         raise HTTPException(status_code=404, detail="Purchase bill not found.")
 
     vendor = db.get(Vendor, bill.vendor_code)
-
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found.")
 
-    to_email = require_email(getattr(vendor, "email", None), "Vendor")
+    to_email = resolve_email(vendor, "Vendor")
 
     pdf_path = purchase_bill_pdf(bill, vendor)
 
@@ -152,6 +156,7 @@ def email_purchase_bill(
     return {"message": "Purchase bill email sent successfully.", "to": to_email}
 
 
+# ================= VENDOR PAYMENT =================
 @router.post("/vendor-payment/{payment_no}")
 def email_vendor_payment(
     payment_no: str,
@@ -159,21 +164,18 @@ def email_vendor_payment(
     current_user: User = Depends(require_viewer_or_above),
 ):
     payment = db.get(VendorPayment, payment_no)
-
     if not payment:
         raise HTTPException(status_code=404, detail="Vendor payment not found.")
 
     bill = db.get(PurchaseInvoiceHdr, payment.bill_no)
-
     if not bill:
         raise HTTPException(status_code=404, detail="Linked bill not found.")
 
     vendor = db.get(Vendor, bill.vendor_code)
-
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found.")
 
-    to_email = require_email(getattr(vendor, "email", None), "Vendor")
+    to_email = resolve_email(vendor, "Vendor")
 
     pdf_path = vendor_payment_pdf(payment, vendor)
 
@@ -193,6 +195,7 @@ def email_vendor_payment(
     return {"message": "Vendor payment email sent successfully.", "to": to_email}
 
 
+# ================= CUSTOMER STATEMENT =================
 @router.post("/customer-statement/{customer_code}")
 def email_customer_statement(
     customer_code: str,
@@ -200,11 +203,10 @@ def email_customer_statement(
     current_user: User = Depends(require_viewer_or_above),
 ):
     customer = db.get(Customer, customer_code)
-
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found.")
 
-    to_email = require_email(getattr(customer, "email", None), "Customer")
+    to_email = resolve_email(customer, "Customer")
 
     invoices = (
         db.query(SalesInvoiceHdr)
@@ -234,6 +236,7 @@ def email_customer_statement(
     return {"message": "Customer statement email sent successfully.", "to": to_email}
 
 
+# ================= VENDOR STATEMENT =================
 @router.post("/vendor-statement/{vendor_code}")
 def email_vendor_statement(
     vendor_code: str,
@@ -241,11 +244,10 @@ def email_vendor_statement(
     current_user: User = Depends(require_viewer_or_above),
 ):
     vendor = db.get(Vendor, vendor_code)
-
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found.")
 
-    to_email = require_email(getattr(vendor, "email", None), "Vendor")
+    to_email = resolve_email(vendor, "Vendor")
 
     bills = (
         db.query(PurchaseInvoiceHdr)
