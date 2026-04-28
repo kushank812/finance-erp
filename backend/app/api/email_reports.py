@@ -9,7 +9,7 @@ from app.models.customer import Customer
 from app.models.vendor import Vendor
 from app.models.sales_invoice import SalesInvoiceHdr
 from app.models.purchase_invoice import PurchaseInvoiceHdr
-from app.models.sales_receipt import SalesReceipt
+from app.models.sales_invoice import SalesReceipt
 from app.models.vendor_payment import VendorPayment
 
 from app.services.ai.email_service import EmailService
