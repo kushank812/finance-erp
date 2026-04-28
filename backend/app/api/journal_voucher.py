@@ -27,6 +27,7 @@ VALID_REASON_CODES = {
     "SHORT_PAYMENT_ADJUSTMENT",
     "EXCESS_RECEIPT_ADJUSTMENT",
     "EXCESS_PAYMENT_ADJUSTMENT",
+    "INCREASE_ADJUSTMENT",
     "DISCOUNT_ALLOWED",
     "WRITE_OFF",
     "MANUAL_ADJUSTMENT",
@@ -79,8 +80,34 @@ def _clean_direction(value: str | None) -> str:
 def _clean_narration(value: str | None) -> str | None:
     if value is None:
         return None
+
     text = str(value).strip().upper()
     return text or None
+
+
+def _resolve_reason_code(reference_type: str, direction: str, input_reason_code: str) -> str:
+    """
+    IMPORTANT:
+    Dashboard sign logic depends on reason_code.
+
+    DECREASE = negative impact
+    INCREASE = positive impact
+    EXCESS   = positive impact
+    """
+    direction = str(direction or "").upper()
+    reference_type = str(reference_type or "").upper()
+
+    if direction == "INCREASE":
+        return "INCREASE_ADJUSTMENT"
+
+    if direction == "EXCESS":
+        if reference_type == "SALES_INVOICE":
+            return "EXCESS_RECEIPT_ADJUSTMENT"
+        if reference_type == "PURCHASE_BILL":
+            return "EXCESS_PAYMENT_ADJUSTMENT"
+        return "INCREASE_ADJUSTMENT"
+
+    return _clean_reason_code(input_reason_code)
 
 
 def _raw_balance(grand_total, amount_done, adjusted_amount) -> Decimal:
@@ -200,8 +227,12 @@ def adjust_sales_invoice(
             detail="Adjustment amount must be greater than 0",
         )
 
-    reason_code = _clean_reason_code(payload.reason_code)
     direction = _clean_direction(payload.direction)
+    reason_code = _resolve_reason_code(
+        reference_type="SALES_INVOICE",
+        direction=direction,
+        input_reason_code=payload.reason_code,
+    )
     narration = _clean_narration(payload.narration)
 
     current_balance = to_decimal(invoice.balance)
@@ -386,8 +417,12 @@ def adjust_purchase_bill(
             detail="Adjustment amount must be greater than 0",
         )
 
-    reason_code = _clean_reason_code(payload.reason_code)
     direction = _clean_direction(payload.direction)
+    reason_code = _resolve_reason_code(
+        reference_type="PURCHASE_BILL",
+        direction=direction,
+        input_reason_code=payload.reason_code,
+    )
     narration = _clean_narration(payload.narration)
 
     current_balance = to_decimal(bill.balance)
