@@ -46,16 +46,28 @@ def to_decimal(value) -> Decimal:
         return Decimal("0")
 
 
-def signed_jv_amount(reference_type, amount):
-    amount = to_decimal(amount)
+def signed_jv_amount(reason_code, amount):
+    """
+    Dashboard sign logic:
+    - Excess / Increase / Reversal = positive
+    - Reduce / Short / Round-off / Write-off / Discount = negative
+    """
+    reason = str(reason_code or "").upper()
+    amt = to_decimal(amount)
 
-    if reference_type == "SALES_INVOICE":
-        return amount
+    positive_words = {
+        "EXCESS",
+        "INCREASE",
+        "REVERSAL",
+        "REVERSE",
+        "ADVANCE",
+        "CREDIT",
+    }
 
-    if reference_type == "PURCHASE_BILL":
-        return -amount
+    if any(word in reason for word in positive_words):
+        return amt
 
-    return amount
+    return -amt
 
 
 @router.get("/summary")
@@ -159,6 +171,7 @@ def dashboard_summary(
 
     posted_jvs = db.query(
         JournalVoucherHdr.reference_type,
+        JournalVoucherHdr.reason_code,
         JournalVoucherHdr.amount,
         JournalVoucherHdr.voucher_date,
     ).filter(JournalVoucherHdr.status == "POSTED").all()
@@ -168,9 +181,9 @@ def dashboard_summary(
     jv_sales_amount = Decimal("0")
     jv_purchase_amount = Decimal("0")
 
-    for reference_type, amount, voucher_date in posted_jvs:
+    for reference_type, reason_code, amount, voucher_date in posted_jvs:
         ref_type = str(reference_type or "").upper()
-        signed_amount = signed_jv_amount(ref_type, amount)
+        signed_amount = signed_jv_amount(reason_code, amount)
 
         jv_total_amount += signed_amount
 
@@ -178,10 +191,10 @@ def dashboard_summary(
             jv_today_amount += signed_amount
 
         if ref_type == "SALES_INVOICE":
-            jv_sales_amount += to_decimal(amount)
+            jv_sales_amount += signed_amount
 
         if ref_type == "PURCHASE_BILL":
-            jv_purchase_amount -= to_decimal(amount)
+            jv_purchase_amount += signed_amount
 
     jv_count = db.query(func.count(JournalVoucherHdr.voucher_no)).scalar()
 
@@ -266,20 +279,18 @@ def dashboard_summary(
     jv_trend_rows = db.query(
         extract("year", JournalVoucherHdr.voucher_date),
         extract("month", JournalVoucherHdr.voucher_date),
-        JournalVoucherHdr.reference_type,
+        JournalVoucherHdr.reason_code,
         func.sum(JournalVoucherHdr.amount),
     ).filter(JournalVoucherHdr.status == "POSTED").group_by(
         extract("year", JournalVoucherHdr.voucher_date),
         extract("month", JournalVoucherHdr.voucher_date),
-        JournalVoucherHdr.reference_type,
+        JournalVoucherHdr.reason_code,
     ).all()
 
-    for y, m, reference_type, total in jv_trend_rows:
+    for y, m, reason_code, total in jv_trend_rows:
         if y and m:
             key = month_key(int(y), int(m))
-            trend[key]["jv_amount"] += float(
-                signed_jv_amount(str(reference_type or "").upper(), total)
-            )
+            trend[key]["jv_amount"] += float(signed_jv_amount(reason_code, total))
 
     monthly_trend = [{"month": k, **v} for k, v in sorted(trend.items())]
 
