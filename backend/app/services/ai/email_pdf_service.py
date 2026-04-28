@@ -12,12 +12,21 @@ def money(value):
     return f"{float(value or 0):,.2f}"
 
 
+def get_email(obj):
+    return (
+        getattr(obj, "email", None)
+        or getattr(obj, "email_id", None)
+        or getattr(obj, "customer_email", None)
+        or getattr(obj, "vendor_email", None)
+        or "-"
+    )
+
+
 def create_simple_pdf(title: str, lines: list[str], filename: str) -> str:
     path = EXPORT_DIR / filename
 
     c = canvas.Canvas(str(path), pagesize=A4)
     width, height = A4
-
     y = height - 60
 
     c.setFont("Helvetica-Bold", 18)
@@ -47,6 +56,7 @@ def invoice_pdf(invoice, customer):
     lines = [
         f"Customer: {customer.customer_name}",
         f"Customer Code: {invoice.customer_code}",
+        f"Email: {get_email(customer)}",
         f"Invoice No: {invoice.invoice_no}",
         f"Invoice Date: {invoice.invoice_date}",
         f"Due Date: {invoice.due_date}",
@@ -69,6 +79,7 @@ def invoice_pdf(invoice, customer):
 def receipt_pdf(receipt, customer):
     lines = [
         f"Customer: {customer.customer_name}",
+        f"Email: {get_email(customer)}",
         f"Receipt No: {receipt.receipt_no}",
         f"Invoice No: {receipt.invoice_no}",
         f"Receipt Date: {receipt.receipt_date}",
@@ -88,6 +99,7 @@ def purchase_bill_pdf(bill, vendor):
     lines = [
         f"Vendor: {vendor.vendor_name}",
         f"Vendor Code: {bill.vendor_code}",
+        f"Email: {get_email(vendor)}",
         f"Bill No: {bill.bill_no}",
         f"Bill Date: {bill.bill_date}",
         f"Due Date: {bill.due_date}",
@@ -110,6 +122,7 @@ def purchase_bill_pdf(bill, vendor):
 def vendor_payment_pdf(payment, vendor):
     lines = [
         f"Vendor: {vendor.vendor_name}",
+        f"Email: {get_email(vendor)}",
         f"Payment No: {payment.payment_no}",
         f"Bill No: {payment.bill_no}",
         f"Payment Date: {payment.payment_date}",
@@ -129,7 +142,7 @@ def customer_due_pdf(customer, invoices):
     lines = [
         f"Customer: {customer.customer_name}",
         f"Customer Code: {customer.customer_code}",
-        f"Email: {getattr(customer, 'email', '') or '-'}",
+        f"Email: {get_email(customer)}",
         "",
         "Pending / Outstanding Invoices:",
         "",
@@ -158,7 +171,7 @@ def vendor_due_pdf(vendor, bills):
     lines = [
         f"Vendor: {vendor.vendor_name}",
         f"Vendor Code: {vendor.vendor_code}",
-        f"Email: {getattr(vendor, 'email', '') or '-'}",
+        f"Email: {get_email(vendor)}",
         "",
         "Pending / Outstanding Bills:",
         "",
