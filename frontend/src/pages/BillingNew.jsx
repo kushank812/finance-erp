@@ -42,7 +42,7 @@ const TEMPLATE_OPTIONS = [
   {
     value: "TAX_INVOICE",
     label: "Tax Invoice",
-    hint: "Separate HSN/SAC, unit, and tax percentage per line.",
+    hint: "Product description, unit, quantity, rate, and tax percentage per line.",
   },
   {
     value: "SERVICE_INVOICE",
@@ -54,12 +54,29 @@ const TEMPLATE_OPTIONS = [
 const emptyLine = {
   item_code: "",
   description: "",
-  hsn_sac: "",
   unit: "PCS",
   work_period: "",
   qty: 1,
   rate: 0,
   line_tax_percent: 0,
+};
+
+const visibleInput = {
+  ...input,
+  color: "#0f172a",
+  background: "#ffffff",
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+};
+
+const visibleDisabledInput = {
+  ...disabledInput,
+  color: "#64748b",
+  background: "#f8fafc",
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
 };
 
 function todayISO() {
@@ -102,7 +119,10 @@ function getTemplateLabel(value) {
 }
 
 function getTemplateHint(value) {
-  return TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value))?.hint || "";
+  return (
+    TEMPLATE_OPTIONS.find((x) => x.value === getTemplateValue(value))?.hint ||
+    ""
+  );
 }
 
 function normalizeInvoiceToForm(inv) {
@@ -121,7 +141,6 @@ function normalizeInvoiceToForm(inv) {
         ? inv.lines.map((ln) => ({
             item_code: ln.item_code || "",
             description: ln.description || "",
-            hsn_sac: ln.hsn_sac || "",
             unit: ln.unit || "PCS",
             work_period: ln.work_period || "",
             qty: Number(ln.qty || 0),
@@ -420,7 +439,6 @@ export default function BillingNew() {
       prev.map((ln) => ({
         ...ln,
         description: ln.description || "",
-        hsn_sac: value === "TAX_INVOICE" ? ln.hsn_sac || "" : "",
         unit: value === "TAX_INVOICE" ? ln.unit || "PCS" : "",
         work_period: value === "SERVICE_INVOICE" ? ln.work_period || "" : "",
         line_tax_percent:
@@ -498,10 +516,7 @@ export default function BillingNew() {
       .map((l) => ({
         item_code: l.item_code,
         description: String(l.description || "").trim() || null,
-        hsn_sac:
-          invoiceTemplate === "TAX_INVOICE"
-            ? String(l.hsn_sac || "").trim() || null
-            : null,
+        hsn_sac: null,
         unit:
           invoiceTemplate === "TAX_INVOICE"
             ? String(l.unit || "").trim() || "PCS"
@@ -731,7 +746,7 @@ export default function BillingNew() {
             <select
               value={invoiceTemplate}
               onChange={(e) => handleTemplateChange(e.target.value)}
-              style={disableFullEditFields ? disabledInput : input}
+              style={disableFullEditFields ? visibleDisabledInput : visibleInput}
               disabled={disableFullEditFields}
             >
               {TEMPLATE_OPTIONS.map((t) => (
@@ -757,7 +772,7 @@ export default function BillingNew() {
             <AppDateInput
               value={invoiceDate}
               onChange={setInvoiceDate}
-              style={disableFullEditFields ? disabledInput : input}
+              style={disableFullEditFields ? visibleDisabledInput : visibleInput}
               disabled={disableFullEditFields}
             />
           </div>
@@ -767,7 +782,7 @@ export default function BillingNew() {
             <AppDateInput
               value={dueDate}
               onChange={setDueDate}
-              style={!canChangeDueDateRemark ? disabledInput : input}
+              style={!canChangeDueDateRemark ? visibleDisabledInput : visibleInput}
               disabled={!canChangeDueDateRemark}
             />
           </div>
@@ -806,7 +821,7 @@ export default function BillingNew() {
                 {invoiceTemplate === "STANDARD"
                   ? "Standard invoice stores item, quantity, rate, and line amount."
                   : invoiceTemplate === "TAX_INVOICE"
-                  ? "Tax invoice stores item, description, HSN/SAC, unit, line tax %, line tax amount, and total."
+                  ? "Tax invoice stores item, description, unit, line tax %, line tax amount, and total."
                   : "Service invoice stores service description, work period, hours/days, rate, and service amount."}
               </div>
             </div>
@@ -851,7 +866,7 @@ export default function BillingNew() {
           </button>
         </div>
 
-        <div style={tableWrap}>
+        <div style={lineTableWrap}>
           {invoiceTemplate === "TAX_INVOICE" ? (
             <TaxLineTable
               lines={lines}
@@ -941,7 +956,7 @@ export default function BillingNew() {
 
 function StandardLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines }) {
   return (
-    <table style={table}>
+    <table style={{ ...table, minWidth: 760 }}>
       <thead>
         <tr>
           <th style={th}>Item</th>
@@ -956,7 +971,7 @@ function StandardLineTable({ lines, items, itemMap, setLine, removeRow, canEditL
           const lineTotal = round2(Number(ln.qty || 0) * Number(ln.rate || 0));
           return (
             <tr key={i} style={tr}>
-              <td style={td}>
+              <td style={tdWide}>
                 <ItemSelect
                   value={ln.item_code}
                   items={items}
@@ -971,7 +986,7 @@ function StandardLineTable({ lines, items, itemMap, setLine, removeRow, canEditL
                   type="number"
                   value={ln.qty}
                   onChange={(e) => setLine(i, { qty: e.target.value })}
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
@@ -980,7 +995,7 @@ function StandardLineTable({ lines, items, itemMap, setLine, removeRow, canEditL
                   type="number"
                   value={ln.rate}
                   onChange={(e) => setLine(i, { rate: e.target.value })}
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
@@ -998,12 +1013,11 @@ function StandardLineTable({ lines, items, itemMap, setLine, removeRow, canEditL
 
 function TaxLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines }) {
   return (
-    <table style={table}>
+    <table style={{ ...table, minWidth: 980 }}>
       <thead>
         <tr>
           <th style={th}>Product</th>
           <th style={th}>Description</th>
-          <th style={th}>HSN/SAC</th>
           <th style={th}>Unit</th>
           <th style={th}>Qty</th>
           <th style={th}>Rate</th>
@@ -1031,51 +1045,47 @@ function TaxLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines 
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdWide}>
                 <input
                   value={ln.description}
                   onChange={(e) => setLine(i, { description: e.target.value })}
                   placeholder="Product description"
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
-              <td style={tdSmall}>
-                <input
-                  value={ln.hsn_sac}
-                  onChange={(e) => setLine(i, { hsn_sac: e.target.value })}
-                  placeholder="HSN"
-                  style={canEditLines ? input : disabledInput}
-                  disabled={!canEditLines}
-                />
-              </td>
+
               <td style={tdSmall}>
                 <input
                   value={ln.unit}
                   onChange={(e) => setLine(i, { unit: e.target.value })}
                   placeholder="PCS"
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdSmall}>
                 <input
                   type="number"
                   value={ln.qty}
                   onChange={(e) => setLine(i, { qty: e.target.value })}
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdSmall}>
                 <input
                   type="number"
                   value={ln.rate}
                   onChange={(e) => setLine(i, { rate: e.target.value })}
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdSmall}>
                 <input
                   type="number"
@@ -1083,12 +1093,14 @@ function TaxLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines 
                   onChange={(e) =>
                     setLine(i, { line_tax_percent: e.target.value })
                   }
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdAmount}>{round2(tax)}</td>
               <td style={tdAmount}>{round2(total)}</td>
+
               <td style={tdAction}>
                 <RemoveButton canEditLines={canEditLines} onClick={() => removeRow(i)} />
               </td>
@@ -1102,7 +1114,7 @@ function TaxLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines 
 
 function ServiceLineTable({ lines, items, itemMap, setLine, removeRow, canEditLines }) {
   return (
-    <table style={table}>
+    <table style={{ ...table, minWidth: 980 }}>
       <thead>
         <tr>
           <th style={th}>Service Item</th>
@@ -1130,43 +1142,49 @@ function ServiceLineTable({ lines, items, itemMap, setLine, removeRow, canEditLi
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdWide}>
                 <input
                   value={ln.description}
                   onChange={(e) => setLine(i, { description: e.target.value })}
                   placeholder="Consulting / labour / repair work"
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdWide}>
                 <input
                   value={ln.work_period}
                   onChange={(e) => setLine(i, { work_period: e.target.value })}
                   placeholder="Apr 2026 / 01-04 to 10-04"
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdSmall}>
                 <input
                   type="number"
                   value={ln.qty}
                   onChange={(e) => setLine(i, { qty: e.target.value })}
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdSmall}>
                 <input
                   type="number"
                   value={ln.rate}
                   onChange={(e) => setLine(i, { rate: e.target.value })}
-                  style={canEditLines ? input : disabledInput}
+                  style={canEditLines ? visibleInput : visibleDisabledInput}
                   disabled={!canEditLines}
                 />
               </td>
+
               <td style={tdAmount}>{round2(total)}</td>
+
               <td style={tdAction}>
                 <RemoveButton canEditLines={canEditLines} onClick={() => removeRow(i)} />
               </td>
@@ -1192,7 +1210,7 @@ function ItemSelect({ value, items, itemMap, setLine, index, disabled }) {
           rate: it ? Number(it.selling_price || 0) : 0,
         });
       }}
-      style={disabled ? disabledInput : input}
+      style={disabled ? visibleDisabledInput : visibleInput}
       disabled={disabled}
     >
       <option value="">-- Select --</option>
@@ -1235,14 +1253,14 @@ function CustomerSelect({
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
         placeholder="Search by code, name, city, mobile"
-        style={disabled ? disabledInput : input}
+        style={disabled ? visibleDisabledInput : visibleInput}
         disabled={disabled}
       />
 
       <select
         value={customerCode}
         onChange={(e) => setCustomerCode(e.target.value)}
-        style={disabled ? disabledInput : input}
+        style={disabled ? visibleDisabledInput : visibleInput}
         disabled={disabled}
       >
         <option value="">-- Select Customer --</option>
@@ -1385,9 +1403,16 @@ const infoMiniValue = {
   wordBreak: "break-word",
 };
 
+const lineTableWrap = {
+  ...tableWrap,
+  overflowX: "auto",
+  width: "100%",
+};
+
 const tdSmall = {
   ...td,
-  width: 130,
+  width: 120,
+  minWidth: 120,
 };
 
 const tdWide = {
@@ -1400,6 +1425,7 @@ const tdAmount = {
   fontWeight: 900,
   color: "#0f172a",
   minWidth: 120,
+  whiteSpace: "nowrap",
 };
 
 const tdAction = {
