@@ -33,6 +33,7 @@ from app.api.audit_meta import router as audit_meta_router
 from app.api.ai_interpreter import router as ai_router
 from app.api.ai_chat import router as ai_chat_router
 from app.api.journal_voucher import router as journal_voucher_router
+from app.api import email_reports
 
 app = FastAPI(
     title="Finance AP/AR Backend",
@@ -83,7 +84,7 @@ app.include_router(audit_meta_router)
 app.include_router(ai_router)
 app.include_router(ai_chat_router)
 app.include_router(journal_voucher_router)
-
+app.include_router(email_reports.router)
 
 @app.get("/health")
 def health():
