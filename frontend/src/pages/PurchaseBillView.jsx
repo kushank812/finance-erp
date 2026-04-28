@@ -4,6 +4,7 @@ import { apiDelete, apiGet, apiPatch } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import AppDateInput from "../components/ui/AppDateInput";
+import SendEmailButton from "../components/ui/SendEmailButton";
 import { formatDateForDisplay, toISODate } from "../utils/date";
 import {
   page,
@@ -277,7 +278,7 @@ export default function PurchaseBillView({ currentUser }) {
       <PageHeaderBlock
         eyebrowText="PURCHASE"
         title="Purchase Bill Management"
-        subtitle="Search, view, edit, cancel, and delete purchase bills."
+        subtitle="Search, view, edit, cancel, delete, and email purchase bills."
         actions={
           !isViewer ? (
             <button
@@ -405,7 +406,7 @@ export default function PurchaseBillView({ currentUser }) {
         </div>
 
         <div style={tableWrap}>
-          <table style={{ ...table, minWidth: 1120 }}>
+          <table style={{ ...table, minWidth: 1260 }}>
             <thead>
               <tr>
                 <th style={th}>Bill No</th>
@@ -490,6 +491,13 @@ export default function PurchaseBillView({ currentUser }) {
                           >
                             View
                           </button>
+
+                          <SendEmailButton
+                            endpoint={`/email/purchase-bill/${encodeURIComponent(billNo)}`}
+                            label="Email"
+                            successMessage="Purchase bill email sent successfully."
+                            compact
+                          />
 
                           {!isViewer && (
                             <>

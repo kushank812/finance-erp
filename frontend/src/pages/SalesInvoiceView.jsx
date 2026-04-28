@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet } from "../api/client";
 import { formatDateForDisplay } from "../utils/date";
+import SendEmailButton from "../components/ui/SendEmailButton";
 
 function money(n) {
   return Number(n || 0).toFixed(2);
@@ -53,7 +54,12 @@ export default function SalesInvoiceView() {
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 18 }}>
       <div
-        style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
       >
         <div>
           <h2 style={{ margin: 0, color: "#fff" }}>Sales Invoice</h2>
@@ -62,10 +68,19 @@ export default function SalesInvoiceView() {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
           <button onClick={() => nav(-1)} style={btnGhost} type="button">
             Back
           </button>
+
+          {doc && !loading && (
+            <SendEmailButton
+              endpoint={`/email/sales-invoice/${encodeURIComponent(invoiceNo)}`}
+              label="Email Invoice"
+              successMessage="Invoice email sent successfully."
+            />
+          )}
+
           <button
             onClick={() => window.print()}
             style={btnPrimary}
@@ -186,7 +201,14 @@ function TotalRow({ label, value, strong }) {
 }
 
 const paper = { background: "white", padding: 16, borderRadius: 14 };
-const docHeader = { display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
+
+const docHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
 const companyName = { fontSize: 18, fontWeight: 900, color: "#111" };
 const muted = { fontSize: 12, color: "#666" };
 const bigId = { fontSize: 18, fontWeight: 900, color: "#111" };
@@ -197,6 +219,7 @@ const metaGrid = {
   gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
   gap: 12,
 };
+
 const infoBox = { background: "#f7f8fa", padding: 12, borderRadius: 10 };
 const infoLabel = { fontSize: 12, color: "#666" };
 const infoValue = { fontSize: 14, fontWeight: 800, color: "#111" };
@@ -210,13 +233,16 @@ const btnPrimary = {
   borderRadius: 10,
   border: "none",
   cursor: "pointer",
+  fontWeight: 800,
 };
+
 const btnGhost = {
   padding: 10,
   background: "#eee",
   borderRadius: 10,
   border: "none",
   cursor: "pointer",
+  fontWeight: 800,
 };
 
 const msgErr = { color: "red", marginTop: 10 };

@@ -5,6 +5,8 @@ import { apiDelete, apiGet } from "../api/client";
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { formatDateForDisplay } from "../utils/date";
+import SendEmailButton from "../components/ui/SendEmailButton";
+
 import {
   page,
   stack,
@@ -124,6 +126,14 @@ export default function VendorPaymentView() {
             <button type="button" onClick={() => nav(-1)} style={btnSecondary}>
               Back
             </button>
+
+            {doc && !loading && (
+              <SendEmailButton
+                endpoint={`/email/vendor-payment/${encodeURIComponent(paymentNo)}`}
+                label="Email Vendor Payment"
+                successMessage="Vendor payment email sent successfully."
+              />
+            )}
 
             <button
               type="button"

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiDelete, apiGet } from "../api/client";
+
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
 import { formatDateForDisplay } from "../utils/date";
+import SendEmailButton from "../components/ui/SendEmailButton";
+
 import {
   page,
   stack,
@@ -60,13 +63,9 @@ export default function ReceiptView() {
           setInvoice(invoiceData || null);
         }
       } catch (e) {
-        if (active) {
-          setErr(String(e.message || e));
-        }
+        if (active) setErr(String(e.message || e));
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
@@ -144,6 +143,14 @@ export default function ReceiptView() {
             <button type="button" onClick={() => nav(-1)} style={btnSecondary}>
               Back
             </button>
+
+            {receipt && !loading && (
+              <SendEmailButton
+                endpoint={`/email/receipt/${encodeURIComponent(receiptNo)}`}
+                label="Email Receipt"
+                successMessage="Receipt email sent successfully."
+              />
+            )}
 
             <button
               type="button"

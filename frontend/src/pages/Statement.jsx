@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../api/client";
 import AppDateInput from "../components/ui/AppDateInput";
+import SendEmailButton from "../components/ui/SendEmailButton";
 
 import AlertBox from "../components/ui/AlertBox";
 import PageHeaderBlock from "../components/ui/PageHeaderBlock";
@@ -541,6 +542,9 @@ export default function Statement() {
     setToDate("");
   }
 
+  const canEmailCustomerStatement = mode === "CUSTOMER" && !!customerCode;
+  const canEmailVendorStatement = mode === "VENDOR" && !!vendorCode;
+
   return (
     <div style={page}>
       <PageHeaderBlock
@@ -653,6 +657,22 @@ export default function Statement() {
         </div>
 
         <div style={actionRow}>
+          {canEmailCustomerStatement ? (
+            <SendEmailButton
+              endpoint={`/email/customer-statement/${encodeURIComponent(customerCode)}`}
+              label="Email Customer Statement"
+              successMessage="Customer statement email sent successfully."
+            />
+          ) : null}
+
+          {canEmailVendorStatement ? (
+            <SendEmailButton
+              endpoint={`/email/vendor-statement/${encodeURIComponent(vendorCode)}`}
+              label="Email Vendor Statement"
+              successMessage="Vendor statement email sent successfully."
+            />
+          ) : null}
+
           <button
             type="button"
             onClick={handleClearDateFilter}
