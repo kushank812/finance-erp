@@ -36,16 +36,17 @@ function formatDate(value) {
   return formatDateForDisplay(value) || "-";
 }
 
-function sortOpenBills(rows) {
+function sortBills(rows) {
   return [...rows].sort((a, b) => {
     const dateA = toISODate(a?.bill_date) || "";
     const dateB = toISODate(b?.bill_date) || "";
     if (dateB !== dateA) return dateB.localeCompare(dateA);
 
-    return String(b?.bill_no || "").localeCompare(String(a?.bill_no || ""), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    return String(b?.bill_no || "").localeCompare(
+      String(a?.bill_no || ""),
+      undefined,
+      { numeric: true, sensitivity: "base" }
+    );
   });
 }
 
@@ -83,12 +84,14 @@ export default function VendorPaymentNew() {
       const allBills = Array.isArray(b) ? b : [];
       const allVendors = Array.isArray(v) ? v : [];
 
-      const openBills = allBills.filter((r) => num(r.balance) > 0);
+      const selectableBills = allBills.filter(
+        (r) => String(r.status || "").toUpperCase() !== "CANCELLED"
+      );
 
-      setBills(sortOpenBills(openBills));
+      setBills(sortBills(selectableBills));
       setVendors(allVendors);
 
-      if (billNo && !openBills.some((r) => r.bill_no === billNo)) {
+      if (billNo && !selectableBills.some((r) => r.bill_no === billNo)) {
         setBillNo("");
         setBillSearch("");
       }
@@ -101,6 +104,7 @@ export default function VendorPaymentNew() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -135,6 +139,7 @@ export default function VendorPaymentNew() {
       const total = String(r.grand_total || "");
       const balance = String(r.balance || "");
       const billDate = String(r.bill_date || "").toUpperCase();
+      const status = String(r.status || "").toUpperCase();
 
       return (
         bill.includes(q) ||
@@ -142,7 +147,8 @@ export default function VendorPaymentNew() {
         vendorName.includes(q) ||
         total.includes(q) ||
         balance.includes(q) ||
-        billDate.includes(q)
+        billDate.includes(q) ||
+        status.includes(q)
       );
     });
   }, [bills, billSearch, vendorNameByCode]);
@@ -152,7 +158,10 @@ export default function VendorPaymentNew() {
     [bills, billNo]
   );
 
-  const maxPayable = selected ? num(selected.balance) : 0;
+  const currentBalance = selected ? num(selected.balance) : 0;
+  const amountNumber = num(amount);
+  const excessAmount =
+    selected && amountNumber > currentBalance ? amountNumber - currentBalance : 0;
 
   function selectBill(row) {
     const vendorName = vendorNameByCode.get(row.vendor_code) || "";
@@ -196,13 +205,6 @@ export default function VendorPaymentNew() {
       return;
     }
 
-    if (amt > maxPayable) {
-      setErr(
-        `Payment amount cannot exceed bill balance. Balance is ${money(maxPayable)}.`
-      );
-      return;
-    }
-
     try {
       setSaving(true);
 
@@ -219,7 +221,19 @@ export default function VendorPaymentNew() {
         return;
       }
 
-      setOk(`Payment saved successfully. Payment No: ${res.payment_no}`);
+      const excess = num(res?.excess_amount);
+      const autoJvNo = res?.auto_jv_no || "";
+
+      setOk(
+        `Payment saved successfully. Payment No: ${res.payment_no}${
+          excess > 0
+            ? `. Excess amount ${money(excess)} recorded through JV ${
+                autoJvNo || "-"
+              }.`
+            : "."
+        }`
+      );
+
       setAmount("");
       setRemark("");
       await load();
@@ -237,7 +251,7 @@ export default function VendorPaymentNew() {
       <PageHeaderBlock
         eyebrowText="VENDOR PAYMENTS"
         title="Create Vendor Payment"
-        subtitle="Record a payment against an open purchase bill."
+        subtitle="Record vendor payment. Extra amount is allowed and will be treated as vendor advance / excess payment by backend."
         actions={
           <>
             <button
@@ -264,7 +278,7 @@ export default function VendorPaymentNew() {
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
         {ok ? <AlertBox kind="success" message={ok} /> : null}
-        {loading ? <AlertBox kind="info" message="Loading unpaid bills..." /> : null}
+        {loading ? <AlertBox kind="info" message="Loading purchase bills..." /> : null}
       </div>
 
       <section style={card}>
@@ -272,7 +286,9 @@ export default function VendorPaymentNew() {
           <div>
             <h2 style={cardTitle}>Payment Details</h2>
             <p style={cardSubtitle}>
-              Select an unpaid purchase bill, enter the paid amount, and save the payment.
+              Select a purchase bill, enter the paid amount, and save the
+              payment. If payment is higher than current balance, the extra
+              amount is treated as vendor advance.
             </p>
           </div>
           <div style={badgeBlue}>NEW</div>
@@ -292,7 +308,7 @@ export default function VendorPaymentNew() {
                 }
               }}
               onFocus={() => setShowBillList(true)}
-              placeholder="Search by bill no, vendor, total, balance"
+              placeholder="Search by bill no, vendor, total, balance, status"
               style={input}
               disabled={loading || saving}
             />
@@ -306,7 +322,7 @@ export default function VendorPaymentNew() {
 
                 <div style={dropdownList}>
                   {filteredBills.length === 0 ? (
-                    <div style={emptyRow}>No matching unpaid bills found.</div>
+                    <div style={emptyRow}>No matching purchase bills found.</div>
                   ) : (
                     filteredBills.map((r) => {
                       const vendorName = vendorNameByCode.get(r.vendor_code) || "";
@@ -324,13 +340,15 @@ export default function VendorPaymentNew() {
                         >
                           <div style={dropdownTitle}>{r.bill_no}</div>
                           <div style={dropdownSub}>
-                            Vendor: {vendorName || r.vendor_code}
+                            Vendor: {vendorName || r.vendor_code} | Status:{" "}
+                            {r.status || "-"}
                           </div>
                           <div style={dropdownSub}>
                             Bill Date: {r.bill_date ? formatDate(r.bill_date) : "-"}
                           </div>
                           <div style={dropdownSub}>
-                            Total: {money(r.grand_total)} | Balance: {money(r.balance)}
+                            Total: {money(r.grand_total)} | Balance:{" "}
+                            {money(r.balance)}
                           </div>
                         </button>
                       );
@@ -341,7 +359,8 @@ export default function VendorPaymentNew() {
             )}
 
             <div style={hintLine}>
-              Only purchase bills with outstanding balance are shown.
+              Cancelled bills are hidden. Extra payment is allowed and recorded
+              as vendor advance / excess payment.
             </div>
           </div>
 
@@ -352,7 +371,15 @@ export default function VendorPaymentNew() {
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             disabled={loading || saving}
-            hint={selected ? `Maximum payable: ${money(maxPayable)}` : ""}
+            hint={
+              selected
+                ? excessAmount > 0
+                  ? `Balance: ${money(currentBalance)} | Excess/Advance: ${money(
+                      excessAmount
+                    )}`
+                  : `Current balance: ${money(currentBalance)}`
+                : ""
+            }
           />
 
           <FormField
@@ -380,6 +407,7 @@ export default function VendorPaymentNew() {
                   : "-"
               }
             />
+            <InfoMini label="Status" value={selected?.status || "-"} />
             <InfoMini
               label="Bill Date"
               value={selected?.bill_date ? formatDate(selected.bill_date) : "-"}
@@ -392,14 +420,19 @@ export default function VendorPaymentNew() {
               label="Current Balance"
               value={selected ? money(selected.balance) : "-"}
             />
+            <InfoMini
+              label="Excess / Advance"
+              value={excessAmount > 0 ? money(excessAmount) : "0.00"}
+            />
           </div>
         </div>
 
         <div style={footerGrid}>
           <div style={noteBox}>
-            Save the vendor payment only after verifying the selected purchase bill
-            and paid amount. The payment amount cannot be greater than the current
-            outstanding balance.
+            Save the vendor payment only after verifying the selected purchase
+            bill and paid amount. If the payment is higher than the bill balance,
+            the backend will record the extra amount as vendor advance / excess
+            payment through JV handling.
           </div>
 
           <div style={summaryCard}>
@@ -411,7 +444,11 @@ export default function VendorPaymentNew() {
             />
             <SummaryRow
               label="Open Balance"
-              value={selected ? money(maxPayable) : "-"}
+              value={selected ? money(currentBalance) : "-"}
+            />
+            <SummaryRow
+              label="Excess / Advance"
+              value={excessAmount > 0 ? money(excessAmount) : "0.00"}
             />
             <SummaryRow
               label="Amount Now"

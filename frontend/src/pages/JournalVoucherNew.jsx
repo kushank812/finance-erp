@@ -42,10 +42,11 @@ function sortOpenInvoices(rows) {
     const dateB = toISODate(b?.invoice_date) || "";
     if (dateB !== dateA) return dateB.localeCompare(dateA);
 
-    return String(b?.invoice_no || "").localeCompare(String(a?.invoice_no || ""), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    return String(b?.invoice_no || "").localeCompare(
+      String(a?.invoice_no || ""),
+      undefined,
+      { numeric: true, sensitivity: "base" }
+    );
   });
 }
 
@@ -55,10 +56,11 @@ function sortOpenBills(rows) {
     const dateB = toISODate(b?.bill_date) || "";
     if (dateB !== dateA) return dateB.localeCompare(dateA);
 
-    return String(b?.bill_no || "").localeCompare(String(a?.bill_no || ""), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    return String(b?.bill_no || "").localeCompare(
+      String(a?.bill_no || ""),
+      undefined,
+      { numeric: true, sensitivity: "base" }
+    );
   });
 }
 
@@ -67,14 +69,34 @@ const REASON_OPTIONS = [
   "ROUND_OFF",
   "SHORT_RECEIPT_ADJUSTMENT",
   "SHORT_PAYMENT_ADJUSTMENT",
+  "EXCESS_RECEIPT_ADJUSTMENT",
+  "EXCESS_PAYMENT_ADJUSTMENT",
   "DISCOUNT_ALLOWED",
   "WRITE_OFF",
+];
+
+const DIRECTION_OPTIONS = [
+  {
+    value: "DECREASE",
+    label: "Reduce Balance",
+    hint: "Use for short receipt, round-off, discount, write-off.",
+  },
+  {
+    value: "INCREASE",
+    label: "Increase Balance",
+    hint: "Use when you need to reverse or increase outstanding balance.",
+  },
+  {
+    value: "EXCESS",
+    label: "Excess / Credit Adjustment",
+    hint: "Use when client/vendor paid extra and it should be treated as credit.",
+  },
 ];
 
 export default function JournalVoucherNew() {
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState("AR"); // AR = invoice, AP = purchase bill
+  const [mode, setMode] = useState("AR");
 
   const [invoices, setInvoices] = useState([]);
   const [bills, setBills] = useState([]);
@@ -87,6 +109,7 @@ export default function JournalVoucherNew() {
 
   const [amount, setAmount] = useState("");
   const [reasonCode, setReasonCode] = useState("MANUAL_ADJUSTMENT");
+  const [direction, setDirection] = useState("DECREASE");
   const [narration, setNarration] = useState("");
 
   const [err, setErr] = useState("");
@@ -114,17 +137,23 @@ export default function JournalVoucherNew() {
       const safeCustomers = Array.isArray(c) ? c : [];
       const safeVendors = Array.isArray(v) ? v : [];
 
-      const openInvoices = safeInvoices.filter((r) => num(r.balance) > 0);
-      const openBills = safeBills.filter((r) => num(r.balance) > 0);
+      const selectableInvoices = safeInvoices.filter(
+        (r) => String(r.status || "").toUpperCase() !== "CANCELLED"
+      );
+      const selectableBills = safeBills.filter(
+        (r) => String(r.status || "").toUpperCase() !== "CANCELLED"
+      );
 
-      setInvoices(sortOpenInvoices(openInvoices));
-      setBills(sortOpenBills(openBills));
+      setInvoices(sortOpenInvoices(selectableInvoices));
+      setBills(sortOpenBills(selectableBills));
       setCustomers(safeCustomers);
       setVendors(safeVendors);
 
-      const currentRows = mode === "AR" ? openInvoices : openBills;
+      const currentRows = mode === "AR" ? selectableInvoices : selectableBills;
       const stillExists = currentRows.some((r) =>
-        mode === "AR" ? r.invoice_no === referenceNo : r.bill_no === referenceNo
+        mode === "AR"
+          ? r.invoice_no === referenceNo
+          : r.bill_no === referenceNo
       );
 
       if (referenceNo && !stillExists) {
@@ -149,6 +178,8 @@ export default function JournalVoucherNew() {
     setShowRefList(false);
     setAmount("");
     setNarration("");
+    setDirection("DECREASE");
+    setReasonCode("MANUAL_ADJUSTMENT");
     setErr("");
     setOk("");
   }, [mode]);
@@ -224,20 +255,25 @@ export default function JournalVoucherNew() {
     );
   }, [activeRows, referenceNo, mode]);
 
-  const maxAdjustable = selected ? num(selected.balance) : 0;
+  const currentBalance = selected ? num(selected.balance) : 0;
+  const selectedDirection = DIRECTION_OPTIONS.find((x) => x.value === direction);
 
   function selectReference(row) {
     if (mode === "AR") {
       const customerName = customerNameByCode.get(row.customer_code) || "";
       setReferenceNo(row.invoice_no);
       setReferenceSearch(
-        `${row.invoice_no} | ${row.customer_code}${customerName ? " - " + customerName : ""} | BAL ${money(row.balance)}`
+        `${row.invoice_no} | ${row.customer_code}${
+          customerName ? " - " + customerName : ""
+        } | BAL ${money(row.balance)}`
       );
     } else {
       const vendorName = vendorNameByCode.get(row.vendor_code) || "";
       setReferenceNo(row.bill_no);
       setReferenceSearch(
-        `${row.bill_no} | ${row.vendor_code}${vendorName ? " - " + vendorName : ""} | BAL ${money(row.balance)}`
+        `${row.bill_no} | ${row.vendor_code}${
+          vendorName ? " - " + vendorName : ""
+        } | BAL ${money(row.balance)}`
       );
     }
 
@@ -249,6 +285,7 @@ export default function JournalVoucherNew() {
     setReferenceSearch("");
     setAmount("");
     setReasonCode("MANUAL_ADJUSTMENT");
+    setDirection("DECREASE");
     setNarration("");
     setErr("");
     setOk("");
@@ -275,9 +312,11 @@ export default function JournalVoucherNew() {
       return;
     }
 
-    if (amt > maxAdjustable) {
+    if (direction === "DECREASE" && amt > currentBalance) {
       setErr(
-        `Adjustment amount cannot exceed current balance. Balance is ${money(maxAdjustable)}.`
+        `Reduce Balance adjustment cannot exceed current balance. Balance is ${money(
+          currentBalance
+        )}. Use Excess / Credit Adjustment for extra payment cases.`
       );
       return;
     }
@@ -287,12 +326,17 @@ export default function JournalVoucherNew() {
 
       const url =
         mode === "AR"
-          ? `/journal-vouchers/adjust-sales-invoice/${encodeURIComponent(referenceNo)}`
-          : `/journal-vouchers/adjust-purchase-bill/${encodeURIComponent(referenceNo)}`;
+          ? `/journal-vouchers/adjust-sales-invoice/${encodeURIComponent(
+              referenceNo
+            )}`
+          : `/journal-vouchers/adjust-purchase-bill/${encodeURIComponent(
+              referenceNo
+            )}`;
 
       const res = await apiPost(url, {
         amount: amt,
         reason_code: reasonCode,
+        direction,
         narration: narration?.trim() || null,
       });
 
@@ -319,7 +363,7 @@ export default function JournalVoucherNew() {
       <PageHeaderBlock
         eyebrowText="JOURNAL VOUCHER"
         title="Create Adjustment Voucher"
-        subtitle="Create a non-cash adjustment against an open invoice or purchase bill."
+        subtitle="Create short-payment, reverse, round-off, write-off, or excess-payment adjustments."
         actions={
           <>
             <button
@@ -346,7 +390,7 @@ export default function JournalVoucherNew() {
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
         {ok ? <AlertBox kind="success" message={ok} /> : null}
-        {loading ? <AlertBox kind="info" message="Loading open documents..." /> : null}
+        {loading ? <AlertBox kind="info" message="Loading documents..." /> : null}
       </div>
 
       <section style={card}>
@@ -354,7 +398,8 @@ export default function JournalVoucherNew() {
           <div>
             <h2 style={cardTitle}>Adjustment Details</h2>
             <p style={cardSubtitle}>
-              Select AR or AP mode, pick an open document, then create the adjustment voucher.
+              Select AR or AP mode, pick a document, choose the adjustment type,
+              then create the voucher.
             </p>
           </div>
           <div style={badgeBlue}>NEW</div>
@@ -414,7 +459,7 @@ export default function JournalVoucherNew() {
 
                 <div style={dropdownList}>
                   {filteredRows.length === 0 ? (
-                    <div style={emptyRow}>No matching open documents found.</div>
+                    <div style={emptyRow}>No matching documents found.</div>
                   ) : (
                     filteredRows.map((r) => {
                       const active =
@@ -423,12 +468,14 @@ export default function JournalVoucherNew() {
                           : r.bill_no === referenceNo;
 
                       const title = mode === "AR" ? r.invoice_no : r.bill_no;
-                      const partyCode = mode === "AR" ? r.customer_code : r.vendor_code;
+                      const partyCode =
+                        mode === "AR" ? r.customer_code : r.vendor_code;
                       const partyName =
                         mode === "AR"
                           ? customerNameByCode.get(r.customer_code) || ""
                           : vendorNameByCode.get(r.vendor_code) || "";
-                      const docDate = mode === "AR" ? r.invoice_date : r.bill_date;
+                      const docDate =
+                        mode === "AR" ? r.invoice_date : r.bill_date;
 
                       return (
                         <button
@@ -442,13 +489,15 @@ export default function JournalVoucherNew() {
                         >
                           <div style={dropdownTitle}>{title}</div>
                           <div style={dropdownSub}>
-                            {mode === "AR" ? "Customer" : "Vendor"}: {partyName || partyCode}
+                            {mode === "AR" ? "Customer" : "Vendor"}:{" "}
+                            {partyName || partyCode}
                           </div>
                           <div style={dropdownSub}>
                             Date: {docDate ? formatDate(docDate) : "-"}
                           </div>
                           <div style={dropdownSub}>
-                            Total: {money(r.grand_total)} | Balance: {money(r.balance)}
+                            Total: {money(r.grand_total)} | Balance:{" "}
+                            {money(r.balance)}
                           </div>
                         </button>
                       );
@@ -459,7 +508,8 @@ export default function JournalVoucherNew() {
             )}
 
             <div style={hintLine}>
-              Only open documents with outstanding balance are shown.
+              Cancelled documents are hidden. Paid documents can still be selected
+              if available for excess or reverse adjustment.
             </div>
           </div>
 
@@ -470,8 +520,31 @@ export default function JournalVoucherNew() {
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             disabled={loading || saving}
-            hint={selected ? `Maximum adjustable: ${money(maxAdjustable)}` : ""}
+            hint={
+              selected
+                ? direction === "DECREASE"
+                  ? `Maximum reduce amount: ${money(currentBalance)}`
+                  : `Current balance: ${money(currentBalance)}`
+                : ""
+            }
           />
+
+          <div style={field}>
+            <label style={labelStyle}>Adjustment Type</label>
+            <select
+              value={direction}
+              onChange={(e) => setDirection(e.target.value)}
+              style={input}
+              disabled={loading || saving}
+            >
+              {DIRECTION_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <div style={hintLine}>{selectedDirection?.hint}</div>
+          </div>
 
           <div style={field}>
             <label style={labelStyle}>Reason Code</label>
@@ -520,8 +593,10 @@ export default function JournalVoucherNew() {
               value={
                 selected
                   ? mode === "AR"
-                    ? customerNameByCode.get(selected.customer_code) || selected.customer_code
-                    : vendorNameByCode.get(selected.vendor_code) || selected.vendor_code
+                    ? customerNameByCode.get(selected.customer_code) ||
+                      selected.customer_code
+                    : vendorNameByCode.get(selected.vendor_code) ||
+                      selected.vendor_code
                   : "-"
               }
             />
@@ -529,7 +604,9 @@ export default function JournalVoucherNew() {
               label="Document Date"
               value={
                 selected
-                  ? formatDate(mode === "AR" ? selected.invoice_date : selected.bill_date)
+                  ? formatDate(
+                      mode === "AR" ? selected.invoice_date : selected.bill_date
+                    )
                   : "-"
               }
             />
@@ -541,7 +618,11 @@ export default function JournalVoucherNew() {
               label="Cash Settled"
               value={
                 selected
-                  ? money(mode === "AR" ? selected.amount_received : selected.amount_paid)
+                  ? money(
+                      mode === "AR"
+                        ? selected.amount_received
+                        : selected.amount_paid
+                    )
                   : "-"
               }
             />
@@ -554,10 +635,10 @@ export default function JournalVoucherNew() {
 
         <div style={footerGrid}>
           <div style={noteBox}>
-            Use Adjustment Voucher only for non-cash settlement differences such as
-            round-off, short receipt, short payment, discount, write-off, or manual
-            accounting adjustment. Do not use it as a replacement for actual receipt
-            or vendor payment entry.
+            Use <b>Reduce Balance</b> for short receipt/payment, round-off,
+            discount, or write-off. Use <b>Increase Balance</b> for reversal or
+            correction. Use <b>Excess / Credit Adjustment</b> when the client or
+            vendor paid extra and the difference should be recorded as credit.
           </div>
 
           <div style={summaryCard}>
@@ -573,13 +654,14 @@ export default function JournalVoucherNew() {
               }
             />
             <SummaryRow
-              label="Open Balance"
-              value={selected ? money(maxAdjustable) : "-"}
+              label="Current Balance"
+              value={selected ? money(currentBalance) : "-"}
             />
             <SummaryRow
-              label="Reason"
-              value={reasonCode.replaceAll("_", " ")}
+              label="Adjustment Type"
+              value={selectedDirection?.label || "-"}
             />
+            <SummaryRow label="Reason" value={reasonCode.replaceAll("_", " ")} />
             <SummaryRow
               label="Adjustment Amount"
               value={amount ? money(amount) : "0.00"}

@@ -16,7 +16,7 @@ from app.models.user import User
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
 from app.utils.numbering import get_next_number
-from app.utils.status import compute_balance, compute_status, to_decimal
+from app.utils.status import compute_status, to_decimal
 
 router = APIRouter(prefix="/journal-vouchers", tags=["Journal Vouchers"])
 
@@ -25,15 +25,24 @@ VALID_REASON_CODES = {
     "ROUND_OFF",
     "SHORT_RECEIPT_ADJUSTMENT",
     "SHORT_PAYMENT_ADJUSTMENT",
+    "EXCESS_RECEIPT_ADJUSTMENT",
+    "EXCESS_PAYMENT_ADJUSTMENT",
     "DISCOUNT_ALLOWED",
     "WRITE_OFF",
     "MANUAL_ADJUSTMENT",
+}
+
+VALID_DIRECTIONS = {
+    "DECREASE",
+    "INCREASE",
+    "EXCESS",
 }
 
 
 class JournalVoucherAdjustIn(BaseModel):
     amount: float = Field(gt=0)
     reason_code: str = "MANUAL_ADJUSTMENT"
+    direction: str = "DECREASE"
     narration: str | None = None
 
 
@@ -60,11 +69,40 @@ def _clean_reason_code(value: str | None) -> str:
     return code
 
 
+def _clean_direction(value: str | None) -> str:
+    direction = str(value or "DECREASE").strip().upper()
+    if direction not in VALID_DIRECTIONS:
+        raise HTTPException(status_code=400, detail="Invalid adjustment direction")
+    return direction
+
+
 def _clean_narration(value: str | None) -> str | None:
     if value is None:
         return None
     text = str(value).strip().upper()
     return text or None
+
+
+def _raw_balance(grand_total, amount_done, adjusted_amount) -> Decimal:
+    return (
+        to_decimal(grand_total)
+        - to_decimal(amount_done)
+        - to_decimal(adjusted_amount)
+    )
+
+
+def _status_from_balance(grand_total, amount_done, adjusted_amount, due_date, balance):
+    if to_decimal(balance) < 0:
+        return "CREDIT"
+
+    return compute_status(
+        grand_total=grand_total,
+        amount_done=amount_done,
+        adjusted_amount=adjusted_amount,
+        due_date=due_date,
+        balance=balance,
+        cancelled=False,
+    )
 
 
 def _snapshot_jv(obj: JournalVoucherHdr) -> dict:
@@ -120,8 +158,10 @@ def get_journal_voucher(
         .filter(JournalVoucherHdr.voucher_no == voucher_no.strip().upper())
         .first()
     )
+
     if not obj:
         raise HTTPException(status_code=404, detail="Journal voucher not found")
+
     return obj
 
 
@@ -143,40 +183,42 @@ def adjust_sales_invoice(
         )
         .scalar_one_or_none()
     )
+
     if not invoice:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
     if str(invoice.status or "").upper() == "CANCELLED":
-        raise HTTPException(status_code=400, detail="Cancelled invoice cannot be adjusted")
+        raise HTTPException(
+            status_code=400,
+            detail="Cancelled invoice cannot be adjusted",
+        )
 
     amount = to_decimal(payload.amount)
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Adjustment amount must be greater than 0")
-
-    current_balance = to_decimal(invoice.balance)
-    if amount > current_balance:
-        raise HTTPException(status_code=400, detail="Adjustment amount cannot exceed balance")
+        raise HTTPException(
+            status_code=400,
+            detail="Adjustment amount must be greater than 0",
+        )
 
     reason_code = _clean_reason_code(payload.reason_code)
+    direction = _clean_direction(payload.direction)
     narration = _clean_narration(payload.narration)
+
+    current_balance = to_decimal(invoice.balance)
+
+    if direction == "DECREASE" and amount > current_balance:
+        raise HTTPException(
+            status_code=400,
+            detail="Reduce Balance adjustment cannot exceed current balance. Use Excess / Credit Adjustment for extra payment cases.",
+        )
 
     try:
         voucher_no = get_next_number(db, "JOURNAL_VOUCHER", "JV", 4)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    jv = JournalVoucherHdr(
-        voucher_no=voucher_no,
-        voucher_date=date.today(),
-        voucher_kind="ADJUSTMENT",
-        reference_type="SALES_INVOICE",
-        reference_no=invoice.invoice_no,
-        party_code=invoice.customer_code,
-        amount=amount,
-        reason_code=reason_code,
-        narration=narration,
-        status="POSTED",
-        lines=[
+    if direction == "DECREASE":
+        lines = [
             JournalVoucherDtl(
                 line_no=1,
                 account_name="ADJUSTMENT EXPENSE / DISCOUNT / WRITE OFF",
@@ -191,8 +233,56 @@ def adjust_sales_invoice(
                 credit_amount=amount,
                 remark=narration,
             ),
-        ],
+        ]
+    elif direction == "INCREASE":
+        lines = [
+            JournalVoucherDtl(
+                line_no=1,
+                account_name="TRADE RECEIVABLES",
+                debit_amount=amount,
+                credit_amount=Decimal("0"),
+                remark=narration,
+            ),
+            JournalVoucherDtl(
+                line_no=2,
+                account_name="ADJUSTMENT REVERSAL / CORRECTION",
+                debit_amount=Decimal("0"),
+                credit_amount=amount,
+                remark=narration,
+            ),
+        ]
+    else:
+        lines = [
+            JournalVoucherDtl(
+                line_no=1,
+                account_name="TRADE RECEIVABLES",
+                debit_amount=amount,
+                credit_amount=Decimal("0"),
+                remark=narration,
+            ),
+            JournalVoucherDtl(
+                line_no=2,
+                account_name="CUSTOMER ADVANCE / EXCESS RECEIPT",
+                debit_amount=Decimal("0"),
+                credit_amount=amount,
+                remark=narration,
+            ),
+        ]
+
+    jv = JournalVoucherHdr(
+        voucher_no=voucher_no,
+        voucher_date=date.today(),
+        voucher_kind="ADJUSTMENT",
+        reference_type="SALES_INVOICE",
+        reference_no=invoice.invoice_no,
+        party_code=invoice.customer_code,
+        amount=amount,
+        reason_code=reason_code,
+        narration=narration,
+        status="POSTED",
+        lines=lines,
     )
+
     db.add(jv)
 
     old_values = {
@@ -202,20 +292,27 @@ def adjust_sales_invoice(
         "status": invoice.status,
     }
 
-    new_adjusted_amount = to_decimal(invoice.adjusted_amount) + amount
-    invoice.adjusted_amount = new_adjusted_amount
-    invoice.balance = compute_balance(
+    existing_adjusted = to_decimal(invoice.adjusted_amount)
+
+    if direction == "DECREASE":
+        invoice.adjusted_amount = existing_adjusted + amount
+    elif direction == "INCREASE":
+        invoice.adjusted_amount = existing_adjusted - amount
+    else:
+        invoice.adjusted_amount = existing_adjusted + amount
+
+    invoice.balance = _raw_balance(
         invoice.grand_total,
         invoice.amount_received,
         invoice.adjusted_amount,
     )
-    invoice.status = compute_status(
+
+    invoice.status = _status_from_balance(
         grand_total=invoice.grand_total,
         amount_done=invoice.amount_received,
         adjusted_amount=invoice.adjusted_amount,
         due_date=invoice.due_date,
         balance=invoice.balance,
-        cancelled=False,
     )
 
     log_activity(
@@ -230,6 +327,7 @@ def adjust_sales_invoice(
         old_values=old_values,
         new_values={
             **_snapshot_jv(jv),
+            "direction": direction,
             "invoice_no": invoice.invoice_no,
             "amount_received": float(invoice.amount_received or 0),
             "adjusted_amount": float(invoice.adjusted_amount or 0),
@@ -244,7 +342,9 @@ def adjust_sales_invoice(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not create journal voucher",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not create journal voucher",
         )
 
     db.refresh(jv)
@@ -269,40 +369,42 @@ def adjust_purchase_bill(
         )
         .scalar_one_or_none()
     )
+
     if not bill:
         raise HTTPException(status_code=404, detail="Purchase bill not found")
 
     if str(bill.status or "").upper() == "CANCELLED":
-        raise HTTPException(status_code=400, detail="Cancelled bill cannot be adjusted")
+        raise HTTPException(
+            status_code=400,
+            detail="Cancelled bill cannot be adjusted",
+        )
 
     amount = to_decimal(payload.amount)
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Adjustment amount must be greater than 0")
-
-    current_balance = to_decimal(bill.balance)
-    if amount > current_balance:
-        raise HTTPException(status_code=400, detail="Adjustment amount cannot exceed balance")
+        raise HTTPException(
+            status_code=400,
+            detail="Adjustment amount must be greater than 0",
+        )
 
     reason_code = _clean_reason_code(payload.reason_code)
+    direction = _clean_direction(payload.direction)
     narration = _clean_narration(payload.narration)
+
+    current_balance = to_decimal(bill.balance)
+
+    if direction == "DECREASE" and amount > current_balance:
+        raise HTTPException(
+            status_code=400,
+            detail="Reduce Balance adjustment cannot exceed current balance. Use Excess / Credit Adjustment for extra payment cases.",
+        )
 
     try:
         voucher_no = get_next_number(db, "JOURNAL_VOUCHER", "JV", 4)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    jv = JournalVoucherHdr(
-        voucher_no=voucher_no,
-        voucher_date=date.today(),
-        voucher_kind="ADJUSTMENT",
-        reference_type="PURCHASE_BILL",
-        reference_no=bill.bill_no,
-        party_code=bill.vendor_code,
-        amount=amount,
-        reason_code=reason_code,
-        narration=narration,
-        status="POSTED",
-        lines=[
+    if direction == "DECREASE":
+        lines = [
             JournalVoucherDtl(
                 line_no=1,
                 account_name="TRADE PAYABLES",
@@ -317,8 +419,56 @@ def adjust_purchase_bill(
                 credit_amount=amount,
                 remark=narration,
             ),
-        ],
+        ]
+    elif direction == "INCREASE":
+        lines = [
+            JournalVoucherDtl(
+                line_no=1,
+                account_name="ADJUSTMENT REVERSAL / CORRECTION",
+                debit_amount=amount,
+                credit_amount=Decimal("0"),
+                remark=narration,
+            ),
+            JournalVoucherDtl(
+                line_no=2,
+                account_name="TRADE PAYABLES",
+                debit_amount=Decimal("0"),
+                credit_amount=amount,
+                remark=narration,
+            ),
+        ]
+    else:
+        lines = [
+            JournalVoucherDtl(
+                line_no=1,
+                account_name="VENDOR ADVANCE / EXCESS PAYMENT",
+                debit_amount=amount,
+                credit_amount=Decimal("0"),
+                remark=narration,
+            ),
+            JournalVoucherDtl(
+                line_no=2,
+                account_name="TRADE PAYABLES",
+                debit_amount=Decimal("0"),
+                credit_amount=amount,
+                remark=narration,
+            ),
+        ]
+
+    jv = JournalVoucherHdr(
+        voucher_no=voucher_no,
+        voucher_date=date.today(),
+        voucher_kind="ADJUSTMENT",
+        reference_type="PURCHASE_BILL",
+        reference_no=bill.bill_no,
+        party_code=bill.vendor_code,
+        amount=amount,
+        reason_code=reason_code,
+        narration=narration,
+        status="POSTED",
+        lines=lines,
     )
+
     db.add(jv)
 
     old_values = {
@@ -328,20 +478,27 @@ def adjust_purchase_bill(
         "status": bill.status,
     }
 
-    new_adjusted_amount = to_decimal(bill.adjusted_amount) + amount
-    bill.adjusted_amount = new_adjusted_amount
-    bill.balance = compute_balance(
+    existing_adjusted = to_decimal(bill.adjusted_amount)
+
+    if direction == "DECREASE":
+        bill.adjusted_amount = existing_adjusted + amount
+    elif direction == "INCREASE":
+        bill.adjusted_amount = existing_adjusted - amount
+    else:
+        bill.adjusted_amount = existing_adjusted + amount
+
+    bill.balance = _raw_balance(
         bill.grand_total,
         bill.amount_paid,
         bill.adjusted_amount,
     )
-    bill.status = compute_status(
+
+    bill.status = _status_from_balance(
         grand_total=bill.grand_total,
         amount_done=bill.amount_paid,
         adjusted_amount=bill.adjusted_amount,
         due_date=bill.due_date,
         balance=bill.balance,
-        cancelled=False,
     )
 
     log_activity(
@@ -356,6 +513,7 @@ def adjust_purchase_bill(
         old_values=old_values,
         new_values={
             **_snapshot_jv(jv),
+            "direction": direction,
             "bill_no": bill.bill_no,
             "amount_paid": float(bill.amount_paid or 0),
             "adjusted_amount": float(bill.adjusted_amount or 0),
@@ -370,7 +528,9 @@ def adjust_purchase_bill(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not create journal voucher",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not create journal voucher",
         )
 
     db.refresh(jv)

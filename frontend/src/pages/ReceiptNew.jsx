@@ -31,16 +31,17 @@ function formatDate(value) {
   return formatDateForDisplay(value) || "-";
 }
 
-function sortOpenInvoices(rows) {
+function sortInvoices(rows) {
   return [...rows].sort((a, b) => {
     const dateA = String(a?.invoice_date || "");
     const dateB = String(b?.invoice_date || "");
     if (dateB !== dateA) return dateB.localeCompare(dateA);
 
-    return String(b?.invoice_no || "").localeCompare(String(a?.invoice_no || ""), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    return String(b?.invoice_no || "").localeCompare(
+      String(a?.invoice_no || ""),
+      undefined,
+      { numeric: true, sensitivity: "base" }
+    );
   });
 }
 
@@ -69,10 +70,17 @@ export default function ReceiptNew() {
     try {
       const data = await apiGet("/sales-invoices/");
       const allRows = Array.isArray(data) ? data : [];
-      const openInvoices = allRows.filter((r) => Number(r.balance || 0) > 0);
-      setRows(sortOpenInvoices(openInvoices));
 
-      if (invoiceNo && !openInvoices.some((r) => r.invoice_no === invoiceNo)) {
+      const selectableInvoices = allRows.filter(
+        (r) => String(r.status || "").toUpperCase() !== "CANCELLED"
+      );
+
+      setRows(sortInvoices(selectableInvoices));
+
+      if (
+        invoiceNo &&
+        !selectableInvoices.some((r) => r.invoice_no === invoiceNo)
+      ) {
         setInvoiceNo("");
         setInvoiceSearch("");
       }
@@ -109,6 +117,12 @@ export default function ReceiptNew() {
     [selected]
   );
 
+  const amountNumber = Number(amount || 0);
+  const excessAmount =
+    selected && Number.isFinite(amountNumber) && amountNumber > selectedBalance
+      ? amountNumber - selectedBalance
+      : 0;
+
   const filteredInvoices = useMemo(() => {
     const q = invoiceSearch.trim().toUpperCase();
     if (!q) return rows;
@@ -120,6 +134,7 @@ export default function ReceiptNew() {
       const balance = String(r.balance || "");
       const invoiceDate = String(r.invoice_date || "").toUpperCase();
       const dueDate = String(r.due_date || "").toUpperCase();
+      const status = String(r.status || "").toUpperCase();
 
       return (
         invoice.includes(q) ||
@@ -127,7 +142,8 @@ export default function ReceiptNew() {
         total.includes(q) ||
         balance.includes(q) ||
         invoiceDate.includes(q) ||
-        dueDate.includes(q)
+        dueDate.includes(q) ||
+        status.includes(q)
       );
     });
   }, [rows, invoiceSearch]);
@@ -135,7 +151,9 @@ export default function ReceiptNew() {
   function selectInvoice(row) {
     setInvoiceNo(row.invoice_no);
     setInvoiceSearch(
-      `${row.invoice_no} | ${row.customer_code || "-"} | BAL ${money(row.balance)}`
+      `${row.invoice_no} | ${row.customer_code || "-"} | BAL ${money(
+        row.balance
+      )}`
     );
     setShowInvoiceList(false);
   }
@@ -165,15 +183,6 @@ export default function ReceiptNew() {
       return;
     }
 
-    if (selected && amt > selectedBalance) {
-      setErr(
-        `Receipt amount cannot exceed invoice balance. Balance is ${money(
-          selectedBalance
-        )}.`
-      );
-      return;
-    }
-
     try {
       setSaving(true);
 
@@ -187,10 +196,18 @@ export default function ReceiptNew() {
 
       const receiptNo = saved?.receipt_no || "";
       const savedInvoiceNo = saved?.invoice_no || invoiceNo;
+      const autoJvNo = saved?.auto_jv_no || "";
+      const excess = Number(saved?.excess_amount || 0);
 
       setOk(
         receiptNo
-          ? `Receipt ${receiptNo} saved successfully for invoice ${savedInvoiceNo}.`
+          ? `Receipt ${receiptNo} saved successfully for invoice ${savedInvoiceNo}.${
+              excess > 0
+                ? ` Excess amount ${money(excess)} recorded through JV ${
+                    autoJvNo || "-"
+                  }.`
+                : ""
+            }`
           : `Receipt saved successfully for invoice ${savedInvoiceNo}.`
       );
 
@@ -201,9 +218,7 @@ export default function ReceiptNew() {
       if (receiptNo) {
         navigate(`/receipt/view/${encodeURIComponent(receiptNo)}`);
       } else {
-        setErr(
-          "Receipt was saved, but receipt number was not returned from backend."
-        );
+        setErr("Receipt was saved, but receipt number was not returned from backend.");
       }
     } catch (e) {
       setErr(String(e.message || e));
@@ -217,7 +232,7 @@ export default function ReceiptNew() {
       <PageHeaderBlock
         eyebrowText="RECEIPTS"
         title="Create Receipt"
-        subtitle="Record an amount received against an open sales invoice."
+        subtitle="Record customer receipt. Extra amount is allowed and will be treated as excess / credit by backend."
         actions={
           <>
             <button
@@ -244,7 +259,7 @@ export default function ReceiptNew() {
       <div style={stack}>
         {err ? <AlertBox kind="error" message={err} /> : null}
         {ok ? <AlertBox kind="success" message={ok} /> : null}
-        {loading ? <AlertBox kind="info" message="Loading unpaid invoices..." /> : null}
+        {loading ? <AlertBox kind="info" message="Loading invoices..." /> : null}
       </div>
 
       <section style={card}>
@@ -252,7 +267,9 @@ export default function ReceiptNew() {
           <div>
             <h2 style={cardTitle}>Receipt Details</h2>
             <p style={cardSubtitle}>
-              Select an unpaid invoice, enter the received amount, and save the receipt.
+              Select an invoice, enter the received amount, and save the receipt.
+              If the received amount is higher than the current balance, the
+              excess is treated as credit.
             </p>
           </div>
           <div style={badgeBlue}>NEW</div>
@@ -272,7 +289,7 @@ export default function ReceiptNew() {
                 }
               }}
               onFocus={() => setShowInvoiceList(true)}
-              placeholder="Search by invoice no, customer, total, balance"
+              placeholder="Search by invoice no, customer, total, balance, status"
               style={input}
               disabled={loading || saving}
             />
@@ -286,7 +303,7 @@ export default function ReceiptNew() {
 
                 <div style={dropdownList}>
                   {filteredInvoices.length === 0 ? (
-                    <div style={emptyRow}>No unpaid invoices found.</div>
+                    <div style={emptyRow}>No matching invoices found.</div>
                   ) : (
                     filteredInvoices.map((r) => {
                       const active = r.invoice_no === invoiceNo;
@@ -302,14 +319,16 @@ export default function ReceiptNew() {
                         >
                           <div style={dropdownTitle}>{r.invoice_no}</div>
                           <div style={dropdownSub}>
-                            Customer: {r.customer_code || "-"}
+                            Customer: {r.customer_code || "-"} | Status:{" "}
+                            {r.status || "-"}
                           </div>
                           <div style={dropdownSub}>
                             Invoice Date: {formatDate(r.invoice_date)} | Due Date:{" "}
                             {formatDate(r.due_date)}
                           </div>
                           <div style={dropdownSub}>
-                            Total: {money(r.grand_total)} | Balance: {money(r.balance)}
+                            Total: {money(r.grand_total)} | Balance:{" "}
+                            {money(r.balance)}
                           </div>
                         </button>
                       );
@@ -327,7 +346,15 @@ export default function ReceiptNew() {
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             disabled={loading || saving}
-            hint={selected ? `Maximum allowed: ${money(selectedBalance)}` : ""}
+            hint={
+              selected
+                ? excessAmount > 0
+                  ? `Balance: ${money(selectedBalance)} | Excess/Credit: ${money(
+                      excessAmount
+                    )}`
+                  : `Current balance: ${money(selectedBalance)}`
+                : ""
+            }
           />
 
           <FormField
@@ -347,6 +374,7 @@ export default function ReceiptNew() {
           <div style={infoGrid}>
             <InfoMini label="Selected Invoice" value={selected?.invoice_no || "-"} />
             <InfoMini label="Customer" value={selected?.customer_code || "-"} />
+            <InfoMini label="Status" value={selected?.status || "-"} />
             <InfoMini
               label="Invoice Date"
               value={selected?.invoice_date ? formatDate(selected.invoice_date) : "-"}
@@ -363,13 +391,19 @@ export default function ReceiptNew() {
               label="Current Balance"
               value={selected ? money(selected.balance) : "-"}
             />
+            <InfoMini
+              label="Excess / Credit"
+              value={excessAmount > 0 ? money(excessAmount) : "0.00"}
+            />
           </div>
         </div>
 
         <div style={footerGrid}>
           <div style={noteBox}>
-            Save the receipt only after verifying the selected invoice and received amount.
-            The received amount cannot be greater than the current outstanding balance.
+            Save the receipt only after verifying the selected invoice and
+            received amount. If the received amount is higher than the invoice
+            balance, the backend will record the extra amount as excess /
+            customer credit through JV handling.
           </div>
 
           <div style={summaryCard}>
@@ -382,6 +416,10 @@ export default function ReceiptNew() {
             <SummaryRow
               label="Open Balance"
               value={selected ? money(selectedBalance) : "-"}
+            />
+            <SummaryRow
+              label="Excess / Credit"
+              value={excessAmount > 0 ? money(excessAmount) : "0.00"}
             />
             <SummaryRow
               label="Amount Now"

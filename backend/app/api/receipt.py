@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from app.models.sales_invoice import SalesInvoiceHdr, SalesReceipt
 from app.models.user import User
 from app.utils.audit import log_activity
 from app.utils.audit_constants import AuditAction, AuditModule
-from app.utils.status import compute_balance, compute_status
+from app.utils.status import compute_status
 
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
@@ -27,6 +27,32 @@ class ReceiptOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+def to_decimal(value) -> Decimal:
+    return Decimal(str(value or 0))
+
+
+def raw_balance(grand_total, amount_done, adjusted_amount) -> Decimal:
+    return (
+        to_decimal(grand_total)
+        - to_decimal(amount_done)
+        - to_decimal(adjusted_amount)
+    )
+
+
+def status_from_balance(grand_total, amount_done, adjusted_amount, due_date, balance):
+    if to_decimal(balance) < 0:
+        return "CREDIT"
+
+    return compute_status(
+        grand_total=grand_total,
+        amount_done=amount_done,
+        adjusted_amount=adjusted_amount,
+        due_date=due_date,
+        balance=balance,
+        cancelled=False,
+    )
 
 
 @router.get("/", response_model=list[ReceiptOut])
@@ -92,28 +118,37 @@ def reverse_receipt(
     receipt_no = receipt_no.strip().upper()
 
     receipt = (
-        db.query(SalesReceipt)
-        .filter(SalesReceipt.receipt_no == receipt_no)
-        .first()
+        db.execute(
+            select(SalesReceipt)
+            .where(SalesReceipt.receipt_no == receipt_no)
+            .with_for_update()
+        )
+        .scalar_one_or_none()
     )
 
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
 
     invoice = (
-        db.query(SalesInvoiceHdr)
-        .filter(SalesInvoiceHdr.invoice_no == receipt.invoice_no)
-        .first()
+        db.execute(
+            select(SalesInvoiceHdr)
+            .where(SalesInvoiceHdr.invoice_no == receipt.invoice_no)
+            .with_for_update()
+        )
+        .scalar_one_or_none()
     )
 
     if not invoice:
         raise HTTPException(status_code=404, detail="Linked invoice not found")
 
-    reverse_amount = Decimal(str(receipt.amount or 0))
-    current_amount_received = Decimal(str(invoice.amount_received or 0))
+    reverse_amount = to_decimal(receipt.amount)
+    current_amount_received = to_decimal(invoice.amount_received)
 
     if reverse_amount <= 0:
-        raise HTTPException(status_code=400, detail="Invalid receipt amount for reversal")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid receipt amount for reversal",
+        )
 
     if reverse_amount > current_amount_received:
         raise HTTPException(
@@ -142,18 +177,17 @@ def reverse_receipt(
         )
 
     invoice.amount_received = new_amount_received
-    invoice.balance = compute_balance(
+    invoice.balance = raw_balance(
         invoice.grand_total,
         invoice.amount_received,
         invoice.adjusted_amount,
     )
-    invoice.status = compute_status(
-        invoice.grand_total,
+    invoice.status = status_from_balance(
+        grand_total=invoice.grand_total,
         amount_done=invoice.amount_received,
         adjusted_amount=invoice.adjusted_amount,
         due_date=invoice.due_date,
         balance=invoice.balance,
-        cancelled=False,
     )
 
     db.delete(receipt)
@@ -184,15 +218,10 @@ def reverse_receipt(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not reverse receipt due to a conflicting change",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not reverse receipt due to a conflicting change",
         )
-
-
-
-
-
-
-
 
     return {
         "ok": True,

@@ -44,6 +44,7 @@ def list_vendor_payments(
             or_(
                 VendorPayment.payment_no.ilike(f"%{search}%"),
                 VendorPayment.bill_no.ilike(f"%{search}%"),
+                VendorPayment.remark.ilike(f"%{search}%"),
             )
         )
 
@@ -74,9 +75,11 @@ def get_vendor_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_viewer_or_above),
 ):
+    payment_no = payment_no.strip().upper()
+
     payment = (
         db.query(VendorPayment)
-        .filter(VendorPayment.payment_no == payment_no.strip().upper())
+        .filter(VendorPayment.payment_no == payment_no)
         .first()
     )
 

@@ -14,6 +14,7 @@ from app.api.auth import (
 )
 from app.core.database import get_db
 from app.models.sales_invoice import SalesInvoiceDtl, SalesInvoiceHdr, SalesReceipt
+from app.models.journal_voucher import JournalVoucherDtl, JournalVoucherHdr
 from app.models.user import User
 from app.schemas.sales_invoice import SalesInvoiceCreate, SalesInvoiceOut
 from app.utils.audit import log_activity
@@ -167,6 +168,39 @@ def calculate_line_values(invoice_template: str, qty: Decimal, rate: Decimal, li
         line_tax_amount = Decimal("0.00")
 
     return base_amount, line_tax_amount
+
+
+def status_after_balance(grand_total, amount_done, adjusted_amount, due_date, balance):
+    if to_decimal(balance) < 0:
+        return "CREDIT"
+    return compute_status(
+        grand_total=grand_total,
+        amount_done=amount_done,
+        adjusted_amount=adjusted_amount,
+        balance=balance,
+        due_date=due_date,
+        cancelled=False,
+    )
+
+
+def build_excess_receipt_jv(voucher_no: str, invoice: SalesInvoiceHdr, excess_amount: Decimal, narration: str | None) -> JournalVoucherHdr:
+    final_narration = narration or "EXCESS RECEIPT TRANSFERRED TO CUSTOMER ADVANCE"
+    return JournalVoucherHdr(
+        voucher_no=voucher_no,
+        voucher_date=date.today(),
+        voucher_kind="ADJUSTMENT",
+        reference_type="SALES_INVOICE",
+        reference_no=invoice.invoice_no,
+        party_code=invoice.customer_code,
+        amount=excess_amount,
+        reason_code="EXCESS_RECEIPT_ADJUSTMENT",
+        narration=final_narration,
+        status="POSTED",
+        lines=[
+            JournalVoucherDtl(line_no=1, account_name="TRADE RECEIVABLES", debit_amount=excess_amount, credit_amount=Decimal("0"), remark=final_narration),
+            JournalVoucherDtl(line_no=2, account_name="CUSTOMER ADVANCE / EXCESS RECEIPT", debit_amount=Decimal("0"), credit_amount=excess_amount, remark=final_narration),
+        ],
+    )
 
 
 @router.get("/", response_model=list[SalesInvoiceOut])
@@ -626,7 +660,6 @@ def receive_payment(
     invoice_no = invoice_no.strip().upper()
 
     obj = db.query(SalesInvoiceHdr).filter(SalesInvoiceHdr.invoice_no == invoice_no).first()
-
     if not obj:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
 
@@ -636,21 +669,18 @@ def receive_payment(
         raise HTTPException(status_code=400, detail="Cannot receive against cancelled invoice")
 
     amount = to_decimal(payload.amount)
-
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Receipt amount must be greater than 0")
 
-    current_balance = compute_balance(
-        obj.grand_total,
-        obj.amount_received,
-        obj.adjusted_amount,
-    )
+    current_balance = to_decimal(compute_balance(obj.grand_total, obj.amount_received, obj.adjusted_amount))
+    old_amount_received = to_decimal(obj.amount_received)
+    old_adjusted_amount = to_decimal(obj.adjusted_amount)
+    old_balance = to_decimal(obj.balance)
+    old_status = obj.status
 
+    excess_amount = Decimal("0.00")
     if amount > current_balance:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Receipt amount cannot exceed balance {current_balance}",
-        )
+        excess_amount = amount - current_balance
 
     try:
         receipt_no = get_next_number(db, "SALES_RECEIPT", "REC")
@@ -664,20 +694,35 @@ def receive_payment(
         amount=amount,
         remark=clean_text(payload.remark),
     )
-
     db.add(receipt)
 
-    old_amount_received = obj.amount_received
-    old_balance = obj.balance
-    old_status = obj.status
+    jv = None
+    if excess_amount > 0:
+        try:
+            voucher_no = get_next_number(db, "JOURNAL_VOUCHER", "JV", 4)
+        except ValueError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        jv = build_excess_receipt_jv(
+            voucher_no=voucher_no,
+            invoice=obj,
+            excess_amount=excess_amount,
+            narration=clean_text(payload.remark),
+        )
+        db.add(jv)
 
-    obj.amount_received = obj.amount_received + amount
-    obj.balance = compute_balance(
-        obj.grand_total,
-        obj.amount_received,
-        obj.adjusted_amount,
-    )
-    normalize_invoice_status(obj)
+    obj.amount_received = old_amount_received + amount
+    if excess_amount > 0:
+        obj.balance = current_balance - amount
+        obj.status = "CREDIT"
+    else:
+        obj.balance = compute_balance(obj.grand_total, obj.amount_received, obj.adjusted_amount)
+        obj.status = status_after_balance(
+            obj.grand_total,
+            amount_done=obj.amount_received,
+            adjusted_amount=obj.adjusted_amount,
+            due_date=obj.due_date,
+            balance=obj.balance,
+        )
 
     log_activity(
         db=db,
@@ -687,10 +732,14 @@ def receive_payment(
         module=AuditModule.RECEIPT,
         record_id=receipt.receipt_no,
         record_name=receipt.receipt_no,
-        details=f"Receipt created: {receipt.receipt_no} for invoice {obj.invoice_no}",
+        details=(
+            f"Receipt created: {receipt.receipt_no} for invoice {obj.invoice_no}"
+            + (f" with excess JV {jv.voucher_no}" if jv else "")
+        ),
         old_values={
             "invoice_no": obj.invoice_no,
             "amount_received": float(old_amount_received),
+            "adjusted_amount": float(old_adjusted_amount),
             "balance": float(old_balance),
             "status": old_status,
         },
@@ -699,25 +748,50 @@ def receive_payment(
             "invoice_no": obj.invoice_no,
             "receipt_date": str(receipt.receipt_date),
             "receipt_amount": float(receipt.amount),
+            "excess_amount": float(excess_amount),
+            "excess_jv_no": jv.voucher_no if jv else None,
             "amount_received": float(obj.amount_received),
+            "adjusted_amount": float(obj.adjusted_amount or 0),
             "balance": float(obj.balance),
             "status": obj.status,
             "remark": receipt.remark,
         },
     )
 
-    db.commit()
+    if jv:
+        log_activity(
+            db=db,
+            request=request,
+            user_id=current_user.user_id,
+            action=AuditAction.CREATE,
+            module=AuditModule.JOURNAL_VOUCHER,
+            record_id=jv.voucher_no,
+            record_name=jv.voucher_no,
+            details=f"Excess receipt JV created for invoice {obj.invoice_no}",
+            old_values=None,
+            new_values={
+                "voucher_no": jv.voucher_no,
+                "voucher_date": str(jv.voucher_date),
+                "voucher_kind": jv.voucher_kind,
+                "reference_type": jv.reference_type,
+                "reference_no": jv.reference_no,
+                "party_code": jv.party_code,
+                "amount": float(jv.amount or 0),
+                "reason_code": jv.reason_code,
+                "narration": jv.narration,
+                "status": jv.status,
+            },
+        )
+
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e.orig) if getattr(e, "orig", None) else "Could not save receipt due to a conflicting change")
+
     db.refresh(receipt)
     db.refresh(obj)
-
-    return ReceiptCreatedOut(
-        ok=True,
-        receipt_no=receipt.receipt_no,
-        invoice_no=obj.invoice_no,
-        receipt_date=str(receipt.receipt_date),
-        amount=float(receipt.amount),
-        remark=receipt.remark,
-    )
+    return ReceiptCreatedOut(ok=True, receipt_no=receipt.receipt_no, invoice_no=obj.invoice_no, receipt_date=str(receipt.receipt_date), amount=float(receipt.amount), remark=receipt.remark)
 
 
 @router.post("/{invoice_no}/cancel", response_model=SalesInvoiceOut)

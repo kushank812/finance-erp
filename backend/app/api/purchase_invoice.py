@@ -13,6 +13,7 @@ from app.api.auth import (
     require_viewer_or_above,
 )
 from app.core.database import get_db
+from app.models.journal_voucher import JournalVoucherDtl, JournalVoucherHdr
 from app.models.purchase_invoice import PurchaseInvoiceDtl, PurchaseInvoiceHdr
 from app.models.user import User
 from app.models.vendor_payment import VendorPayment
@@ -31,9 +32,6 @@ from app.utils.text import normalize_upper
 router = APIRouter(prefix="/purchase-invoices", tags=["Purchase Invoices"])
 
 
-# -----------------------------
-# INPUT / OUTPUT MODELS
-# -----------------------------
 class PayBillIn(BaseModel):
     amount: float
     remark: str | None = None
@@ -97,11 +95,30 @@ class CancelBillIn(BaseModel):
     remark: str | None = None
 
 
-# -----------------------------
-# HELPERS
-# -----------------------------
 def to_decimal(value) -> Decimal:
     return Decimal(str(value or 0))
+
+
+def raw_balance(grand_total, amount_done, adjusted_amount) -> Decimal:
+    return (
+        to_decimal(grand_total)
+        - to_decimal(amount_done)
+        - to_decimal(adjusted_amount)
+    )
+
+
+def status_from_balance(grand_total, amount_done, adjusted_amount, due_date, balance):
+    if to_decimal(balance) < 0:
+        return "CREDIT"
+
+    return compute_status(
+        grand_total=grand_total,
+        amount_done=amount_done,
+        adjusted_amount=adjusted_amount,
+        balance=balance,
+        due_date=due_date,
+        cancelled=False,
+    )
 
 
 def normalize_bill_status(obj: PurchaseInvoiceHdr) -> PurchaseInvoiceHdr:
@@ -111,13 +128,12 @@ def normalize_bill_status(obj: PurchaseInvoiceHdr) -> PurchaseInvoiceHdr:
         obj.status = STATUS_CANCELLED
         return obj
 
-    obj.status = compute_status(
+    obj.status = status_from_balance(
         grand_total=obj.grand_total,
         amount_done=obj.amount_paid,
         adjusted_amount=obj.adjusted_amount,
         balance=obj.balance,
         due_date=obj.due_date,
-        cancelled=False,
     )
     return obj
 
@@ -131,9 +147,6 @@ def has_any_payment(db: Session, bill_no: str) -> bool:
     return payment is not None
 
 
-# -----------------------------
-# LIST PURCHASE INVOICES
-# -----------------------------
 @router.get("/", response_model=list[PurchaseInvoiceOut])
 def list_purchase_invoices(
     q: str | None = Query(default=None),
@@ -170,18 +183,13 @@ def list_purchase_invoices(
     result = []
     for r in rows:
         normalize_bill_status(r)
-
         if final_status and r.status != final_status:
             continue
-
         result.append(r)
 
     return result
 
 
-# -----------------------------
-# GET SINGLE PURCHASE INVOICE
-# -----------------------------
 @router.get("/{bill_no}", response_model=PurchaseInvoiceOut)
 def get_purchase_invoice(
     bill_no: str,
@@ -202,9 +210,6 @@ def get_purchase_invoice(
     return obj
 
 
-# -----------------------------
-# CREATE PURCHASE INVOICE
-# -----------------------------
 @router.post("/", response_model=PurchaseInvoiceOut)
 def create_purchase_invoice(
     payload: PurchaseInvoiceCreate,
@@ -234,7 +239,6 @@ def create_purchase_invoice(
 
     for ln in lines:
         ln = normalize_upper(ln)
-
         qty = to_decimal(ln["qty"])
         rate = to_decimal(ln["rate"])
 
@@ -261,13 +265,13 @@ def create_purchase_invoice(
     amount_paid = Decimal("0.00")
     adjusted_amount = Decimal("0.00")
     balance = compute_balance(grand_total, amount_paid, adjusted_amount)
-    status = compute_status(
+
+    status = status_from_balance(
         grand_total=grand_total,
         amount_done=amount_paid,
         adjusted_amount=adjusted_amount,
         balance=balance,
         due_date=due_date,
-        cancelled=False,
     )
 
     hdr = PurchaseInvoiceHdr(
@@ -322,7 +326,9 @@ def create_purchase_invoice(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not create purchase invoice due to a conflicting change",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not create purchase invoice due to a conflicting change",
         )
 
     db.refresh(hdr)
@@ -330,9 +336,6 @@ def create_purchase_invoice(
     return hdr
 
 
-# -----------------------------
-# UPDATE PURCHASE INVOICE
-# -----------------------------
 @router.put("/{bill_no}", response_model=PurchaseInvoiceOut)
 def update_purchase_invoice(
     bill_no: str,
@@ -396,13 +399,17 @@ def update_purchase_invoice(
         obj.due_date = data.get("due_date", obj.due_date)
         obj.remark = data.get("remark", obj.remark)
 
-        obj.status = compute_status(
+        obj.balance = raw_balance(
+            obj.grand_total,
+            obj.amount_paid,
+            obj.adjusted_amount,
+        )
+        obj.status = status_from_balance(
             grand_total=obj.grand_total,
             amount_done=obj.amount_paid,
             adjusted_amount=obj.adjusted_amount,
             balance=obj.balance,
             due_date=obj.due_date,
-            cancelled=False,
         )
 
         log_activity(
@@ -438,7 +445,9 @@ def update_purchase_invoice(
             db.rollback()
             raise HTTPException(
                 status_code=409,
-                detail=str(e.orig) if getattr(e, "orig", None) else "Could not update purchase invoice due to a conflicting change",
+                detail=str(e.orig)
+                if getattr(e, "orig", None)
+                else "Could not update purchase invoice due to a conflicting change",
             )
 
         db.refresh(obj)
@@ -460,7 +469,6 @@ def update_purchase_invoice(
 
     for ln in lines:
         ln = normalize_upper(ln)
-
         qty = to_decimal(ln["qty"])
         rate = to_decimal(ln["rate"])
 
@@ -485,7 +493,7 @@ def update_purchase_invoice(
     tax_percent = to_decimal(data.get("tax_percent"))
     tax_amount = (subtotal * tax_percent) / Decimal("100")
     grand_total = subtotal + tax_amount
-    new_balance = compute_balance(grand_total, amount_paid, adjusted_amount)
+    new_balance = raw_balance(grand_total, amount_paid, adjusted_amount)
 
     if new_balance < 0:
         raise HTTPException(
@@ -502,13 +510,12 @@ def update_purchase_invoice(
     obj.grand_total = grand_total
     obj.balance = new_balance
     obj.remark = data.get("remark")
-    obj.status = compute_status(
+    obj.status = status_from_balance(
         grand_total=obj.grand_total,
         amount_done=obj.amount_paid,
         adjusted_amount=obj.adjusted_amount,
         balance=obj.balance,
         due_date=obj.due_date,
-        cancelled=False,
     )
 
     obj.lines.clear()
@@ -548,7 +555,9 @@ def update_purchase_invoice(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not update purchase invoice due to a conflicting change",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not update purchase invoice due to a conflicting change",
         )
 
     db.refresh(obj)
@@ -556,9 +565,6 @@ def update_purchase_invoice(
     return obj
 
 
-# -----------------------------
-# CANCEL PURCHASE INVOICE
-# -----------------------------
 @router.patch("/{bill_no}/cancel", response_model=PurchaseInvoiceOut)
 def cancel_purchase_invoice(
     bill_no: str,
@@ -632,19 +638,15 @@ def cancel_purchase_invoice(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not cancel purchase invoice due to a conflicting change",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not cancel purchase invoice due to a conflicting change",
         )
 
     db.refresh(obj)
     return obj
 
 
-# -----------------------------
-# DELETE PURCHASE INVOICE
-# ADMIN ONLY
-# ALLOW ONLY WHEN BALANCE = 0
-# AUTO DELETE LINKED PAYMENTS
-# -----------------------------
 @router.delete("/{bill_no}")
 def delete_purchase_invoice(
     bill_no: str,
@@ -671,11 +673,7 @@ def delete_purchase_invoice(
             detail="Delete allowed only when bill balance is 0",
         )
 
-    payments = (
-        db.query(VendorPayment)
-        .filter(VendorPayment.bill_no == bill_no)
-        .all()
-    )
+    payments = db.query(VendorPayment).filter(VendorPayment.bill_no == bill_no).all()
     payment_count = len(payments)
 
     old_values = {
@@ -724,7 +722,9 @@ def delete_purchase_invoice(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not delete purchase invoice due to a conflicting change",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not delete purchase invoice due to a conflicting change",
         )
 
     return {
@@ -733,9 +733,6 @@ def delete_purchase_invoice(
     }
 
 
-# -----------------------------
-# PAY BILL
-# -----------------------------
 @router.post("/{bill_no}/pay")
 def pay_bill(
     bill_no: str,
@@ -761,18 +758,11 @@ def pay_bill(
     normalize_bill_status(obj)
 
     if str(obj.status or "").upper() == STATUS_CANCELLED:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot pay a cancelled bill",
-        )
+        raise HTTPException(status_code=400, detail="Cannot pay a cancelled bill")
 
     amount = Decimal(str(payload.amount or 0))
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than 0")
-
-    current_balance = Decimal(str(obj.balance or 0))
-    if amount > current_balance:
-        raise HTTPException(status_code=400, detail="Paid amount cannot exceed balance")
 
     old_values = {
         "amount_paid": float(obj.amount_paid or 0),
@@ -780,6 +770,12 @@ def pay_bill(
         "balance": float(obj.balance or 0),
         "status": obj.status,
     }
+
+    current_balance = to_decimal(obj.balance)
+    excess_amount = Decimal("0.00")
+
+    if amount > current_balance:
+        excess_amount = amount - current_balance
 
     try:
         payment_no = get_next_number(db, "VENDOR_PAYMENT", "PAY", 4)
@@ -797,19 +793,56 @@ def pay_bill(
     )
     db.add(payment)
 
-    obj.amount_paid = Decimal(str(obj.amount_paid or 0)) + amount
-    obj.balance = compute_balance(
+    obj.amount_paid = to_decimal(obj.amount_paid) + amount
+
+    auto_jv_no = None
+    if excess_amount > 0:
+        try:
+            auto_jv_no = get_next_number(db, "JOURNAL_VOUCHER", "JV", 4)
+        except ValueError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        jv = JournalVoucherHdr(
+            voucher_no=auto_jv_no,
+            voucher_date=date.today(),
+            voucher_kind="ADJUSTMENT",
+            reference_type="PURCHASE_BILL",
+            reference_no=obj.bill_no,
+            party_code=obj.vendor_code,
+            amount=excess_amount,
+            reason_code="EXCESS_PAYMENT_ADJUSTMENT",
+            narration=f"EXCESS PAYMENT AUTO JV FROM PAYMENT {payment_no}",
+            status="POSTED",
+            lines=[
+                JournalVoucherDtl(
+                    line_no=1,
+                    account_name="VENDOR ADVANCE / EXCESS PAYMENT",
+                    debit_amount=excess_amount,
+                    credit_amount=Decimal("0"),
+                    remark=f"EXCESS PAYMENT AUTO JV FROM PAYMENT {payment_no}",
+                ),
+                JournalVoucherDtl(
+                    line_no=2,
+                    account_name="TRADE PAYABLES",
+                    debit_amount=Decimal("0"),
+                    credit_amount=excess_amount,
+                    remark=f"EXCESS PAYMENT AUTO JV FROM PAYMENT {payment_no}",
+                ),
+            ],
+        )
+        db.add(jv)
+
+    obj.balance = raw_balance(
         obj.grand_total,
         obj.amount_paid,
         obj.adjusted_amount,
     )
-    obj.status = compute_status(
+    obj.status = status_from_balance(
         grand_total=obj.grand_total,
         amount_done=obj.amount_paid,
         adjusted_amount=obj.adjusted_amount,
-        due_date=obj.due_date,
-        cancelled=False,
         balance=obj.balance,
+        due_date=obj.due_date,
     )
 
     log_activity(
@@ -827,6 +860,8 @@ def pay_bill(
             "bill_no": obj.bill_no,
             "payment_date": str(payment.payment_date),
             "amount": float(amount),
+            "excess_amount": float(excess_amount),
+            "auto_jv_no": auto_jv_no,
             "remark": payment.remark,
             "amount_paid": float(obj.amount_paid),
             "adjusted_amount": float(obj.adjusted_amount or 0),
@@ -841,7 +876,9 @@ def pay_bill(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not save vendor payment due to a concurrent update. Please try again.",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not save vendor payment due to a concurrent update. Please try again.",
         )
 
     db.refresh(payment)
@@ -852,13 +889,12 @@ def pay_bill(
         "bill_no": payment.bill_no,
         "payment_date": str(payment.payment_date),
         "amount": float(payment.amount),
+        "excess_amount": float(excess_amount),
+        "auto_jv_no": auto_jv_no,
         "remark": payment.remark,
     }
 
 
-# -----------------------------
-# REVERSE VENDOR PAYMENT
-# -----------------------------
 @router.delete("/payments/{payment_no}", response_model=ReversePaymentOut)
 def reverse_vendor_payment(
     payment_no: str,
@@ -929,17 +965,16 @@ def reverse_vendor_payment(
         )
 
     bill.amount_paid = new_amount_paid
-    bill.balance = compute_balance(
+    bill.balance = raw_balance(
         bill.grand_total,
         bill.amount_paid,
         bill.adjusted_amount,
     )
-    bill.status = compute_status(
+    bill.status = status_from_balance(
         grand_total=bill.grand_total,
         amount_done=bill.amount_paid,
         adjusted_amount=bill.adjusted_amount,
         due_date=bill.due_date,
-        cancelled=False,
         balance=bill.balance,
     )
 
@@ -971,7 +1006,9 @@ def reverse_vendor_payment(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=str(e.orig) if getattr(e, "orig", None) else "Could not reverse vendor payment due to a conflicting change",
+            detail=str(e.orig)
+            if getattr(e, "orig", None)
+            else "Could not reverse vendor payment due to a conflicting change",
         )
 
     return ReversePaymentOut(
