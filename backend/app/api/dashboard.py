@@ -46,16 +46,24 @@ def to_decimal(value) -> Decimal:
         return Decimal("0")
 
 
+def signed_jv_amount(reference_type, amount):
+    amount = to_decimal(amount)
+
+    if reference_type == "SALES_INVOICE":
+        return amount
+
+    if reference_type == "PURCHASE_BILL":
+        return -amount
+
+    return amount
+
+
 @router.get("/summary")
 def dashboard_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_viewer_or_above),
 ):
     today = date.today()
-
-    # ============================
-    # OUTSTANDING TOTALS
-    # ============================
 
     receivables_total = db.query(
         func.coalesce(func.sum(SalesInvoiceHdr.balance), 0)
@@ -64,10 +72,6 @@ def dashboard_summary(
     payables_total = db.query(
         func.coalesce(func.sum(PurchaseInvoiceHdr.balance), 0)
     ).scalar()
-
-    # ============================
-    # SALES / AR STATUS COUNTS
-    # ============================
 
     sales_rows_raw = db.query(
         SalesInvoiceHdr.invoice_no,
@@ -107,10 +111,6 @@ def dashboard_summary(
             today=today,
         )
 
-    # ============================
-    # PURCHASE / AP STATUS COUNTS
-    # ============================
-
     purchase_rows_raw = db.query(
         PurchaseInvoiceHdr.bill_no,
         PurchaseInvoiceHdr.grand_total,
@@ -149,10 +149,6 @@ def dashboard_summary(
             today=today,
         )
 
-    # ============================
-    # TODAY'S MOVEMENT
-    # ============================
-
     today_receipts = db.query(
         func.coalesce(func.sum(SalesReceipt.amount), 0)
     ).filter(SalesReceipt.receipt_date == today).scalar()
@@ -161,57 +157,42 @@ def dashboard_summary(
         func.coalesce(func.sum(VendorPayment.amount), 0)
     ).filter(VendorPayment.payment_date == today).scalar()
 
-    # ============================
-    # JOURNAL VOUCHERS
-    # ============================
+    posted_jvs = db.query(
+        JournalVoucherHdr.reference_type,
+        JournalVoucherHdr.amount,
+        JournalVoucherHdr.voucher_date,
+    ).filter(JournalVoucherHdr.status == "POSTED").all()
 
-    jv_total_amount = db.query(
-        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
-    ).filter(
+    jv_total_amount = Decimal("0")
+    jv_today_amount = Decimal("0")
+    jv_sales_amount = Decimal("0")
+    jv_purchase_amount = Decimal("0")
+
+    for reference_type, amount, voucher_date in posted_jvs:
+        ref_type = str(reference_type or "").upper()
+        signed_amount = signed_jv_amount(ref_type, amount)
+
+        jv_total_amount += signed_amount
+
+        if voucher_date == today:
+            jv_today_amount += signed_amount
+
+        if ref_type == "SALES_INVOICE":
+            jv_sales_amount += to_decimal(amount)
+
+        if ref_type == "PURCHASE_BILL":
+            jv_purchase_amount -= to_decimal(amount)
+
+    jv_count = db.query(func.count(JournalVoucherHdr.voucher_no)).scalar()
+
+    jv_posted_count = db.query(func.count(JournalVoucherHdr.voucher_no)).filter(
         JournalVoucherHdr.status == "POSTED"
     ).scalar()
 
-    jv_today_amount = db.query(
-        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
-    ).filter(
+    jv_today_count = db.query(func.count(JournalVoucherHdr.voucher_no)).filter(
         JournalVoucherHdr.status == "POSTED",
         JournalVoucherHdr.voucher_date == today,
     ).scalar()
-
-    jv_count = db.query(
-        func.count(JournalVoucherHdr.voucher_no)
-    ).scalar()
-
-    jv_posted_count = db.query(
-        func.count(JournalVoucherHdr.voucher_no)
-    ).filter(
-        JournalVoucherHdr.status == "POSTED"
-    ).scalar()
-
-    jv_today_count = db.query(
-        func.count(JournalVoucherHdr.voucher_no)
-    ).filter(
-        JournalVoucherHdr.status == "POSTED",
-        JournalVoucherHdr.voucher_date == today,
-    ).scalar()
-
-    jv_sales_amount = db.query(
-        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
-    ).filter(
-        JournalVoucherHdr.status == "POSTED",
-        JournalVoucherHdr.reference_type == "SALES_INVOICE",
-    ).scalar()
-
-    jv_purchase_amount = db.query(
-        func.coalesce(func.sum(JournalVoucherHdr.amount), 0)
-    ).filter(
-        JournalVoucherHdr.status == "POSTED",
-        JournalVoucherHdr.reference_type == "PURCHASE_BILL",
-    ).scalar()
-
-    # ============================
-    # MONTHLY TREND
-    # ============================
 
     def month_key(year, month):
         return f"{year}-{str(month).zfill(2)}"
@@ -236,8 +217,9 @@ def dashboard_summary(
     ).all()
 
     for y, m, total in sales_trend_rows:
-        key = month_key(int(y), int(m))
-        trend[key]["receivables"] = float(total or 0)
+        if y and m:
+            key = month_key(int(y), int(m))
+            trend[key]["receivables"] = float(total or 0)
 
     purchase_trend_rows = db.query(
         extract("year", PurchaseInvoiceHdr.bill_date),
@@ -249,8 +231,9 @@ def dashboard_summary(
     ).all()
 
     for y, m, total in purchase_trend_rows:
-        key = month_key(int(y), int(m))
-        trend[key]["payables"] = float(total or 0)
+        if y and m:
+            key = month_key(int(y), int(m))
+            trend[key]["payables"] = float(total or 0)
 
     receipt_trend_rows = db.query(
         extract("year", SalesReceipt.receipt_date),
@@ -262,8 +245,9 @@ def dashboard_summary(
     ).all()
 
     for y, m, total in receipt_trend_rows:
-        key = month_key(int(y), int(m))
-        trend[key]["receipts"] = float(total or 0)
+        if y and m:
+            key = month_key(int(y), int(m))
+            trend[key]["receipts"] = float(total or 0)
 
     payment_trend_rows = db.query(
         extract("year", VendorPayment.payment_date),
@@ -275,38 +259,36 @@ def dashboard_summary(
     ).all()
 
     for y, m, total in payment_trend_rows:
-        key = month_key(int(y), int(m))
-        trend[key]["payments"] = float(total or 0)
+        if y and m:
+            key = month_key(int(y), int(m))
+            trend[key]["payments"] = float(total or 0)
 
     jv_trend_rows = db.query(
         extract("year", JournalVoucherHdr.voucher_date),
         extract("month", JournalVoucherHdr.voucher_date),
+        JournalVoucherHdr.reference_type,
         func.sum(JournalVoucherHdr.amount),
-    ).filter(
-        JournalVoucherHdr.status == "POSTED"
-    ).group_by(
+    ).filter(JournalVoucherHdr.status == "POSTED").group_by(
         extract("year", JournalVoucherHdr.voucher_date),
         extract("month", JournalVoucherHdr.voucher_date),
+        JournalVoucherHdr.reference_type,
     ).all()
 
-    for y, m, total in jv_trend_rows:
-        key = month_key(int(y), int(m))
-        trend[key]["jv_amount"] = float(total or 0)
+    for y, m, reference_type, total in jv_trend_rows:
+        if y and m:
+            key = month_key(int(y), int(m))
+            trend[key]["jv_amount"] += float(
+                signed_jv_amount(str(reference_type or "").upper(), total)
+            )
 
     monthly_trend = [{"month": k, **v} for k, v in sorted(trend.items())]
-
-    # ============================
-    # AGING BUCKETS (SALES / AR)
-    # ============================
 
     invoice_aging_rows = db.query(
         SalesInvoiceHdr.grand_total,
         SalesInvoiceHdr.balance,
         SalesInvoiceHdr.due_date,
         SalesInvoiceHdr.status,
-    ).filter(
-        SalesInvoiceHdr.balance > 0
-    ).all()
+    ).filter(SalesInvoiceHdr.balance > 0).all()
 
     aging = {
         "not_due": 0,
@@ -347,16 +329,10 @@ def dashboard_summary(
         else:
             aging["b90_plus"] += bal
 
-    # ============================
-    # TOP CUSTOMERS
-    # ============================
-
     top_customers_rows = db.query(
         SalesInvoiceHdr.customer_code,
         func.sum(SalesInvoiceHdr.balance),
-    ).filter(
-        SalesInvoiceHdr.balance > 0
-    ).group_by(
+    ).filter(SalesInvoiceHdr.balance > 0).group_by(
         SalesInvoiceHdr.customer_code
     ).order_by(
         func.sum(SalesInvoiceHdr.balance).desc()
@@ -369,10 +345,6 @@ def dashboard_summary(
         }
         for customer_code, balance in top_customers_rows
     ]
-
-    # ============================
-    # FINAL RESPONSE
-    # ============================
 
     return {
         "receivables": scalar_number(receivables_total),
@@ -398,9 +370,12 @@ def dashboard_summary(
 
         "journal_voucher_count": scalar_count(jv_count),
         "journal_voucher_posted_count": scalar_count(jv_posted_count),
+
         "journal_voucher_total_amount": scalar_number(jv_total_amount),
+        "journal_voucher_net_amount": scalar_number(jv_total_amount),
         "journal_voucher_today_amount": scalar_number(jv_today_amount),
         "journal_voucher_today_count": scalar_count(jv_today_count),
+
         "journal_voucher_sales_amount": scalar_number(jv_sales_amount),
         "journal_voucher_purchase_amount": scalar_number(jv_purchase_amount),
 

@@ -24,6 +24,12 @@ function moneyINR(n) {
   });
 }
 
+function signedMoneyINR(n) {
+  const x = Number(n || 0);
+  const sign = x > 0 ? "+ " : x < 0 ? "- " : "";
+  return `${sign}₹ ${moneyINR(Math.abs(x))}`;
+}
+
 function compactINR(n) {
   const x = Number(n || 0);
   if (Math.abs(x) >= 10000000) return `${(x / 10000000).toFixed(2)} Cr`;
@@ -35,6 +41,17 @@ function compactINR(n) {
 function num(n) {
   const x = Number(n || 0);
   return Number.isFinite(x) ? x : 0;
+}
+
+function absNum(n) {
+  return Math.abs(num(n));
+}
+
+function signedKind(n) {
+  const x = num(n);
+  if (x > 0) return "positive";
+  if (x < 0) return "negative";
+  return "neutral";
 }
 
 const STATUS_COLORS = {
@@ -70,6 +87,19 @@ export default function Dashboard() {
     load();
   }, []);
 
+  const jvNetAmount = useMemo(() => {
+    if (!data) return 0;
+
+    if (data.journal_voucher_net_amount !== undefined) {
+      return num(data.journal_voucher_net_amount);
+    }
+
+    return (
+      num(data.journal_voucher_sales_amount) -
+      num(data.journal_voucher_purchase_amount)
+    );
+  }, [data]);
+
   const computed = useMemo(() => {
     if (!data) {
       return {
@@ -81,7 +111,8 @@ export default function Dashboard() {
 
     return {
       netPosition: num(data.receivables) - num(data.payables),
-      overdueExposure: num(data.overdue_receivables) + num(data.overdue_payables),
+      overdueExposure:
+        num(data.overdue_receivables) + num(data.overdue_payables),
       totalTodayMovement:
         num(data.today_receipts) +
         num(data.today_vendor_payments) +
@@ -96,9 +127,9 @@ export default function Dashboard() {
       { name: "Payables", value: num(data.payables) },
       { name: "Overdue AR", value: num(data.overdue_receivables) },
       { name: "Overdue AP", value: num(data.overdue_payables) },
-      { name: "JV Total", value: num(data.journal_voucher_total_amount) },
+      { name: "JV Net", value: jvNetAmount },
     ];
-  }, [data]);
+  }, [data, jvNetAmount]);
 
   const salesStatusChart = useMemo(() => {
     if (!data) return [];
@@ -111,23 +142,17 @@ export default function Dashboard() {
     ].filter((x) => x.value > 0);
   }, [data]);
 
-  const purchaseStatusSummary = useMemo(() => {
-    if (!data) return [];
-    return [
-      { label: "Bills", value: num(data.purchase_bill_count) },
-      { label: "Pending", value: num(data.purchase_pending_count) },
-      { label: "Partial", value: num(data.purchase_partial_count) },
-      { label: "Paid", value: num(data.purchase_paid_count) },
-      { label: "Overdue", value: num(data.purchase_overdue_count) },
-      { label: "Cancelled", value: num(data.purchase_cancelled_count) },
-    ];
-  }, [data]);
-
   const jvSplitChart = useMemo(() => {
     if (!data) return [];
     return [
-      { name: "SalesJV", value: num(data.journal_voucher_sales_amount) },
-      { name: "PurchaseJV", value: num(data.journal_voucher_purchase_amount) },
+      {
+        name: "SalesJV",
+        value: absNum(data.journal_voucher_sales_amount),
+      },
+      {
+        name: "PurchaseJV",
+        value: absNum(data.journal_voucher_purchase_amount),
+      },
     ].filter((x) => x.value > 0);
   }, [data]);
 
@@ -214,7 +239,9 @@ export default function Dashboard() {
             {loading && !data ? (
               <div style={{ color: "#b8b8b8" }}>Loading dashboard...</div>
             ) : !data ? (
-              <div style={{ color: "#b8b8b8" }}>No dashboard data available.</div>
+              <div style={{ color: "#b8b8b8" }}>
+                No dashboard data available.
+              </div>
             ) : (
               <>
                 <div style={sectionTitle}>Financial Summary</div>
@@ -225,23 +252,28 @@ export default function Dashboard() {
                     value={`₹ ${moneyINR(data.receivables)}`}
                     hint="Total sales invoice value"
                   />
+
                   <Card
                     title="Total Payables (AP)"
                     value={`₹ ${moneyINR(data.payables)}`}
                     hint="Total purchase bill value"
                   />
+
                   <Card
-                    title="Total Journal Adjustments"
-                    value={`₹ ${moneyINR(data.journal_voucher_total_amount)}`}
-                    hint="All posted JV amount"
+                    title="Net Journal Adjustment"
+                    value={signedMoneyINR(jvNetAmount)}
+                    hint="+ means AR-side adjustment, - means AP/excess impact"
                     accent="blue"
+                    signed={signedKind(jvNetAmount)}
                   />
+
                   <Card
                     title="Overdue Receivables"
                     value={`₹ ${moneyINR(data.overdue_receivables)}`}
                     danger
                     hint="Outstanding AR marked overdue"
                   />
+
                   <Card
                     title="Overdue Payables"
                     value={`₹ ${moneyINR(data.overdue_payables)}`}
@@ -258,26 +290,32 @@ export default function Dashboard() {
                     value={`₹ ${moneyINR(computed.netPosition)}`}
                     hint="Receivables minus payables"
                   />
+
                   <MiniCard
                     title="Total Overdue Exposure"
                     value={`₹ ${moneyINR(computed.overdueExposure)}`}
                     hint="Combined overdue AR + AP"
                   />
+
                   <MiniCard
                     title="Today's Receipts"
                     value={`₹ ${moneyINR(data.today_receipts)}`}
                     hint="Customer collections posted today"
                   />
+
                   <MiniCard
                     title="Today's Vendor Payments"
                     value={`₹ ${moneyINR(data.today_vendor_payments)}`}
                     hint="Supplier payments posted today"
                   />
+
                   <MiniCard
                     title="Today's JV Posted"
-                    value={`₹ ${moneyINR(data.journal_voucher_today_amount)}`}
+                    value={signedMoneyINR(data.journal_voucher_today_amount)}
                     hint={`${num(data.journal_voucher_today_count)} JV posted today`}
+                    signed={signedKind(data.journal_voucher_today_amount)}
                   />
+
                   <MiniCard
                     title="Total Today Movement"
                     value={`₹ ${moneyINR(computed.totalTodayMovement)}`}
@@ -293,9 +331,17 @@ export default function Dashboard() {
                     <div style={statGrid}>
                       <StatTile label="Invoices" value={data.sales_invoice_count} />
                       <StatTile label="Pending" value={data.sales_pending_count} />
-                      <StatTile label="Partial" value={data.sales_partial_count} warn />
+                      <StatTile
+                        label="Partial"
+                        value={data.sales_partial_count}
+                        warn
+                      />
                       <StatTile label="Paid" value={data.sales_paid_count} ok />
-                      <StatTile label="Overdue" value={data.sales_overdue_count} danger />
+                      <StatTile
+                        label="Overdue"
+                        value={data.sales_overdue_count}
+                        danger
+                      />
                       <StatTile
                         label="Cancelled"
                         value={data.sales_cancelled_count}
@@ -308,10 +354,21 @@ export default function Dashboard() {
                     <div style={panelTitle}>Purchase / AP Status</div>
                     <div style={statGrid}>
                       <StatTile label="Bills" value={data.purchase_bill_count} />
-                      <StatTile label="Pending" value={data.purchase_pending_count} />
-                      <StatTile label="Partial" value={data.purchase_partial_count} warn />
+                      <StatTile
+                        label="Pending"
+                        value={data.purchase_pending_count}
+                      />
+                      <StatTile
+                        label="Partial"
+                        value={data.purchase_partial_count}
+                        warn
+                      />
                       <StatTile label="Paid" value={data.purchase_paid_count} ok />
-                      <StatTile label="Overdue" value={data.purchase_overdue_count} danger />
+                      <StatTile
+                        label="Overdue"
+                        value={data.purchase_overdue_count}
+                        danger
+                      />
                       <StatTile
                         label="Cancelled"
                         value={data.purchase_cancelled_count}
@@ -323,26 +380,44 @@ export default function Dashboard() {
                   <div style={panel}>
                     <div style={panelTitle}>Journal Voucher Summary</div>
                     <div style={statGrid}>
-                      <StatTile label="JV Count" value={data.journal_voucher_count} />
+                      <StatTile
+                        label="JV Count"
+                        value={data.journal_voucher_count}
+                      />
+
                       <StatTile
                         label="Posted"
                         value={data.journal_voucher_posted_count}
                         ok
                       />
+
                       <StatTile
-                        label="Sales JV"
-                        value={`₹ ${moneyINR(data.journal_voucher_sales_amount)}`}
+                        label="Sales JV (+)"
+                        value={signedMoneyINR(data.journal_voucher_sales_amount)}
                         info
+                        signed={signedKind(data.journal_voucher_sales_amount)}
                       />
+
                       <StatTile
-                        label="Purchase JV"
-                        value={`₹ ${moneyINR(data.journal_voucher_purchase_amount)}`}
+                        label="Purchase JV (-)"
+                        value={signedMoneyINR(
+                          -absNum(data.journal_voucher_purchase_amount)
+                        )}
                         purple
+                        signed="negative"
                       />
+
                       <StatTile
                         label="Today JV"
-                        value={`₹ ${moneyINR(data.journal_voucher_today_amount)}`}
+                        value={signedMoneyINR(data.journal_voucher_today_amount)}
                         warn
+                        signed={signedKind(data.journal_voucher_today_amount)}
+                      />
+
+                      <StatTile
+                        label="JV Net"
+                        value={signedMoneyINR(jvNetAmount)}
+                        signed={signedKind(jvNetAmount)}
                       />
                     </div>
                   </div>
@@ -365,7 +440,11 @@ export default function Dashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                         <XAxis
                           dataKey="month"
-                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          tick={{
+                            fill: "#475569",
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
                           axisLine={{ stroke: "#cbd5e1" }}
                           tickLine={{ stroke: "#cbd5e1" }}
                         />
@@ -438,7 +517,11 @@ export default function Dashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                         <XAxis
                           dataKey="name"
-                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          tick={{
+                            fill: "#475569",
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
                           axisLine={{ stroke: "#cbd5e1" }}
                           tickLine={{ stroke: "#cbd5e1" }}
                         />
@@ -449,7 +532,11 @@ export default function Dashboard() {
                           tickLine={{ stroke: "#cbd5e1" }}
                         />
                         <Tooltip content={<CustomMoneyTooltip />} />
-                        <Bar dataKey="value" fill="#2563eb" radius={[10, 10, 0, 0]} />
+                        <Bar
+                          dataKey="value"
+                          fill="#2563eb"
+                          radius={[10, 10, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </ChartCard>
@@ -466,7 +553,11 @@ export default function Dashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                         <XAxis
                           dataKey="name"
-                          tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                          tick={{
+                            fill: "#475569",
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
                           axisLine={{ stroke: "#cbd5e1" }}
                           tickLine={{ stroke: "#cbd5e1" }}
                         />
@@ -477,7 +568,11 @@ export default function Dashboard() {
                           tickLine={{ stroke: "#cbd5e1" }}
                         />
                         <Tooltip content={<CustomMoneyTooltip />} />
-                        <Bar dataKey="value" fill="#7c3aed" radius={[10, 10, 0, 0]} />
+                        <Bar
+                          dataKey="value"
+                          fill="#7c3aed"
+                          radius={[10, 10, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </ChartCard>
@@ -544,12 +639,20 @@ export default function Dashboard() {
                             type="category"
                             dataKey="name"
                             width={120}
-                            tick={{ fill: "#475569", fontSize: 12, fontWeight: 700 }}
+                            tick={{
+                              fill: "#475569",
+                              fontSize: 12,
+                              fontWeight: 700,
+                            }}
                             axisLine={{ stroke: "#cbd5e1" }}
                             tickLine={{ stroke: "#cbd5e1" }}
                           />
                           <Tooltip content={<CustomMoneyTooltip />} />
-                          <Bar dataKey="value" fill="#ef4444" radius={[0, 10, 10, 0]} />
+                          <Bar
+                            dataKey="value"
+                            fill="#ef4444"
+                            radius={[0, 10, 10, 0]}
+                          />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -557,7 +660,7 @@ export default function Dashboard() {
 
                   <ChartCard
                     title="Journal Voucher Split"
-                    subtitle="JV adjustment amount split by AR vs AP"
+                    subtitle="Sales JV shown as positive, Purchase JV shown as negative impact"
                   >
                     {jvSplitChart.length === 0 ? (
                       <EmptyChartState text="No journal voucher data available." />
@@ -603,7 +706,7 @@ export default function Dashboard() {
   );
 }
 
-function Card({ title, value, hint, danger, accent }) {
+function Card({ title, value, hint, danger, accent, signed }) {
   let borderColor = "#e5e7eb";
   let background = "#fff";
   let valueColor = "#111827";
@@ -618,15 +721,23 @@ function Card({ title, value, hint, danger, accent }) {
     valueColor = "#1d4ed8";
   }
 
+  if (signed === "positive") {
+    borderColor = "#86efac";
+    background = "#f0fdf4";
+    valueColor = "#166534";
+  }
+
+  if (signed === "negative") {
+    borderColor = "#fca5a5";
+    background = "#fef2f2";
+    valueColor = "#b91c1c";
+  }
+
   return (
-    <div
-      style={{
-        ...card,
-        borderColor,
-        background,
-      }}
-    >
-      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>{title}</div>
+    <div style={{ ...card, borderColor, background }}>
+      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
+        {title}
+      </div>
       <div
         style={{
           fontSize: 26,
@@ -643,11 +754,36 @@ function Card({ title, value, hint, danger, accent }) {
   );
 }
 
-function MiniCard({ title, value, hint }) {
+function MiniCard({ title, value, hint, signed }) {
+  let valueColor = "#111827";
+  let background = "#f8fafc";
+  let borderColor = "#e5e7eb";
+
+  if (signed === "positive") {
+    valueColor = "#166534";
+    background = "#f0fdf4";
+    borderColor = "#86efac";
+  }
+
+  if (signed === "negative") {
+    valueColor = "#b91c1c";
+    background = "#fef2f2";
+    borderColor = "#fca5a5";
+  }
+
   return (
-    <div style={{ ...card, background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>{title}</div>
-      <div style={{ fontSize: 22, fontWeight: 900, color: "#111827", marginTop: 6 }}>
+    <div style={{ ...card, background, borderColor }}>
+      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
+        {title}
+      </div>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 900,
+          color: valueColor,
+          marginTop: 6,
+        }}
+      >
         {value}
       </div>
       <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>{hint}</div>
@@ -655,7 +791,17 @@ function MiniCard({ title, value, hint }) {
   );
 }
 
-function StatTile({ label, value, ok, warn, danger, muted, info, purple }) {
+function StatTile({
+  label,
+  value,
+  ok,
+  warn,
+  danger,
+  muted,
+  info,
+  purple,
+  signed,
+}) {
   let bg = "#fff";
   let border = "#e5e7eb";
   let color = "#111827";
@@ -686,6 +832,18 @@ function StatTile({ label, value, ok, warn, danger, muted, info, purple }) {
     color = "#6d28d9";
   }
 
+  if (signed === "positive") {
+    bg = "#f0fdf4";
+    border = "#86efac";
+    color = "#166534";
+  }
+
+  if (signed === "negative") {
+    bg = "#fef2f2";
+    border = "#fca5a5";
+    color = "#b91c1c";
+  }
+
   return (
     <div
       style={{
@@ -695,11 +853,13 @@ function StatTile({ label, value, ok, warn, danger, muted, info, purple }) {
         padding: 12,
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
+        {label}
+      </div>
       <div
         style={{
           marginTop: 6,
-          fontSize: typeof value === "string" && value.startsWith("₹") ? 18 : 22,
+          fontSize: typeof value === "string" && value.includes("₹") ? 18 : 22,
           fontWeight: 900,
           color,
           lineHeight: 1.2,
@@ -754,7 +914,7 @@ function CustomMoneyTooltip({ active, payload, label }) {
   return (
     <div style={tooltipBox}>
       <div style={tooltipTitle}>{title}</div>
-      <div style={tooltipValue}>₹ {moneyINR(value)}</div>
+      <div style={tooltipValue}>{signedMoneyINR(value)}</div>
     </div>
   );
 }
@@ -779,7 +939,11 @@ function CustomTrendTooltip({ active, payload, label }) {
           }}
         >
           <span>{item.name}:</span>
-          <span>₹ {moneyINR(item.value)}</span>
+          <span>
+            {item.dataKey === "jv_amount"
+              ? signedMoneyINR(item.value)
+              : `₹ ${moneyINR(item.value)}`}
+          </span>
         </div>
       ))}
     </div>
