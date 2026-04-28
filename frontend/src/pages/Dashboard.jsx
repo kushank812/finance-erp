@@ -72,6 +72,7 @@ export default function Dashboard() {
   async function load() {
     setErr("");
     setLoading(true);
+
     try {
       const res = await apiGet("/dashboard/summary");
       setData(res || {});
@@ -94,10 +95,7 @@ export default function Dashboard() {
       return num(data.journal_voucher_net_amount);
     }
 
-    return (
-      num(data.journal_voucher_sales_amount) -
-      num(data.journal_voucher_purchase_amount)
-    );
+    return num(data.journal_voucher_total_amount);
   }, [data]);
 
   const computed = useMemo(() => {
@@ -122,6 +120,7 @@ export default function Dashboard() {
 
   const exposureChart = useMemo(() => {
     if (!data) return [];
+
     return [
       { name: "Receivables", value: num(data.receivables) },
       { name: "Payables", value: num(data.payables) },
@@ -133,6 +132,7 @@ export default function Dashboard() {
 
   const salesStatusChart = useMemo(() => {
     if (!data) return [];
+
     return [
       { name: "Paid", value: num(data.sales_paid_count) },
       { name: "Pending", value: num(data.sales_pending_count) },
@@ -144,6 +144,7 @@ export default function Dashboard() {
 
   const jvSplitChart = useMemo(() => {
     if (!data) return [];
+
     return [
       {
         name: "SalesJV",
@@ -210,6 +211,7 @@ export default function Dashboard() {
         value: num(c.balance || c.outstanding || c.amount),
       }));
     }
+
     return [];
   }, [data]);
 
@@ -262,8 +264,7 @@ export default function Dashboard() {
                   <Card
                     title="Net Journal Adjustment"
                     value={signedMoneyINR(jvNetAmount)}
-                    hint="+ means AR-side adjustment, - means AP/excess impact"
-                    accent="blue"
+                    hint="+ means excess/increase, - means reduced/write-off/discount"
                     signed={signedKind(jvNetAmount)}
                   />
 
@@ -310,7 +311,7 @@ export default function Dashboard() {
                   />
 
                   <MiniCard
-                    title="Today's JV Posted"
+                    title="Today's JV Net"
                     value={signedMoneyINR(data.journal_voucher_today_amount)}
                     hint={`${num(data.journal_voucher_today_count)} JV posted today`}
                     signed={signedKind(data.journal_voucher_today_amount)}
@@ -318,8 +319,9 @@ export default function Dashboard() {
 
                   <MiniCard
                     title="Total Today Movement"
-                    value={`₹ ${moneyINR(computed.totalTodayMovement)}`}
-                    hint="Receipts + payments + JV today"
+                    value={signedMoneyINR(computed.totalTodayMovement)}
+                    hint="Receipts + payments + signed JV today"
+                    signed={signedKind(computed.totalTodayMovement)}
                   />
                 </div>
 
@@ -392,30 +394,30 @@ export default function Dashboard() {
                       />
 
                       <StatTile
-                        label="Sales JV (+)"
+                        label="Sales JV Net"
                         value={signedMoneyINR(data.journal_voucher_sales_amount)}
-                        info
                         signed={signedKind(data.journal_voucher_sales_amount)}
+                        info
                       />
 
                       <StatTile
-                        label="Purchase JV (-)"
+                        label="Purchase JV Net"
                         value={signedMoneyINR(
-                          -absNum(data.journal_voucher_purchase_amount)
+                          data.journal_voucher_purchase_amount
                         )}
+                        signed={signedKind(data.journal_voucher_purchase_amount)}
                         purple
-                        signed="negative"
                       />
 
                       <StatTile
-                        label="Today JV"
+                        label="Today JV Net"
                         value={signedMoneyINR(data.journal_voucher_today_amount)}
-                        warn
                         signed={signedKind(data.journal_voucher_today_amount)}
+                        warn
                       />
 
                       <StatTile
-                        label="JV Net"
+                        label="JV Total Net"
                         value={signedMoneyINR(jvNetAmount)}
                         signed={signedKind(jvNetAmount)}
                       />
@@ -430,7 +432,7 @@ export default function Dashboard() {
                 <div style={chartGrid}>
                   <ChartCard
                     title="Monthly Financial Trend"
-                    subtitle="Receivables, payables, collections, supplier payments and JV movement"
+                    subtitle="Receivables, payables, collections, supplier payments and signed JV movement"
                   >
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart
@@ -495,7 +497,7 @@ export default function Dashboard() {
                         <Line
                           type="monotone"
                           dataKey="jv_amount"
-                          name="JV"
+                          name="JV Net"
                           stroke="#7c3aed"
                           strokeWidth={3}
                           dot={{ r: 4 }}
@@ -507,7 +509,7 @@ export default function Dashboard() {
 
                   <ChartCard
                     title="Financial Exposure"
-                    subtitle="Overall financial exposure and overdue comparison"
+                    subtitle="Overall financial exposure and signed JV net"
                   >
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
@@ -660,7 +662,7 @@ export default function Dashboard() {
 
                   <ChartCard
                     title="Journal Voucher Split"
-                    subtitle="Sales JV shown as positive, Purchase JV shown as negative impact"
+                    subtitle="Shows absolute JV activity split by sales and purchase documents"
                   >
                     {jvSplitChart.length === 0 ? (
                       <EmptyChartState text="No journal voucher data available." />
@@ -684,7 +686,7 @@ export default function Dashboard() {
                               />
                             ))}
                           </Pie>
-                          <Tooltip content={<CustomMoneyTooltip />} />
+                          <Tooltip content={<CustomMoneyTooltipAbs />} />
                           <Legend
                             verticalAlign="bottom"
                             iconType="circle"
@@ -706,7 +708,7 @@ export default function Dashboard() {
   );
 }
 
-function Card({ title, value, hint, danger, accent, signed }) {
+function Card({ title, value, hint, danger, signed }) {
   let borderColor = "#e5e7eb";
   let background = "#fff";
   let valueColor = "#111827";
@@ -715,10 +717,6 @@ function Card({ title, value, hint, danger, accent, signed }) {
     borderColor = "#fecaca";
     background = "#fff7f7";
     valueColor = "#b91c1c";
-  } else if (accent === "blue") {
-    borderColor = "#bfdbfe";
-    background = "#f8fbff";
-    valueColor = "#1d4ed8";
   }
 
   if (signed === "positive") {
@@ -915,6 +913,21 @@ function CustomMoneyTooltip({ active, payload, label }) {
     <div style={tooltipBox}>
       <div style={tooltipTitle}>{title}</div>
       <div style={tooltipValue}>{signedMoneyINR(value)}</div>
+    </div>
+  );
+}
+
+function CustomMoneyTooltipAbs({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+
+  const item = payload[0];
+  const value = item?.value;
+  const title = label || item?.name || item?.payload?.name || "-";
+
+  return (
+    <div style={tooltipBox}>
+      <div style={tooltipTitle}>{title}</div>
+      <div style={tooltipValue}>₹ {moneyINR(value)}</div>
     </div>
   );
 }
